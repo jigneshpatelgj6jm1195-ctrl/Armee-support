@@ -304,58 +304,175 @@ function doGet(e) {
 function getComplaintsList(ss) {
   var sheet = ss.getSheetByName(SHEET_TAB_NAME);
   if (!sheet) return [];
+  
+  // Run migration check dynamically
+  try {
+    var lastCol = sheet.getLastColumn();
+    var headerVal = lastCol >= 30 ? sheet.getRange(1, 30).getValue() : '';
+    if (headerVal !== 'Photo URL') {
+      migrateSheetTo30Columns(sheet);
+    }
+  } catch (e) {
+    Logger.log("Migration error: " + e.toString());
+  }
+
   var rows = sheet.getDataRange().getValues();
+  var formulas = sheet.getDataRange().getFormulas();
   if (rows.length <= 1) return [];
 
-  var headers = rows[0];
   var data = [];
-  var keyMap = {
-    'SR No.': 'srNo',
-    'Submitted At': 'submittedAt',
-    'Complainant Name': 'complainantName',
-    'Complainant Phone': 'complainantPhone',
-    'Complainant Role': 'complainantRole',
-    'Project': 'project',
-    'DISE Code': 'dise',
-    'School Code': 'schoolCode',
-    'District': 'district',
-    'Taluka': 'taluka',
-    'School Name': 'school',
-    'Principal Name': 'principal',
-    'Principal Contact': 'contact',
-    'Address': 'address',
-    'Pin Code': 'pincode',
-    'Equipment': 'equipment',
-    'Nature of Complaint': 'natureOfComplaint',
-    'Serial Number': 'serialNumber',
-    'Quantity': 'quantity',
-    'Complaint Date': 'complaintDate',
-    'Medium': 'medium',
-    'Description': 'description',
-    'Photo Count': 'photoCount',
-    'Status': 'status',
-    'Case ID': 'caseId',
-    'Latitude': 'latitude',
-    'Longitude': 'longitude',
-    'Photo Preview': 'photoPreview',
-    'View Photo': 'viewPhoto',
-    'Photo URL': 'photoUrl',
-  };
-
   for (var i = 1; i < rows.length; i++) {
     var row = rows[i];
-    var obj = {};
-    headers.forEach(function(header, index) {
-      var key = keyMap[header] || header;
-      var val = row[index];
-      if (header === 'Latitude' || header === 'Longitude') {
-        val = parseFloat(val) || 0;
+    var rowFormulas = formulas[i];
+    
+    // Parse using index-based layout for 100% correctness
+    var obj = {
+      srNo: row[0],
+      submittedAt: row[1],
+      complainantName: row[2],
+      complainantPhone: row[3],
+      complainantRole: row[4],
+      project: row[5],
+      dise: row[6],
+      schoolCode: row[7],
+      district: row[8],
+      taluka: row[9],
+      school: row[10],
+      principal: row[11],
+      contact: row[12],
+      address: row[13],
+      pincode: row[14],
+      equipment: row[15],
+      natureOfComplaint: row[16],
+      serialNumber: row[17],
+      quantity: row[18],
+      complaintDate: row[19],
+      medium: row[20],
+      description: row[21],
+      photoCount: parseInt(row[22]) || 0,
+      status: row[23] || 'Open',
+      caseId: row[24] || '',
+      latitude: parseFloat(row[25]) || 0,
+      longitude: parseFloat(row[26]) || 0,
+      photoPreview: row[27] || '',
+      viewPhoto: row[28] || '',
+      photoUrl: row[29] || ''
+    };
+
+    // If photoUrl is empty, try extracting from formulas
+    if (!obj.photoUrl) {
+      if (rowFormulas && rowFormulas[28]) {
+        var match = rowFormulas[28].match(/=HYPERLINK\("([^"]+)"/i);
+        if (match) obj.photoUrl = match[1];
       }
-      obj[key] = val;
-    });
+      if (!obj.photoUrl && rowFormulas && rowFormulas[27]) {
+        var match = rowFormulas[27].match(/=IMAGE\("([^"]+)"/i);
+        if (match) obj.photoUrl = match[1];
+      }
+    }
+    
     data.push(obj);
   }
   return data;
+}
+
+/**
+ * Migrates a legacy 26-column layout sheet to the new 30-column format.
+ */
+function migrateSheetTo30Columns(sheet) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) {
+    setupHeaders(sheet);
+    return;
+  }
+
+  var range = sheet.getRange(1, 1, lastRow, sheet.getLastColumn());
+  var rows = range.getValues();
+  var formulas = range.getFormulas();
+  
+  var migratedRows = [];
+  migratedRows.push(HEADERS); // Header row
+  
+  for (var i = 1; i < rows.length; i++) {
+    var row = rows[i];
+    var rowFormulas = formulas[i];
+    
+    // Distinguish Format A (Legacy 26-cols) vs Format B (New 30-cols)
+    var isFormatB = false;
+    if (row.length >= 28) {
+      var val23 = String(row[23]).trim();
+      var val24 = String(row[24]).trim();
+      if (val23 === 'Open' || val23 === 'In Progress' || val23 === 'Resolved' || val23 === 'Closed' || val24.indexOf('CASE-') === 0) {
+        isFormatB = true;
+      }
+    }
+    
+    var newRow = [];
+    if (isFormatB) {
+      for (var col = 0; col < 30; col++) {
+        if (rowFormulas && rowFormulas[col]) {
+          newRow.push(rowFormulas[col]);
+        } else {
+          newRow.push(row[col] !== undefined ? row[col] : '');
+        }
+      }
+    } else {
+      // Format A: Legacy 26-column row. Migrate it!
+      for (var col = 0; col < 22; col++) {
+        if (rowFormulas && rowFormulas[col]) {
+          newRow.push(rowFormulas[col]);
+        } else {
+          newRow.push(row[col] !== undefined ? row[col] : '');
+        }
+      }
+      
+      var photoUrl = row[22] || '';
+      if (rowFormulas && rowFormulas[22]) {
+        var match = rowFormulas[22].match(/=HYPERLINK\("([^"]+)"/i);
+        if (match) {
+          photoUrl = match[1];
+        } else {
+          match = rowFormulas[22].match(/=IMAGE\("([^"]+)"/i);
+          if (match) photoUrl = match[1];
+        }
+      }
+      
+      var lat = parseFloat(row[23]) || '';
+      var lng = parseFloat(row[24]) || '';
+      var srNo = row[0] || i;
+      
+      newRow.push(photoUrl ? 1 : 0); // Photo Count
+      newRow.push('Open');           // Status
+      newRow.push('CASE-LEGACY-' + srNo); // Case ID
+      newRow.push(lat);              // Latitude
+      newRow.push(lng);              // Longitude
+      newRow.push(photoUrl ? '=IMAGE("https://lh3.googleusercontent.com/d/' + getFileIdFromUrl(photoUrl) + '")' : ''); // Photo Preview
+      newRow.push(photoUrl ? '=HYPERLINK("' + photoUrl + '","🔗 View Photo")' : ''); // View Photo
+      newRow.push(photoUrl);         // Photo URL
+    }
+    migratedRows.push(newRow);
+  }
+  
+  sheet.clear();
+  var writeRange = sheet.getRange(1, 1, migratedRows.length, 30);
+  writeRange.setValues(migratedRows);
+  
+  setupHeaders(sheet);
+  for (var r = 2; r <= migratedRows.length; r++) {
+    formatLastRow(sheet, r);
+  }
+  Logger.log("✅ Sheet successfully migrated to 30 columns!");
+}
+
+function getFileIdFromUrl(url) {
+  if (!url) return '';
+  var match = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (match) return match[1];
+  match = url.match(/id=([a-zA-Z0-9_-]+)/);
+  if (match) return match[1];
+  match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (match) return match[1];
+  return url;
 }
 
 function handleSubmitComplaint(ss, data) {
@@ -519,7 +636,7 @@ function updateComplaintsStatus(ss, complaintsArray) {
   var lastRow = sheet.getLastRow();
   if (lastRow <= 1) return 0;
 
-  var rows = sheet.getRange(2, 1, lastRow - 1, 25).getValues();
+  var rows = sheet.getRange(2, 1, lastRow - 1, 30).getValues();
   var updatedCount = 0;
 
   for (var j = 0; j < complaintsArray.length; j++) {
@@ -568,7 +685,7 @@ function deleteComplaintRow(ss, caseId, submittedAt, dise) {
   var lastRow = sheet.getLastRow();
   if (lastRow <= 1) return false;
 
-  var rows = sheet.getRange(2, 1, lastRow - 1, 25).getValues();
+  var rows = sheet.getRange(2, 1, lastRow - 1, 30).getValues();
   var foundIndex = -1;
 
   // 1. Try matching by Case ID
