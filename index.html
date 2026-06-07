@@ -1183,7 +1183,7 @@ function startMasterDataPolling() {
       applyMasterData(data);
       showToast('🔄 Equipment list updated by admin');
     } catch (_) {}
-  }, 15000); // every 15 seconds
+  }, 300000); // every 5 minutes
 }
 
 
@@ -2158,59 +2158,69 @@ function resetAll() {
 }
 
 /* ─────────────── OFFLINE QUEUE ─────────────── */
+let isRetrying = false;
 async function retryQueue() {
-  if (!offlineQueue.length || !navigator.onLine) return;
-  const pending = [...offlineQueue];
-  offlineQueue = [];
-  localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
-  for (const item of pending) {
-    let syncedLocal = false;
-    let syncedRemote = false;
+  if (isRetrying || !offlineQueue.length || !navigator.onLine) return;
+  isRetrying = true;
 
-    // Retry local
-    try {
-      await fetch('/submit_complaint', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(item),
-      });
-      syncedLocal = true;
-    } catch (_) {}
+  try {
+    while (offlineQueue.length && navigator.onLine) {
+      const item = offlineQueue[0];
+      let syncedLocal = false;
+      let syncedRemote = false;
 
-    // Retry remote Google Script
-    if (GOOGLE_SCRIPT_URL) {
+      // Retry local
       try {
-        const res = await fetch(GOOGLE_SCRIPT_URL, {
+        await fetch('/submit_complaint', {
           method: 'POST',
-          mode: 'cors',
-          headers: { 'Content-Type': 'text/plain' },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(item),
         });
-        if (res.ok) {
-          const result = await res.json();
-          if (result && result.status === 'ok') {
-            syncedRemote = true;
-          } else if (result && result.retryable) {
-            console.warn("Server is busy/locked during retry. Retaining in queue.");
-            syncedRemote = false;
-          } else {
-            syncedRemote = true; // Avoid infinite retry loop for fatal validation errors
-          }
-        } else {
-          syncedRemote = false;
-        }
-      } catch (_) {
-        syncedRemote = false;
-      }
-    } else {
-      syncedRemote = true; // No script URL configured
-    }
+        syncedLocal = true;
+      } catch (_) {}
 
-    if (!syncedLocal || !syncedRemote) {
-      offlineQueue.push(item);
+      // Retry remote Google Script
+      if (GOOGLE_SCRIPT_URL) {
+        try {
+          const res = await fetch(GOOGLE_SCRIPT_URL, {
+            method: 'POST',
+            mode: 'cors',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify(item),
+          });
+          if (res.ok) {
+            const result = await res.json();
+            if (result && result.status === 'ok') {
+              syncedRemote = true;
+            } else if (result && result.retryable) {
+              console.warn("Server is busy/locked during retry. Retaining in queue.");
+              syncedRemote = false;
+              break; // Stop processing, wait for next trigger
+            } else {
+              syncedRemote = true; // Avoid infinite retry loop for fatal validation errors
+            }
+          } else {
+            syncedRemote = false;
+            break; // Stop processing if server returns HTTP error
+          }
+        } catch (_) {
+          syncedRemote = false;
+          break; // Stop processing if network fetch fails
+        }
+      } else {
+        syncedRemote = true;
+      }
+
+      if (syncedLocal && syncedRemote) {
+        offlineQueue.shift(); // Remove the successfully synced item
+        localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
+      } else {
+        break; // Stop loop if one fails to avoid infinite spinner/loop
+      }
     }
+  } finally {
+    isRetrying = false;
   }
-  localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
   if (!offlineQueue.length) showToast('Queued complaints sent!', 'success');
 }
 
