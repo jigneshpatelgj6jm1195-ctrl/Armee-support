@@ -1946,7 +1946,12 @@ async function deleteComplaint(origIndex) {
         method: 'POST',
         mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({ action: 'delete_complaint', caseId: c.caseId }),
+        body: JSON.stringify({ 
+          action: 'delete_complaint', 
+          caseId: c.caseId, 
+          submittedAt: c.submittedAt, 
+          dise: c.dise 
+        }),
       });
       showToast('🗑️ Complaint deleted from Google Sheet!', 'success');
     } catch (err) {

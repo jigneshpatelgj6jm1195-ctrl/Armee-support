@@ -164,7 +164,7 @@ function doPost(e) {
     }
 
     if (data.action === 'delete_complaint') {
-      var success = deleteComplaintRow(ss, data.caseId);
+      var success = deleteComplaintRow(ss, data.caseId, data.submittedAt, data.dise);
       return ContentService.createTextOutput(JSON.stringify({ status: success ? 'ok' : 'not_found' }))
                            .setMimeType(ContentService.MimeType.JSON);
     }
@@ -431,62 +431,102 @@ function getSchoolUpdates(ss) {
   });
 }
 
+function datesMatch(val1, val2) {
+  if (!val1 || !val2) return false;
+  var d1 = new Date(val1);
+  var d2 = new Date(val2);
+  if (!isNaN(d1.getTime()) && !isNaN(d2.getTime())) {
+    return Math.abs(d1.getTime() - d2.getTime()) < 5000;
+  }
+  return String(val1).trim() === String(val2).trim();
+}
+
 function updateComplaintsStatus(ss, complaintsArray) {
   var sheet = ss.getSheetByName(SHEET_TAB_NAME);
   if (!sheet) return 0;
   var lastRow = sheet.getLastRow();
   if (lastRow <= 1) return 0;
 
-  var rangeCaseIds = sheet.getRange(2, 25, lastRow - 1, 1);
-  var caseIds = rangeCaseIds.getValues();
-
-  var rangeStatus = sheet.getRange(2, 24, lastRow - 1, 1);
-  var statuses = rangeStatus.getValues();
-
-  var caseMap = {};
-  for (var i = 0; i < caseIds.length; i++) {
-    var cId = caseIds[i][0];
-    if (cId) {
-      caseMap[cId] = i;
-    }
-  }
-
+  var rows = sheet.getRange(2, 1, lastRow - 1, 25).getValues();
   var updatedCount = 0;
+
   for (var j = 0; j < complaintsArray.length; j++) {
     var c = complaintsArray[j];
-    var cId = c.caseId;
-    if (cId && cId in caseMap) {
-      var idx = caseMap[cId];
-      if (statuses[idx][0] !== c.status) {
-        statuses[idx][0] = c.status;
+    var foundIndex = -1;
+
+    // 1. Try matching by Case ID
+    if (c.caseId && c.caseId !== 'CASE-N/A') {
+      for (var i = 0; i < rows.length; i++) {
+        if (String(rows[i][24]).trim() === String(c.caseId).trim()) {
+          foundIndex = i;
+          break;
+        }
+      }
+    }
+
+    // 2. Fallback: match by Submitted At + DISE Code
+    if (foundIndex === -1 && c.submittedAt && c.dise) {
+      for (var i = 0; i < rows.length; i++) {
+        var sheetSubmittedAt = rows[i][1];
+        var sheetDise = String(rows[i][6]).trim();
+        if (sheetDise === String(c.dise).trim() && datesMatch(sheetSubmittedAt, c.submittedAt)) {
+          foundIndex = i;
+          break;
+        }
+      }
+    }
+
+    if (foundIndex !== -1) {
+      var rowNumber = foundIndex + 2;
+      var currentStatus = rows[foundIndex][23];
+      if (currentStatus !== c.status) {
+        sheet.getRange(rowNumber, 24).setValue(c.status);
+        rows[foundIndex][23] = c.status;
         updatedCount++;
       }
     }
   }
 
-  if (updatedCount > 0) {
-    rangeStatus.setValues(statuses);
-  }
   return updatedCount;
 }
 
-function deleteComplaintRow(ss, caseId) {
+function deleteComplaintRow(ss, caseId, submittedAt, dise) {
   var sheet = ss.getSheetByName(SHEET_TAB_NAME);
   if (!sheet) return false;
   var lastRow = sheet.getLastRow();
   if (lastRow <= 1) return false;
 
-  var rangeCaseIds = sheet.getRange(2, 25, lastRow - 1, 1);
-  var caseIds = rangeCaseIds.getValues();
+  var rows = sheet.getRange(2, 1, lastRow - 1, 25).getValues();
+  var foundIndex = -1;
 
-  for (var i = 0; i < caseIds.length; i++) {
-    if (caseIds[i][0] === caseId) {
-      // Row index in sheet is 1-indexed, and we started at row 2 (index 0 corresponds to row 2)
-      var rowIndex = i + 2;
-      sheet.deleteRow(rowIndex);
-      return true;
+  // 1. Try matching by Case ID
+  if (caseId && caseId !== 'CASE-N/A') {
+    for (var i = 0; i < rows.length; i++) {
+      if (String(rows[i][24]).trim() === String(caseId).trim()) {
+        foundIndex = i;
+        break;
+      }
     }
   }
+
+  // 2. Fallback: match by Submitted At + DISE Code
+  if (foundIndex === -1 && submittedAt && dise) {
+    for (var i = 0; i < rows.length; i++) {
+      var sheetSubmittedAt = rows[i][1];
+      var sheetDise = String(rows[i][6]).trim();
+      if (sheetDise === String(dise).trim() && datesMatch(sheetSubmittedAt, submittedAt)) {
+        foundIndex = i;
+        break;
+      }
+    }
+  }
+
+  if (foundIndex !== -1) {
+    var rowNumber = foundIndex + 2;
+    sheet.deleteRow(rowNumber);
+    return true;
+  }
+
   return false;
 }
 
