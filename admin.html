@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 /* ═══════════════ CSS RESET & VARIABLE SYSTEM ═══════════════ */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -174,7 +175,7 @@ body {
 /* ═══════════════ FORM FIELDS & INPUTS ═══════════════ */
 .field { margin-bottom: 14px; }
 label { display: block; font-size: 0.78rem; font-weight: 600; color: var(--label); margin-bottom: 6px; }
-input[type=text], input[type=tel], input[type=password], select, textarea {
+input[type=text], input[type=tel], input[type=password], input[type=date], select, textarea {
   width: 100%; padding: 11px 14px;
   border: 2px solid var(--border); border-radius: 10px;
   font-family: inherit; font-size: 14px; color: var(--text);
@@ -555,6 +556,10 @@ tr:hover td { background: #f8fafc; }
             <option value="resolved">Resolved</option>
             <option value="closed">Closed</option>
           </select>
+        </div>
+        <div>
+          <label>Filter by Date</label>
+          <input type="date" id="filterDate" onchange="filterComplaints()" />
         </div>
         <div>
           <label>Search text (School/DISE/SN)</label>
@@ -1627,6 +1632,7 @@ function getFilteredComplaints() {
   const equip = document.getElementById('filterEquipment').value;
   const status = document.getElementById('filterStatus').value.toLowerCase().trim();
   const search = document.getElementById('filterText').value.toLowerCase().trim();
+  const filterDate = document.getElementById('filterDate').value; // YYYY-MM-DD
 
   return complaintsList.filter(c => {
     if (proj && c.project !== proj) return false;
@@ -1637,6 +1643,19 @@ function getFilteredComplaints() {
       if (status === 'in progress' && s !== 'in progress' && s !== 'inprogress') return false;
       if (status === 'resolved' && s !== 'resolved') return false;
       if (status === 'closed' && s !== 'closed') return false;
+    }
+    if (filterDate) {
+      if (!c.submittedAt) return false;
+      const subDate = new Date(c.submittedAt);
+      if (isNaN(subDate.getTime())) {
+        if (!c.submittedAt.includes(filterDate)) return false;
+      } else {
+        const yyyy = subDate.getFullYear();
+        const mm = String(subDate.getMonth() + 1).padStart(2, '0');
+        const dd = String(subDate.getDate()).padStart(2, '0');
+        const localDateStr = `${yyyy}-${mm}-${dd}`;
+        if (localDateStr !== filterDate) return false;
+      }
     }
     if (search) {
       const match = (c.school || '').toLowerCase().includes(search) ||
@@ -1708,7 +1727,6 @@ function downloadReport(format) {
       ]);
     });
 
-
     const csvContent = "data:text/csv;charset=utf-8," 
       + rows.map(r => r.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
       
@@ -1722,114 +1740,62 @@ function downloadReport(format) {
     showToast('📥 CSV downloaded successfully!', 'success');
   } 
   else if (format === 'excel') {
-    // 2. Build branded Excel HTML format (which Excel parses correctly with custom headers and styles)
-    let html = `
-      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-      <head>
-        <meta charset="utf-8">
-        <style>
-          th { background-color: #1a56db; color: white; font-weight: bold; padding: 8px; text-align: left; }
-          td { border: 1px solid #e2e8f0; padding: 6px; }
-          .header-row { background-color: #f1f5f9; font-weight: bold; font-size: 14px; text-align: center; }
-          .title { font-size: 18px; font-weight: bold; color: #1e3a8a; }
-        </style>
-      </head>
-      <body>
-        <table>
-          <tr>
-            <td colspan="28" class="title">ArMee Technology Services Pvt. Ltd.</td>
-          </tr>
-          <tr>
-            <td colspan="28" style="font-weight:bold; font-size:12px;">School Complaint Management Report</td>
-          </tr>
-          <tr>
-            <td colspan="28" style="color:#64748b; font-size:10px;">Generated At: ${new Date().toLocaleString()}</td>
-          </tr>
-          <tr><td colspan="28"></td></tr>
-          <tr>
-            <th>SR No.</th>
-            <th>Submitted At</th>
-            <th>Complainant Name</th>
-            <th>Complainant Phone</th>
-            <th>Complainant Role</th>
-            <th>Project</th>
-            <th>DISE Code</th>
-            <th>School Code</th>
-            <th>District</th>
-            <th>Taluka</th>
-            <th>School Name</th>
-            <th>Principal Name</th>
-            <th>Principal Contact</th>
-            <th>Address</th>
-            <th>Pin Code</th>
-            <th>Equipment</th>
-            <th>Nature of Complaint</th>
-            <th>Serial Number</th>
-            <th>Quantity</th>
-            <th>Complaint Date</th>
-            <th>Medium</th>
-            <th>Description</th>
-            <th>Photo Count</th>
-            <th>Status</th>
-            <th>Case ID</th>
-            <th>Latitude</th>
-            <th>Longitude</th>
-            <th>Photo URL</th>
-          </tr>
-    `;
-
-    filtered.forEach((c, index) => {
+    // 2. Generate a real XLSX file using SheetJS (no warning dialog, no corruption)
+    const data = filtered.map((c, index) => {
       const photoSrc = getComplaintPhoto(c) || '';
-      html += `
-        <tr>
-          <td>${index + 1}</td>
-          <td>${c.submittedAt || ''}</td>
-          <td>${esc(c.complainantName)}</td>
-          <td>'${esc(c.complainantPhone)}</td>
-          <td>${esc(c.complainantRole)}</td>
-          <td>${esc(c.project)}</td>
-          <td>'${esc(c.dise)}</td>
-          <td>${esc(c.schoolCode)}</td>
-          <td>${esc(c.district)}</td>
-          <td>${esc(c.taluka)}</td>
-          <td>${esc(c.school)}</td>
-          <td>${esc(c.principal || '')}</td>
-          <td>'${esc(c.contact || '')}</td>
-          <td>${esc(c.address)}</td>
-          <td>'${esc(c.pincode || '')}</td>
-          <td>${esc(c.equipment)}</td>
-          <td>${esc(c.natureOfComplaint)}</td>
-          <td>'${esc(c.serialNumber || 'N/A')}</td>
-          <td>${c.quantity || 1}</td>
-          <td>${c.complaintDate || ''}</td>
-          <td>${esc(c.medium || '')}</td>
-          <td>${esc(c.description)}</td>
-          <td>${c.photoCount || 0}</td>
-          <td>${c.status || 'Open'}</td>
-          <td>${esc(c.caseId)}</td>
-          <td>${c.latitude || ''}</td>
-          <td>${c.longitude || ''}</td>
-          <td>${photoSrc ? (photoSrc.startsWith('data:') ? 'Local Photo (Base64)' : `<a href="${photoSrc}" target="_blank">View Photo</a>`) : 'No Photo'}</td>
-        </tr>
-      `;
+      return {
+        'SR No.': index + 1,
+        'Submitted At': c.submittedAt || '',
+        'Complainant Name': c.complainantName || '',
+        'Complainant Phone': c.complainantPhone || '',
+        'Complainant Role': c.complainantRole || '',
+        'Project': c.project || '',
+        'DISE Code': c.dise || '',
+        'School Code': c.schoolCode || '',
+        'District': c.district || '',
+        'Taluka': c.taluka || '',
+        'School Name': c.school || '',
+        'Principal Name': c.principal || '',
+        'Principal Contact': c.contact || '',
+        'Address': c.address || '',
+        'Pin Code': c.pincode || '',
+        'Equipment': c.equipment || '',
+        'Nature of Complaint': c.natureOfComplaint || '',
+        'Serial Number': c.serialNumber || '',
+        'Quantity': c.quantity || 1,
+        'Complaint Date': c.complaintDate || '',
+        'Medium': c.medium || '',
+        'Description': c.description || '',
+        'Photo Count': c.photoCount || 0,
+        'Status': c.status || 'Open',
+        'Case ID': c.caseId || '',
+        'Latitude': c.latitude || '',
+        'Longitude': c.longitude || '',
+        'Photo URL': photoSrc.startsWith('data:') ? 'Local Photo (Base64)' : photoSrc
+      };
     });
 
-    html += `
-        </table>
-        <br>
-        <p style="font-size:9px; text-align:center; color:#64748b;">Powered By ArMee Technology Services Pvt. Ltd.</p>
-      </body>
-      </html>
-    `;
+    const ws = XLSX.utils.json_to_sheet(data);
 
-    const blob = new Blob([html], { type: "application/vnd.ms-excel" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `ArMee_School_Complaints_Report_${new Date().toISOString().split('T')[0]}.xls`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // Set hyperlinks for the "Photo URL" column (which is index 27, Column AB)
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let r = 1; r <= range.e.r; r++) {
+      const cellRef = XLSX.utils.encode_cell({ r: r, c: 27 }); // column 27 (AB)
+      const cell = ws[cellRef];
+      if (cell && cell.v && cell.v.startsWith('http')) {
+        ws[cellRef] = {
+          t: 's',
+          v: 'View Photo',
+          l: { Target: cell.v, Tooltip: 'Click to open photo link' }
+        };
+      }
+    }
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Complaints List");
+
+    // Write to a real .xlsx file
+    XLSX.writeFile(wb, `ArMee_School_Complaints_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
     showToast('📥 Excel downloaded successfully!', 'success');
   }
 }
