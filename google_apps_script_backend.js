@@ -141,6 +141,18 @@ function uploadPhotoToDrive(base64Data, fileName, folder) {
 // ═══════════════ MAIN HANDLERS ═══════════════
 
 function doPost(e) {
+  var lock = LockService.getScriptLock();
+  try {
+    // Wait for up to 30 seconds to acquire lock
+    lock.waitLock(30000);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ 
+      status: 'error', 
+      retryable: true, 
+      message: 'Server is busy: ' + err.toString() 
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+
   try {
     var data = JSON.parse(e.postData.contents);
     var ss   = SpreadsheetApp.openById(SHEET_ID);
@@ -175,12 +187,14 @@ function doPost(e) {
     }
 
     return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Unknown action: ' + data.action }))
-                         .setMimeType(ContentService.MimeType.JSON);
+                          .setMimeType(ContentService.MimeType.JSON);
 
   } catch (err) {
     return ContentService
       .createTextOutput(JSON.stringify({ status: 'error', message: err.toString() }))
       .setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    lock.releaseLock();
   }
 }
 

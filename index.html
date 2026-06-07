@@ -1982,14 +1982,30 @@ async function submitForm() {
 
   if (GOOGLE_SCRIPT_URL && navigator.onLine) {
     try {
-      await fetch(GOOGLE_SCRIPT_URL, {
+      const res = await fetch(GOOGLE_SCRIPT_URL, {
         method: 'POST',
-        mode: 'no-cors',
+        mode: 'cors',
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify(complaint),
       });
-      submitted = true;
-    } catch (_) {}
+      if (res.ok) {
+        const result = await res.json();
+        if (result && result.status === 'ok') {
+          submitted = true;
+        } else if (result && result.retryable) {
+          console.warn("Server is busy/locked. Caching for background retry.");
+          submitted = false;
+        } else {
+          console.error("Backend error submitting complaint:", result ? result.message : 'Unknown');
+          submitted = true; // Mark as submitted to avoid infinite retry of fatal errors
+        }
+      } else {
+        submitted = false; // 429/503/500 errors go to offlineQueue
+      }
+    } catch (err) {
+      console.warn("Fetch failed: ", err);
+      submitted = false; // Network failure goes to offlineQueue
+    }
   }
   if (!submitted) {
     offlineQueue.push(complaint);
@@ -2164,14 +2180,28 @@ async function retryQueue() {
     // Retry remote Google Script
     if (GOOGLE_SCRIPT_URL) {
       try {
-        await fetch(GOOGLE_SCRIPT_URL, {
+        const res = await fetch(GOOGLE_SCRIPT_URL, {
           method: 'POST',
-          mode: 'no-cors',
+          mode: 'cors',
           headers: { 'Content-Type': 'text/plain' },
           body: JSON.stringify(item),
         });
-        syncedRemote = true;
-      } catch (_) {}
+        if (res.ok) {
+          const result = await res.json();
+          if (result && result.status === 'ok') {
+            syncedRemote = true;
+          } else if (result && result.retryable) {
+            console.warn("Server is busy/locked during retry. Retaining in queue.");
+            syncedRemote = false;
+          } else {
+            syncedRemote = true; // Avoid infinite retry loop for fatal validation errors
+          }
+        } else {
+          syncedRemote = false;
+        }
+      } catch (_) {
+        syncedRemote = false;
+      }
     } else {
       syncedRemote = true; // No script URL configured
     }
