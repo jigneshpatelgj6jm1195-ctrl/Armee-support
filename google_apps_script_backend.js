@@ -320,6 +320,17 @@ function getComplaintsList(ss) {
   var formulas = sheet.getDataRange().getFormulas();
   if (rows.length <= 1) return [];
 
+  // Cleanup duplicate header rows if any exist (e.g. from previous runs)
+  for (var i = rows.length - 1; i > 0; i--) {
+    if (rows[i][0] === 'SR No.') {
+      try {
+        sheet.deleteRow(i + 1);
+      } catch (err) {}
+      rows.splice(i, 1);
+      formulas.splice(i, 1);
+    }
+  }
+
   var data = [];
   for (var i = 1; i < rows.length; i++) {
     var row = rows[i];
@@ -723,7 +734,7 @@ function deleteComplaintRow(ss, caseId, submittedAt, dise) {
 // ═══════════════ SHEET FORMATTING ═══════════════
 
 function setupHeaders(sheet) {
-  sheet.appendRow(HEADERS);
+  sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
   var headerRange = sheet.getRange(1, 1, 1, HEADERS.length);
   headerRange.setBackground('#1a56db');
   headerRange.setFontColor('#ffffff');
