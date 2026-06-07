@@ -814,17 +814,29 @@ async function loadComplaints() {
     if (GOOGLE_SCRIPT_URL && !isLocalhost && navigator.onLine) {
       const res = await fetch(GOOGLE_SCRIPT_URL);
       if (!res.ok) throw new Error();
-      complaintsList = await res.json();
-      showToast('📡 Loaded live complaints from Google Sheet', 'success');
+      const data = await res.json();
+      if (data && data.error) {
+        showToast('⚠️ Backend Error: ' + data.error, 'error');
+        complaintsList = [];
+      } else if (Array.isArray(data)) {
+        complaintsList = data;
+        showToast('📡 Loaded live complaints from Google Sheet', 'success');
+      } else {
+        complaintsList = [];
+      }
     } else {
       const res = await fetch('/complaints.json?' + Date.now());
       if (!res.ok) throw new Error();
-      complaintsList = await res.json();
+      const data = await res.json();
+      complaintsList = Array.isArray(data) ? data : [];
     }
   } catch (e) {
     try {
       const res = await fetch('/complaints.json?' + Date.now());
-      if (res.ok) complaintsList = await res.json();
+      if (res.ok) {
+        const data = await res.json();
+        complaintsList = Array.isArray(data) ? data : [];
+      }
     } catch (_) {
       complaintsList = [];
     }
@@ -846,7 +858,9 @@ async function loadSchoolList() {
       const resUpdates = await fetch(GOOGLE_SCRIPT_URL + '?action=get_school_updates');
       if (resUpdates.ok) {
         const updates = await resUpdates.json();
-        if (Array.isArray(updates)) {
+        if (updates && updates.error) {
+          showToast('⚠️ Backend Error (School Updates): ' + updates.error, 'error');
+        } else if (Array.isArray(updates)) {
           updates.forEach(update => {
             const list = schoolDataRaw[update.dise];
             const entries = Array.isArray(list) ? list : (list ? [list] : []);
