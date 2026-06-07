@@ -1,0 +1,7 @@
+__pycache__/
+~$*
+*.log
+.gemini/
+.git/
+.vscode/
+.idea/

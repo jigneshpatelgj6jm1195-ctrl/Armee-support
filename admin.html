@@ -1,0 +1,1964 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ArMee Admin Panel — School Complaint Management System</title>
+  <link rel="icon" type="image/png" href="armee_logo_square.png" />
+  <link rel="apple-touch-icon" href="armee_logo_square.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+/* ═══════════════ CSS RESET & VARIABLE SYSTEM ═══════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --primary:       #1a56db;
+  --primary-dark:  #1240ab;
+  --primary-light: #dbeafe;
+  --accent:        #06b6d4;
+  --success:       #10b981;
+  --warning:       #f59e0b;
+  --danger:        #ef4444;
+  --bg:            #f8fafc;
+  --card:          #ffffff;
+  --border:        #e2e8f0;
+  --text:          #1e293b;
+  --muted:         #64748b;
+  --label:         #374151;
+  --grad:          linear-gradient(135deg, #1a56db, #06b6d4);
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ═══════════════ BRAND HEADER ═══════════════ */
+.header {
+  background: var(--grad);
+  color: white;
+  padding: 16px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 4px 20px rgba(26,86,219,0.25);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.header-left { display: flex; align-items: center; gap: 14px; }
+.header-logo { height: 42px; width: auto; border-radius: 6px; background: white; padding: 3px; }
+.header-title-box { display: flex; flex-direction: column; }
+.header-h1 { font-size: 1.15rem; font-weight: 800; tracking: -0.5px; }
+.header-sub { font-size: 0.76rem; opacity: 0.88; margin-top: 1px; font-weight: 500; }
+.header-link {
+  background: rgba(255,255,255,0.18);
+  border: 1px solid rgba(255,255,255,0.3);
+  border-radius: 10px;
+  padding: 8px 16px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  color: white;
+  transition: background 0.2s;
+}
+.header-link:hover { background: rgba(255,255,255,0.28); }
+
+/* ═══════════════ TABS SYSTEM ═══════════════ */
+.tabs-bar {
+  background: white;
+  border-bottom: 1px solid var(--border);
+  padding: 0 32px;
+  display: flex;
+  gap: 8px;
+}
+.tab-btn {
+  background: none;
+  border: none;
+  padding: 16px 20px;
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  position: relative;
+  transition: color 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tab-btn:hover { color: var(--primary); }
+.tab-btn.active { color: var(--primary); font-weight: 800; }
+.tab-btn.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--grad);
+  border-radius: 3px 3px 0 0;
+}
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* ═══════════════ LAYOUT CONTAINER ═══════════════ */
+.container {
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 24px 32px 100px;
+  flex: 1;
+}
+
+/* ═══════════════ CARDS ═══════════════ */
+.card {
+  background: var(--card);
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+}
+.card-title {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
+}
+
+/* ═══════════════ STAT CARDS ═══════════════ */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.stat-card {
+  background: white;
+  border-radius: 14px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.stat-icon-box {
+  width: 46px;
+  height: 46px;
+  border-radius: 10px;
+  background: var(--primary-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  color: var(--primary);
+  flex-shrink: 0;
+}
+.stat-info { display: flex; flex-direction: column; }
+.stat-label { font-size: 0.72rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.stat-value { font-size: 1.6rem; font-weight: 800; color: var(--text); margin-top: 2px; }
+
+/* ═══════════════ FORM FIELDS & INPUTS ═══════════════ */
+.field { margin-bottom: 14px; }
+label { display: block; font-size: 0.78rem; font-weight: 600; color: var(--label); margin-bottom: 6px; }
+input[type=text], input[type=tel], input[type=password], select, textarea {
+  width: 100%; padding: 11px 14px;
+  border: 2px solid var(--border); border-radius: 10px;
+  font-family: inherit; font-size: 14px; color: var(--text);
+  background: #f8fafc; outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--primary); background: white;
+  box-shadow: 0 0 0 3px rgba(26,86,219,0.1);
+}
+
+/* ═══════════════ BUTTONS ═══════════════ */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px 18px; border-radius: 10px; font-family: inherit;
+  font-size: 0.88rem; font-weight: 700; cursor: pointer; border: none; transition: all 0.15s;
+}
+.btn-primary { background: var(--grad); color: white; box-shadow: 0 3px 12px rgba(26,86,219,0.25); }
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 5px 16px rgba(26,86,219,0.35); }
+.btn-success { background: linear-gradient(135deg, #10b981, #059669); color: white; box-shadow: 0 3px 12px rgba(16,185,129,0.25); }
+.btn-success:hover { transform: translateY(-1px); box-shadow: 0 5px 16px rgba(16,185,129,0.35); }
+.btn-danger  { background: var(--danger); color: white; }
+.btn-ghost   { background: white; color: var(--primary); border: 2px solid var(--primary); }
+.btn-ghost:hover { background: var(--primary-light); }
+.btn-sm { padding: 6px 12px; font-size: 0.78rem; border-radius: 8px; }
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none !important; }
+
+/* ═══════════════ TABLES ═══════════════ */
+.table-responsive { width: 100%; overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; background: white; }
+table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.84rem; }
+th { background: #f8fafc; padding: 12px 16px; font-weight: 700; color: var(--muted); border-bottom: 2px solid var(--border); }
+td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f8fafc; }
+
+/* Status Badges */
+.badge { display: inline-block; padding: 3px 8px; border-radius: 20px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; }
+.badge-active, .badge-open, .badge-resolved { background: #d1fae5; color: #065f46; }
+.badge-inactive, .badge-closed { background: #fee2e2; color: #7f1d1d; }
+.badge-pending, .badge-inprogress { background: #fef3c7; color: #78350f; }
+
+/* ═══════════════ CHARTS ═══════════════ */
+.chart-container { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
+@media(max-width: 768px) { .chart-container { grid-template-columns: 1fr; } }
+.chart-card { background: white; border-radius: 16px; border: 1px solid var(--border); padding: 20px; }
+.chart-bar-row { margin-bottom: 12px; }
+.chart-bar-label { display: flex; justify-content: space-between; font-size: 0.78rem; font-weight: 600; margin-bottom: 4px; color: var(--text); }
+.chart-bar-bg { height: 10px; background: #e2e8f0; border-radius: 5px; overflow: hidden; }
+.chart-bar-fill { height: 100%; background: var(--grad); border-radius: 5px; transition: width 0.8s ease-in-out; }
+
+/* ═══════════════ UPLOAD & DRAG BOX ═══════════════ */
+.upload-drag-area {
+  border: 2.5px dashed var(--primary);
+  border-radius: 16px;
+  background: var(--primary-light);
+  padding: 36px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  margin-bottom: 18px;
+}
+.upload-drag-area:hover { background: #eff6ff; border-color: var(--primary-dark); }
+.upload-icon { font-size: 40px; margin-bottom: 10px; }
+.upload-text { font-size: 0.88rem; font-weight: 700; color: var(--primary); }
+.upload-subtext { font-size: 0.75rem; color: var(--muted); margin-top: 4px; }
+
+/* ═══════════════ SAVE BAR ═══════════════ */
+.save-bar {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: white; border-top: 2px solid var(--primary-light);
+  padding: 14px 32px; display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; box-shadow: 0 -4px 20px rgba(0,0,0,0.08); z-index: 90;
+  transform: translateY(100%); transition: transform 0.3s;
+}
+.save-bar.visible { transform: translateY(0); }
+.save-bar-msg { font-size: 0.85rem; color: var(--primary); font-weight: 600; }
+
+/* ═══════════════ TOAST ═══════════════ */
+.toast {
+  position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(20px);
+  background: #1e293b; color: white; padding: 12px 24px; border-radius: 50px;
+  font-size: 0.85rem; font-weight: 600; z-index: 999; white-space: nowrap;
+  opacity: 0; transition: all 0.3s; pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.success { background: var(--success); }
+.toast.warn    { background: var(--warning); color: #451a03; }
+.toast.danger  { background: var(--danger); }
+
+/* ═══════════════ MODALS ═══════════════ */
+.modal-bg { display: none; position: fixed; inset: 0; background: rgba(15,23,42,0.6); z-index: 300; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
+.modal-bg.show { display: flex; }
+.modal { background: white; border-radius: 20px; padding: 28px; max-width: 460px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.2); }
+.modal h3 { font-size: 1.1rem; font-weight: 800; margin-bottom: 18px; }
+.modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+.modal-actions .btn { flex: 1; justify-content: center; }
+
+/* ═══════════════ EQUIPMENT MASTER SPECIFIC ═══════════════ */
+.eq-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px; }
+.eq-card { background: white; border-radius: 16px; border: 1.5px solid var(--border); overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.03); transition: all 0.2s; }
+.eq-card:hover { box-shadow: 0 6px 20px rgba(26,86,219,0.08); border-color: #bfdbfe; }
+.eq-card.inactive { opacity: 0.65; }
+.eq-header { padding: 14px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); background: linear-gradient(135deg, #f8faff, #f0f4ff); }
+.eq-icon { width: 34px; height: 34px; background: var(--primary-light); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+.eq-name { font-weight: 700; font-size: 0.88rem; flex: 1; }
+.eq-actions { display: flex; gap: 4px; align-items: center; }
+.eq-body { padding: 14px 16px; }
+.nature-list { list-style: none; }
+.nature-item { display: flex; align-items: center; gap: 6px; padding: 7px 0; border-bottom: 1px solid #f1f5f9; font-size: 0.8rem; }
+.nature-item:last-child { border-bottom: none; }
+.nature-name { flex: 1; font-weight: 500; }
+.nature-item.inactive .nature-name { text-decoration: line-through; color: var(--muted); }
+.add-nature-row { margin-top: 12px; display: flex; gap: 6px; }
+.add-nature-row input { flex: 1; padding: 7px 10px; border: 2px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 0.8rem; outline: none; }
+.add-nature-row input:focus { border-color: var(--primary); }
+
+/* ═══════════════ FOOTER ═══════════════ */
+.footer {
+  background: white; border-top: 1px solid var(--border);
+  padding: 16px; text-align: center; font-size: 0.78rem;
+  color: var(--muted); font-weight: 600; width: 100%;
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-left">
+    <img src="armee_logo.png" alt="ArMee Logo" class="header-logo" />
+    <div class="header-title-box">
+      <div class="header-h1">ArMee Technology Services Pvt. Ltd.</div>
+      <div class="header-sub">School Complaint Management System — Admin Terminal</div>
+    </div>
+  </div>
+  <div style="display:flex; gap:12px; align-items:center;">
+    <button class="btn btn-ghost btn-sm" style="background:rgba(255,255,255,0.18); border-color:rgba(255,255,255,0.3); color:white;" onclick="saveAll()" id="btnSave" disabled>💾 Save Data</button>
+    <a href="index.html" class="header-link">← Back to Form</a>
+  </div>
+</div>
+
+<!-- TABS BAR -->
+<div class="tabs-bar">
+  <button class="tab-btn active" id="btn-tab-dash" onclick="switchTab('dash')">📊 Dashboard</button>
+  <button class="tab-btn" id="btn-tab-schools" onclick="switchTab('schools')">🏫 School Master</button>
+  <button class="tab-btn" id="btn-tab-equip" onclick="switchTab('equip')">🖥️ Equipment Master</button>
+  <button class="tab-btn" id="btn-tab-users" onclick="switchTab('users')">👤 User Master</button>
+  <button class="tab-btn" id="btn-tab-complaints" onclick="switchTab('complaints')">📋 Complaints &amp; Reports</button>
+</div>
+
+<!-- CONTAINER -->
+<div class="container">
+
+  <!-- ================= TAB: DASHBOARD ================= -->
+  <div class="tab-content active" id="tab-dash">
+    <div class="stat-grid">
+      <div class="stat-card" style="max-width: 280px;">
+        <div class="stat-icon-box">🏫</div>
+        <div class="stat-info">
+          <span class="stat-label">Total Schools</span>
+          <span class="stat-value" id="dashTotalSchools">0</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Daily Ticket Volume Chart -->
+    <div class="card" style="margin-bottom: 24px; padding: 24px;">
+      <div class="card-title" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+        <span>📈 Ticket Volume Chart</span>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <label style="font-size: 0.8rem; font-weight: 700; color: var(--muted); margin-bottom: 0; white-space: nowrap;">Group By:</label>
+          <select id="chartGroupSelect" onchange="drawDailyTicketsChart()" style="width: auto; padding: 6px 12px; font-size: 0.8rem; border-radius: 8px; margin: 0; background: #fff;">
+            <option value="daily">Date-wise (Everyday)</option>
+            <option value="monthly">Month-wise</option>
+            <option value="yearly">Year-wise</option>
+          </select>
+        </div>
+      </div>
+      <div style="position: relative; height: 320px; width: 100%;">
+        <canvas id="chartDailyTickets"></canvas>
+      </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="chart-container">
+      <div class="chart-card">
+        <h4 style="font-size:0.85rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin-bottom:14px;">Complaints by Equipment</h4>
+        <div id="chartEquipmentBox"></div>
+      </div>
+      <div class="chart-card">
+        <h4 style="font-size:0.85rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin-bottom:14px;">Complaints by Project</h4>
+        <div id="chartProjectBox"></div>
+      </div>
+    </div>
+
+    <!-- Recent Alerts Card -->
+    <div class="card">
+      <div class="card-title">🚨 Recent Complaint Activity</div>
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th>Case ID</th>
+              <th>Date</th>
+              <th>School Name</th>
+              <th>DISE Code</th>
+              <th>Equipment</th>
+              <th>Nature of Complaint</th>
+              <th>Engineer</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="dashRecentComplaintsTable">
+            <tr>
+              <td colspan="8" style="text-align:center; color:var(--muted);">No complaints recorded yet.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= TAB: SCHOOL MASTER ================= -->
+  <div class="tab-content" id="tab-schools">
+    <div class="card">
+      <div class="card-title">📥 Upload School Master Spreadsheet (.xlsx)</div>
+      <div class="upload-drag-area" onclick="document.getElementById('schoolExcelInput').click()">
+        <div class="upload-icon">📤</div>
+        <div class="upload-text">Select School Excel Master Database File</div>
+        <div class="upload-subtext">Click here to upload "School complaint format 23.6.25.xlsx"</div>
+        <input type="file" id="schoolExcelInput" accept=".xlsx" style="display:none" onchange="uploadSchoolExcel(event)" />
+      </div>
+      <div style="font-size:0.75rem; color:var(--muted); line-height:1.5;">
+        💡 <b>Note:</b> Uploading a new Excel file parses the entire workbook's **"Master Sheet"** tab automatically. All DISE codes, block names, and addresses will be compiled to `school_data.json` immediately.
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🔍 Search &amp; Update School Information</div>
+      <div style="display:flex; gap:10px; margin-bottom:18px;">
+        <input type="text" id="schoolSearchDise" placeholder="Enter 11-digit School DISE Code..." style="max-width:320px;" onkeydown="if(event.key==='Enter') searchSchoolInfo()" />
+        <button class="btn btn-primary" onclick="searchSchoolInfo()">🔍 Search</button>
+      </div>
+
+      <div id="schoolSearchResultBox" style="display:none; background:#f8fafc; border:1px solid var(--border); border-radius:12px; padding:20px;">
+        <h4 id="schoolSearchName" style="color:var(--primary); font-size:1rem; font-weight:800; margin-bottom:12px;">School Name</h4>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+          <div class="field">
+            <label>Project</label>
+            <input type="text" id="schoolEditProject" readonly />
+          </div>
+          <div class="field">
+            <label>DISE Code</label>
+            <input type="text" id="schoolEditDise" readonly />
+          </div>
+          <div class="field">
+            <label>District</label>
+            <input type="text" id="schoolEditDistrict" />
+          </div>
+          <div class="field">
+            <label>Taluka / Block</label>
+            <input type="text" id="schoolEditTaluka" />
+          </div>
+          <div class="field">
+            <label>Principal Name</label>
+            <input type="text" id="schoolEditPrincipal" />
+          </div>
+          <div class="field">
+            <label>Contact Number</label>
+            <input type="tel" id="schoolEditContact" maxlength="10" />
+          </div>
+          <div class="field">
+            <label>Pin Code</label>
+            <input type="text" id="schoolEditPincode" />
+          </div>
+          <div class="field">
+            <label>School Address</label>
+            <textarea id="schoolEditAddress" rows="2"></textarea>
+          </div>
+        </div>
+        <div style="margin-top:14px; text-align:right;">
+          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('schoolSearchResultBox').style.display='none'">Cancel</button>
+          <button class="btn btn-success btn-sm" onclick="saveSchoolEdit()">💾 Update School Record</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= TAB: EQUIPMENT & NATURES ================= -->
+  <div class="tab-content" id="tab-equip">
+    <div class="card">
+      <div class="card-title">
+        <span>🖥️ Equipment and Complaint Natures Master List</span>
+        <span style="font-size:0.75rem; color:var(--muted); font-weight:normal;">Manage equipment dropdowns on the complaint form</span>
+      </div>
+      
+      <!-- Stats Summary -->
+      <div style="display:flex; gap:14px; margin-bottom:18px; font-size:0.78rem; color:var(--muted);">
+        <span>Total Items: <b id="eqCountTotal" style="color:var(--text);">0</b></span>
+        <span>Active Items: <b id="eqCountActive" style="color:var(--text);">0</b></span>
+        <span>Total Natures: <b id="natureCountTotal" style="color:var(--text);">0</b></span>
+      </div>
+
+      <!-- Actions -->
+      <div class="top-actions">
+        <button class="btn btn-primary" onclick="openAddEquip()">＋ Add Equipment</button>
+        <button class="btn btn-ghost" onclick="loadData()">🔄 Reload</button>
+      </div>
+
+      <!-- Equipment Grid -->
+      <div class="eq-grid" id="eqGrid">
+        <div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--muted);">Loading equipment lists…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= TAB: USER MASTER ================= -->
+  <div class="tab-content" id="tab-users">
+    <div class="card">
+      <div class="card-title">
+        <span>👤 Authorized Field Engineers &amp; Users</span>
+        <button class="btn btn-primary btn-sm" onclick="openAddUserModal()">＋ Add Engineer</button>
+      </div>
+      
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Full Name</th>
+              <th>Mobile Number</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="userTableBody">
+            <tr>
+              <td colspan="6" style="text-align:center; color:var(--muted);">No users defined yet. Anyone can log in by default.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="font-size:0.72rem; color:var(--muted); margin-top:12px; line-height:1.5;">
+        💡 <b>Security Note:</b> If the user list is empty, anyone can access the app. Once you define engineers here, the mobile setup screen will validate users. Only <b>Active</b> engineers matching their registered mobile numbers will be allowed to log in.
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= TAB: COMPLAINTS & REPORTS ================= -->
+  <div class="tab-content" id="tab-complaints">
+    <div class="card">
+      <div class="card-title">📋 Central Complaint Log &amp; Reports</div>
+      
+      <!-- Filters Row -->
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-bottom:18px;">
+        <div>
+          <label>Filter by Project</label>
+          <select id="filterProject" onchange="filterComplaints()">
+            <option value="">All Projects</option>
+            <option value="GK">GK Project</option>
+            <option value="ICT">ICT Project</option>
+          </select>
+        </div>
+        <div>
+          <label>Filter by Equipment</label>
+          <select id="filterEquipment" onchange="filterComplaints()">
+            <option value="">All Equipment</option>
+          </select>
+        </div>
+        <div>
+          <label>Filter by Status</label>
+          <select id="filterStatus" onchange="filterComplaints()">
+            <option value="">All Statuses</option>
+            <option value="open">Open</option>
+            <option value="in progress">In Progress</option>
+            <option value="resolved">Resolved</option>
+            <option value="closed">Closed</option>
+          </select>
+        </div>
+        <div>
+          <label>Search text (School/DISE/SN)</label>
+          <input type="text" id="filterText" placeholder="Type to search..." oninput="filterComplaints()" />
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+        <div style="font-size:0.8rem; font-weight:700; color:var(--primary);">
+          Total Filtered: <span id="filteredComplaintsCount">0</span>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <button class="btn btn-success" onclick="downloadReport('excel')">📥 Download Excel Report</button>
+          <button class="btn btn-primary" onclick="downloadReport('csv')">📥 Download CSV Report</button>
+        </div>
+      </div>
+
+      <!-- Complaints Data Table -->
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th>Case ID / Group</th>
+              <th>Date</th>
+              <th>School &amp; District</th>
+              <th>Equipment details</th>
+              <th>Serial Number</th>
+              <th>Photo</th>
+              <th>GPS Location</th>
+              <th>Engineer</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="complaintsTableBody">
+            <tr>
+              <td colspan="10" style="text-align:center; color:var(--muted);">No complaints submitted to local database yet.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div><!-- end container -->
+
+<!-- SAVE BAR -->
+<div class="save-bar" id="saveBar">
+  <span class="save-bar-msg" id="saveBarMsg">⚠️ You have unsaved changes</span>
+  <div style="display:flex; gap:10px;">
+    <button class="btn btn-ghost btn-sm" onclick="loadData()">Discard</button>
+    <button class="btn btn-success btn-sm" onclick="saveAll()">💾 Save Changes</button>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<div class="footer" style="cursor: pointer; user-select: none;" onclick="triggerAdminDeleteLogin()">
+  Powered By ArMee Technology Services Pvt. Ltd.
+</div>
+
+<!-- ================= MODALS ================= -->
+
+<!-- ADD USER MODAL -->
+<div class="modal-bg" id="addUserModal">
+  <div class="modal">
+    <h3>👤 Add Authorized Engineer</h3>
+    <div class="field">
+      <label for="newUserName">Full Name *</label>
+      <input type="text" id="newUserName" placeholder="e.g. Rajesh Patel" />
+    </div>
+    <div class="field">
+      <label for="newUserPhone">Mobile Number (10 digit) *</label>
+      <input type="tel" id="newUserPhone" placeholder="e.g. 9876543210" maxlength="10" />
+    </div>
+    <div class="field">
+      <label for="newUserRole">Role</label>
+      <select id="newUserRole">
+        <option>Field Engineer</option>
+        <option>Supervisor</option>
+        <option>Coordinator</option>
+        <option>Technician</option>
+        <option>Other</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('addUserModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmAddUser()">Add Engineer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD EQUIPMENT MODAL -->
+<div class="modal-bg" id="addEquipModal">
+  <div class="modal">
+    <h3>➕ Add New Equipment</h3>
+    <div class="field">
+      <label for="newEquipName">Equipment Name *</label>
+      <input type="text" id="newEquipName" placeholder="e.g. Desktop Computer" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('addEquipModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmAddEquip()">Add Equipment</button>
+    </div>
+  </div>
+</div>
+
+<!-- RENAME EQUIPMENT MODAL -->
+<div class="modal-bg" id="renameEquipModal">
+  <div class="modal">
+    <h3>✏️ Rename Equipment</h3>
+    <div class="field">
+      <label for="renameEquipInput">New Name *</label>
+      <input type="text" id="renameEquipInput" />
+    </div>
+    <input type="hidden" id="renameEquipId" />
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('renameEquipModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmRenameEquip()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- 🖼️ PHOTO LIGHTBOX MODAL -->
+<div class="modal-bg" id="adminPhotoModal">
+  <div class="modal" style="max-width: 600px; width: 90%; text-align: center;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
+      <h3 style="margin: 0;">📸 Complaint Photo Preview</h3>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('adminPhotoModal')" style="padding: 4px 8px; font-weight: bold;">✕</button>
+    </div>
+    <img id="adminPhotoImg" src="" style="width: 100%; max-height: 50vh; object-fit: contain; border-radius: 8px; border: 1px solid var(--border); background: #f8fafc;" />
+    <div class="modal-actions" style="margin-top: 15px; justify-content: center; gap: 10px;">
+      <a id="adminPhotoDownload" href="" download="complaint_photo.jpg" class="btn btn-primary" style="text-decoration: none; display: flex; align-items: center; gap: 6px;">📥 Download</a>
+      <button class="btn btn-ghost" onclick="closeModal('adminPhotoModal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADMIN DELETE LOGIN MODAL -->
+<div class="modal-bg" id="adminDeleteLoginModal">
+  <div class="modal">
+    <h3>🔐 Admin Authorization Required</h3>
+    <div class="field">
+      <label for="adminUsername">Username</label>
+      <input type="text" id="adminUsername" placeholder="Enter admin username" />
+    </div>
+    <div class="field">
+      <label for="adminPassword">Password</label>
+      <input type="password" id="adminPassword" placeholder="Enter admin password" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('adminDeleteLoginModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAdminDeleteLogin()">Authorize</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<!-- ═══════════════════════ SCRIPTS ═══════════════════════ -->
+<script>
+'use strict';
+
+const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxXqPCQzIjXzmGW4D141eyEYb1wFynascT6btx18HsDShtoUIiS7RMW6_neRCglZRW-GA/exec'; // Paste your Google Web App URL here to pull real-time submissions from Google Sheet
+let masterData = { equipment: [], users: [] };
+let complaintsList = [];
+let schoolDataRaw = {};
+let isDirty = false;
+let currentTab = 'dash';
+let deleteModeUnlocked = false;
+
+function isLocal() {
+  const hn = window.location.hostname;
+  if (!hn) return true; // file:// protocol
+  if (hn === 'localhost' || hn === '127.0.0.1' || hn === '[::1]') return true;
+  if (hn.endsWith('.local') || hn.endsWith('.lan')) return true;
+  if (hn.startsWith('192.168.') || hn.startsWith('10.')) return true;
+  if (hn.startsWith('172.')) {
+    const parts = hn.split('.');
+    if (parts.length >= 2) {
+      const b = parseInt(parts[1], 10);
+      return b >= 16 && b <= 31;
+    }
+  }
+  return false;
+}
+
+/* ─────────────── INIT ─────────────── */
+window.addEventListener('DOMContentLoaded', async () => {
+  await loadData();
+  await loadComplaints();
+  await loadSchoolList();
+});
+
+const LS_MASTER_KEY = 'armeeAdmin_masterData';
+const LS_COMPLAINTS_KEY = 'armeeAdmin_complaints';
+
+async function loadData() {
+  const local = isLocal();
+  let loaded = false;
+
+  // 1. Try Google Apps Script (live, most up-to-date)
+  if (!local && GOOGLE_SCRIPT_URL && navigator.onLine) {
+    try {
+      const res = await fetch(GOOGLE_SCRIPT_URL + '?action=get_master&t=' + Date.now());
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.equipment && data.equipment.length > 0) {
+          masterData = data;
+          if (!masterData.users) masterData.users = [];
+          // Sync to localStorage so offline/reload works
+          try { localStorage.setItem(LS_MASTER_KEY, JSON.stringify(masterData)); } catch(_) {}
+          loaded = true;
+        }
+      }
+    } catch (_) {}
+  }
+
+  // 2. Try localStorage cache (persists across reloads)
+  if (!loaded) {
+    try {
+      const cached = localStorage.getItem(LS_MASTER_KEY);
+      if (cached) {
+        const data = JSON.parse(cached);
+        if (data && data.equipment && data.equipment.length > 0) {
+          masterData = data;
+          if (!masterData.users) masterData.users = [];
+          loaded = true;
+        }
+      }
+    } catch (_) {}
+  }
+
+  // 3. Fall back to static file or local server
+  if (!loaded) {
+    try {
+      const res = await fetch('/master_data.json?' + Date.now());
+      if (!res.ok) throw new Error();
+      masterData = await res.json();
+      if (!masterData.users) masterData.users = [];
+    } catch (e) {
+      showToast('⚠️ Could not load master data — using defaults', 'warn');
+      masterData = { equipment: [], users: [] };
+    }
+  }
+
+  isDirty = false;
+  updateSaveBar();
+  renderMasterTable();
+  renderUserTable();
+  populateFilters();
+}
+
+async function loadComplaints() {
+  const isLocalhost = isLocal();
+  try {
+    if (GOOGLE_SCRIPT_URL && !isLocalhost && navigator.onLine) {
+      const res = await fetch(GOOGLE_SCRIPT_URL);
+      if (!res.ok) throw new Error();
+      complaintsList = await res.json();
+      showToast('📡 Loaded live complaints from Google Sheet', 'success');
+    } else {
+      const res = await fetch('/complaints.json?' + Date.now());
+      if (!res.ok) throw new Error();
+      complaintsList = await res.json();
+    }
+  } catch (e) {
+    try {
+      const res = await fetch('/complaints.json?' + Date.now());
+      if (res.ok) complaintsList = await res.json();
+    } catch (_) {
+      complaintsList = [];
+    }
+  }
+  renderDashboard();
+  renderComplaintsTable();
+}
+
+async function loadSchoolList() {
+  try {
+    const res = await fetch('/school_data.json?' + Date.now());
+    if (res.ok) {
+      schoolDataRaw = await res.json();
+    }
+    
+    // Apply live online updates if available
+    const isLocalhost = isLocal();
+    if (GOOGLE_SCRIPT_URL && !isLocalhost && navigator.onLine) {
+      const resUpdates = await fetch(GOOGLE_SCRIPT_URL + '?action=get_school_updates');
+      if (resUpdates.ok) {
+        const updates = await resUpdates.json();
+        if (Array.isArray(updates)) {
+          updates.forEach(update => {
+            const list = schoolDataRaw[update.dise];
+            const entries = Array.isArray(list) ? list : (list ? [list] : []);
+            entries.forEach(r => { if (r.dise === update.dise) r[update.field] = update.newValue; });
+          });
+        }
+      }
+    }
+  } catch(_) {}
+  renderDashboard();
+}
+
+/* ─────────────── SAVE ALL CHANGES ─────────────── */
+async function saveAll() {
+  const btn = document.getElementById('btnSave');
+  btn.disabled = true; btn.textContent = '⏳ Saving…';
+  
+  const local = isLocal();
+  let masterSaved = false;
+  let complaintsSaved = false;
+
+  // ── 1. Save master data ──────────────────────────
+  // Stamp a version timestamp — the complaint form polls this to detect changes
+  masterData._v = Date.now().toString();
+
+  // Always save to localStorage first (instant, reliable, survives reloads)
+  try {
+    localStorage.setItem(LS_MASTER_KEY, JSON.stringify(masterData));
+    masterSaved = true;
+  } catch (e) {
+    showToast('⚠️ localStorage unavailable: ' + e.message, 'warn');
+  }
+
+  if (local) {
+    // Also sync to local Python server
+    try {
+      const res = await fetch('/update_master', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(masterData),
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+    } catch (e) {
+      showToast('⚠️ Local server sync failed: ' + e.message, 'warn');
+    }
+  } else if (GOOGLE_SCRIPT_URL && navigator.onLine) {
+    // Also sync to Google Apps Script (background, no-cors is fine since localStorage is the primary)
+    fetch(GOOGLE_SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ action: 'update_master', masterData: masterData }),
+    }).catch(() => {}); // fire and forget
+  }
+
+  // ── 2. Save complaints statuses ──────────────────
+  try {
+    localStorage.setItem(LS_COMPLAINTS_KEY, JSON.stringify(complaintsList));
+    complaintsSaved = true;
+  } catch (e) {
+    showToast('⚠️ Could not cache complaints: ' + e.message, 'warn');
+  }
+
+  if (local) {
+    try {
+      const res = await fetch('/update_complaints', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(complaintsList),
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+    } catch (e) {
+      showToast('⚠️ Local server complaints sync failed: ' + e.message, 'warn');
+    }
+  } else if (GOOGLE_SCRIPT_URL && navigator.onLine) {
+    fetch(GOOGLE_SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ action: 'update_complaints', complaints: complaintsList }),
+    }).catch(() => {});
+  }
+
+  if (masterSaved) {
+    isDirty = false;
+    updateSaveBar();
+    showToast('✅ Changes saved! (persisted locally + synced online)', 'success');
+  }
+  
+  btn.disabled = !isDirty; btn.textContent = '💾 Save Data';
+}
+
+/* ─────────────── TAB SWITCHING ─────────────── */
+function switchTab(tabId) {
+  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+  
+  document.getElementById(`btn-tab-${tabId}`).classList.add('active');
+  document.getElementById(`tab-${tabId}`).classList.add('active');
+  currentTab = tabId;
+  
+  // Refresh grids if switching to them
+  if (tabId === 'dash') {
+    renderDashboard();
+  } else if (tabId === 'complaints') {
+    renderComplaintsTable();
+  }
+}
+
+/* ─────────────── DASHBOARD ─────────────── */
+function renderDashboard() {
+  const schoolCount = Object.keys(schoolDataRaw).length;
+  document.getElementById('dashTotalSchools').textContent = schoolCount;
+  document.getElementById('dashTotalSchools').parentNode.parentNode.style.display = '';
+
+  // Render recent 5 complaints
+  const recentComplaints = [...complaintsList].reverse().slice(0, 5);
+  const tbody = document.getElementById('dashRecentComplaintsTable');
+  if (recentComplaints.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--muted);">No complaints recorded yet.</td></tr>';
+  } else {
+    tbody.innerHTML = recentComplaints.map(c => `
+      <tr>
+        <td><b>${esc(c.groupId ? c.groupId + ' #' + c.itemNumber : (c.caseId || 'CASE-N/A'))}</b></td>
+        <td>${new Date(c.submittedAt).toLocaleDateString()}</td>
+        <td>${esc(c.school || '—')}</td>
+        <td>${esc(c.dise || '—')}</td>
+        <td>${esc(c.equipment || '—')}</td>
+        <td>${esc(c.natureOfComplaint || '—')}</td>
+        <td>${esc(c.complainantName || '—')}</td>
+        <td><span class="badge badge-${getBadgeClass(c.status)}">${c.status || 'Open'}</span></td>
+      </tr>
+    `).join('');
+  }
+
+  // Draw Charts
+  drawEquipmentChart();
+  drawProjectChart();
+  drawDailyTicketsChart();
+}
+
+function drawDailyTicketsChart() {
+  const select = document.getElementById('chartGroupSelect');
+  const groupBy = select ? select.value : 'daily';
+
+  // 1. Gather all valid dates from complaints
+  const parsedDates = [];
+  const counts = {};
+
+  complaintsList.forEach(c => {
+    const dateRaw = c.submittedAt || c.complaintDate;
+    if (!dateRaw) return;
+    const d = new Date(dateRaw);
+    if (isNaN(d.getTime())) return;
+    parsedDates.push(d);
+
+    // Get local date components
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+
+    if (groupBy === 'daily') {
+      const key = `${y}-${m}-${day}`;
+      counts[key] = (counts[key] || 0) + 1;
+    } else if (groupBy === 'monthly') {
+      const key = `${y}-${m}`;
+      counts[key] = (counts[key] || 0) + 1;
+    } else if (groupBy === 'yearly') {
+      const key = `${y}`;
+      counts[key] = (counts[key] || 0) + 1;
+    }
+  });
+
+  const canvas = document.getElementById('chartDailyTickets');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  if (window.dailyTicketsChart) {
+    window.dailyTicketsChart.destroy();
+  }
+
+  if (parsedDates.length === 0) {
+    // Show empty chart
+    window.dailyTicketsChart = new Chart(ctx, {
+      type: 'line',
+      data: { labels: [], datasets: [] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false }
+        }
+      }
+    });
+    return;
+  }
+
+  // 2. Determine range of time
+  const minTime = Math.min(...parsedDates.map(d => d.getTime()));
+  const maxTime = Math.max(...parsedDates.map(d => d.getTime()));
+  const minDateObj = new Date(minTime);
+  const maxDateObj = new Date(maxTime);
+
+  // Zero out times for date-wise comparisons
+  minDateObj.setHours(0, 0, 0, 0);
+  maxDateObj.setHours(0, 0, 0, 0);
+
+  let labels = [];
+  let dataPoints = [];
+
+  if (groupBy === 'daily') {
+    // Generate consecutive days
+    const dateList = [];
+    for (let d = new Date(minDateObj); d <= maxDateObj; d.setDate(d.getDate() + 1)) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      dateList.push(`${y}-${m}-${day}`);
+    }
+
+    labels = dateList.map(dateStr => {
+      const [y, m, day] = dateStr.split('-');
+      const dateObj = new Date(y, m - 1, day);
+      return dateObj.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
+    });
+    dataPoints = dateList.map(dateStr => counts[dateStr] || 0);
+
+  } else if (groupBy === 'monthly') {
+    // Generate consecutive months
+    const minYear = minDateObj.getFullYear();
+    const minMonth = minDateObj.getMonth();
+    const maxYear = maxDateObj.getFullYear();
+    const maxMonth = maxDateObj.getMonth();
+
+    const monthList = [];
+    let currYear = minYear;
+    let currMonth = minMonth;
+
+    while (currYear < maxYear || (currYear === maxYear && currMonth <= maxMonth)) {
+      const y = currYear;
+      const m = String(currMonth + 1).padStart(2, '0');
+      monthList.push(`${y}-${m}`);
+      
+      currMonth++;
+      if (currMonth > 11) {
+        currMonth = 0;
+        currYear++;
+      }
+    }
+
+    labels = monthList.map(monthStr => {
+      const [y, m] = monthStr.split('-');
+      const dateObj = new Date(y, m - 1, 1);
+      return dateObj.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    });
+    dataPoints = monthList.map(monthStr => counts[monthStr] || 0);
+
+  } else if (groupBy === 'yearly') {
+    // Generate consecutive years
+    const minYear = minDateObj.getFullYear();
+    const maxYear = maxDateObj.getFullYear();
+
+    const yearList = [];
+    for (let y = minYear; y <= maxYear; y++) {
+      yearList.push(String(y));
+    }
+
+    labels = yearList;
+    dataPoints = yearList.map(yearStr => counts[yearStr] || 0);
+  }
+
+  // Create a gradient for the line chart fill
+  const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+  gradient.addColorStop(0, 'rgba(26, 86, 219, 0.4)');
+  gradient.addColorStop(1, 'rgba(26, 86, 219, 0.0)');
+
+  window.dailyTicketsChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Total Tickets',
+        data: dataPoints,
+        borderColor: '#1a56db',
+        borderWidth: 3,
+        backgroundColor: gradient,
+        fill: true,
+        tension: 0.3,
+        pointBackgroundColor: '#1a56db',
+        pointHoverRadius: 7
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1e293b',
+          titleFont: { family: 'Inter', weight: 'bold' },
+          bodyFont: { family: 'Inter' },
+          padding: 12,
+          cornerRadius: 8
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: { 
+            stepSize: 1,
+            color: '#64748b',
+            font: { family: 'Inter', size: 11 }
+          },
+          grid: { color: '#f1f5f9' }
+        },
+        x: {
+          ticks: { 
+            color: '#64748b',
+            font: { family: 'Inter', size: 11 }
+          },
+          grid: { display: false }
+        }
+      }
+    }
+  });
+}
+
+function getBadgeClass(status) {
+  const s = String(status || 'open').toLowerCase().trim();
+  if (s === 'resolved' || s === 'closed') return 'resolved';
+  if (s === 'in progress' || s === 'pending' || s === 'inprogress') return 'pending';
+  return 'open';
+}
+
+function drawEquipmentChart() {
+  const counts = {};
+  complaintsList.forEach(c => {
+    counts[c.equipment] = (counts[c.equipment] || 0) + 1;
+  });
+
+  const sorted = Object.entries(counts).sort((a,b) => b[1] - a[1]).slice(0, 5);
+  const max = sorted.length ? sorted[0][1] : 1;
+  const box = document.getElementById('chartEquipmentBox');
+  if (sorted.length === 0) {
+    box.innerHTML = '<div style="text-align:center; padding:20px; color:var(--muted); font-size:0.8rem;">No data to display.</div>';
+    return;
+  }
+  box.innerHTML = sorted.map(([name, count]) => {
+    const pct = Math.round((count / max) * 100);
+    return `
+      <div class="chart-bar-row">
+        <div class="chart-bar-label">
+          <span>${esc(name)}</span>
+          <b>${count}</b>
+        </div>
+        <div class="chart-bar-bg">
+          <div class="chart-bar-fill" style="width: ${pct}%;"></div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function drawProjectChart() {
+  let gkCount = 0;
+  let ictCount = 0;
+  complaintsList.forEach(c => {
+    const p = String(c.project || '').toUpperCase();
+    if (p.includes('GK')) gkCount++;
+    else if (p.includes('ICT')) ictCount++;
+  });
+  
+  const tot = gkCount + ictCount;
+  const max = Math.max(gkCount, ictCount, 1);
+  const box = document.getElementById('chartProjectBox');
+  if (tot === 0) {
+    box.innerHTML = '<div style="text-align:center; padding:20px; color:var(--muted); font-size:0.8rem;">No data to display.</div>';
+    return;
+  }
+
+  const gkPct = Math.round((gkCount / max) * 100);
+  const ictPct = Math.round((ictCount / max) * 100);
+
+  box.innerHTML = `
+    <div class="chart-bar-row">
+      <div class="chart-bar-label">
+        <span>GK (Gyan Kunj) Project</span>
+        <b>${gkCount}</b>
+      </div>
+      <div class="chart-bar-bg">
+        <div class="chart-bar-fill" style="width: ${gkPct}%; background: linear-gradient(135deg, #10b981, #059669);"></div>
+      </div>
+    </div>
+    <div class="chart-bar-row" style="margin-top:16px;">
+      <div class="chart-bar-label">
+        <span>ICT Project</span>
+        <b>${ictCount}</b>
+      </div>
+      <div class="chart-bar-bg">
+        <div class="chart-bar-fill" style="width: ${ictPct}%; background: linear-gradient(135deg, #1a56db, #06b6d4);"></div>
+      </div>
+    </div>
+  `;
+}
+
+/* ─────────────── SCHOOL MASTER ─────────────── */
+async function uploadSchoolExcel(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  showToast('⏳ Uploading school Excel database...', 'info');
+  
+  try {
+    const res = await fetch('/upload_school_excel', {
+      method: 'POST',
+      body: file
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const result = await res.json();
+    showToast(`✅ Uploaded & parsed ${result.count} records successfully!`, 'success');
+    await loadSchoolList();
+  } catch (err) {
+    showToast(`❌ Excel upload failed: ${err.message}`, 'danger');
+  }
+  event.target.value = ''; // clear input
+}
+
+function searchSchoolInfo() {
+  const dise = document.getElementById('schoolSearchDise').value.trim();
+  if (!dise) { showToast('⚠️ Enter School DISE Code', 'warn'); return; }
+  
+  const entries = schoolDataRaw[dise];
+  if (!entries || (Array.isArray(entries) && entries.length === 0)) {
+    showToast('❌ No school records found for this DISE code', 'warn');
+    document.getElementById('schoolSearchResultBox').style.display = 'none';
+    return;
+  }
+  
+  const record = Array.isArray(entries) ? entries[0] : entries;
+  document.getElementById('schoolSearchName').textContent = record.school;
+  document.getElementById('schoolEditProject').value      = record.project || '';
+  document.getElementById('schoolEditDise').value         = record.dise || '';
+  document.getElementById('schoolEditDistrict').value     = record.district || '';
+  document.getElementById('schoolEditTaluka').value       = record.block || '';
+  document.getElementById('schoolEditPrincipal').value    = record.principal || '';
+  document.getElementById('schoolEditContact').value      = record.mobile || '';
+  document.getElementById('schoolEditPincode').value      = record.pincode || '';
+  document.getElementById('schoolEditAddress').value      = record.address || '';
+  
+  document.getElementById('schoolSearchResultBox').style.display = 'block';
+}
+
+async function saveSchoolEdit() {
+  const dise = document.getElementById('schoolEditDise').value;
+  const fields = {
+    district:  document.getElementById('schoolEditDistrict').value.trim(),
+    block:     document.getElementById('schoolEditTaluka').value.trim(),
+    principal: document.getElementById('schoolEditPrincipal').value.trim(),
+    mobile:    document.getElementById('schoolEditContact').value.trim(),
+    pincode:   document.getElementById('schoolEditPincode').value.trim(),
+    address:   document.getElementById('schoolEditAddress').value.trim(),
+  };
+
+  let success = true;
+  const local = isLocal();
+  let hasChanges = false;
+
+  for (const [fieldKey, val] of Object.entries(fields)) {
+    const oldVal = (schoolDataRaw[dise] && schoolDataRaw[dise][0]) ? (schoolDataRaw[dise][0][fieldKey] || '') : '';
+    if (val === oldVal) continue;
+    hasChanges = true;
+
+    try {
+      if (local) {
+        const res = await fetch('/update_school', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dise, field: fieldKey, newValue: val, oldValue: oldVal }),
+        });
+        if (!res.ok) throw new Error('Local save failed (' + res.status + ')');
+      } else if (GOOGLE_SCRIPT_URL && navigator.onLine) {
+        await fetch(GOOGLE_SCRIPT_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ action: 'update_school', dise, field: fieldKey, newValue: val, oldValue: oldVal }),
+        });
+      } else {
+        throw new Error('No endpoint available');
+      }
+    } catch (_) {
+      success = false;
+    }
+  }
+
+  if (!hasChanges) {
+    showToast('ℹ️ No changes to save', 'info');
+    document.getElementById('schoolSearchResultBox').style.display = 'none';
+    return;
+  }
+
+  if (success) {
+    showToast('✅ School record updated!', 'success');
+    document.getElementById('schoolSearchResultBox').style.display = 'none';
+    await loadSchoolList();
+  } else {
+    showToast('⚠️ Some fields could not be saved', 'warn');
+  }
+}
+
+/* ─────────────── EQUIPMENT MASTER ─────────────── */
+function renderMasterTable() {
+  const grid = document.getElementById('eqGrid');
+  const eq = masterData.equipment || [];
+  
+  // Render stats counts
+  document.getElementById('eqCountTotal').textContent = eq.length;
+  document.getElementById('eqCountActive').textContent = eq.filter(e => e.status === 'active').length;
+  document.getElementById('natureCountTotal').textContent = eq.reduce((s, e) => s + (e.complaints?.filter(c => c.status === 'active').length || 0), 0);
+
+  if (!eq.length) {
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--muted);">No equipment lists defined.</div>';
+    return;
+  }
+
+  grid.innerHTML = eq.map((e, eIdx) => `
+    <div class="eq-card ${e.status !== 'active' ? 'inactive' : ''}">
+      <div class="eq-header">
+        <div class="eq-icon">🖥️</div>
+        <div class="eq-name">${esc(e.name)}</div>
+        <div class="eq-actions">
+          <button class="btn btn-ghost btn-sm" onclick="openRenameEquip(${eIdx})" title="Rename" style="padding:4px 8px;">✏️</button>
+          <button class="btn btn-sm ${e.status === 'active' ? 'btn-danger' : 'btn-success'}" onclick="toggleEquip(${eIdx})" style="padding:4px 8px;">
+            ${e.status === 'active' ? 'Disable' : 'Enable'}
+          </button>
+        </div>
+      </div>
+      <div class="eq-body">
+        <ul class="nature-list">
+          ${(e.complaints || []).map((c, cIdx) => `
+            <li class="nature-item ${c.status !== 'active' ? 'inactive' : ''}">
+              <span class="nature-name">${esc(c.name)}</span>
+              <button class="btn btn-sm ${c.status === 'active' ? 'btn-danger' : 'btn-success'}" onclick="toggleNature(${eIdx},${cIdx})" style="padding:2px 6px; font-size:0.65rem;">
+                ${c.status === 'active' ? '⏸' : '▶'}
+              </button>
+              <button class="btn btn-ghost btn-sm" onclick="deleteNature(${eIdx},${cIdx})" style="padding:2px 6px; font-size:0.65rem;">🗑️</button>
+            </li>
+          `).join('')}
+        </ul>
+        <div class="add-nature-row">
+          <input type="text" id="newNature-${eIdx}" placeholder="Add nature..." onkeydown="if(event.key==='Enter') addNature(${eIdx})" />
+          <button class="btn btn-primary btn-sm" onclick="addNature(${eIdx})" style="padding:4px 8px;">＋</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function openAddEquip() {
+  document.getElementById('newEquipName').value = '';
+  document.getElementById('addEquipModal').classList.add('show');
+}
+function confirmAddEquip() {
+  const name = document.getElementById('newEquipName').value.trim();
+  if (!name) { showToast('⚠️ Enter name', 'warn'); return; }
+  const exists = masterData.equipment.some(e => e.name.toLowerCase() === name.toLowerCase());
+  if (exists) { showToast('⚠️ Already exists', 'warn'); return; }
+  
+  const id = 'EQ' + String(Date.now()).slice(-5);
+  masterData.equipment.push({ id, name, status: 'active', complaints: [] });
+  closeModal('addEquipModal');
+  markDirty();
+  renderMasterTable();
+}
+
+function openRenameEquip(eIdx) {
+  document.getElementById('renameEquipInput').value = masterData.equipment[eIdx].name;
+  document.getElementById('renameEquipId').value = eIdx;
+  document.getElementById('renameEquipModal').classList.add('show');
+}
+function confirmRenameEquip() {
+  const eIdx = parseInt(document.getElementById('renameEquipId').value);
+  const name = document.getElementById('renameEquipInput').value.trim();
+  if (!name) return;
+  masterData.equipment[eIdx].name = name;
+  closeModal('renameEquipModal');
+  markDirty();
+  renderMasterTable();
+}
+
+function toggleEquip(eIdx) {
+  const e = masterData.equipment[eIdx];
+  e.status = e.status === 'active' ? 'inactive' : 'active';
+  markDirty();
+  renderMasterTable();
+}
+function toggleNature(eIdx, cIdx) {
+  const c = masterData.equipment[eIdx].complaints[cIdx];
+  c.status = c.status === 'active' ? 'inactive' : 'active';
+  markDirty();
+  renderMasterTable();
+}
+function deleteNature(eIdx, cIdx) {
+  if (confirm("Are you sure you want to delete this complaint type?")) {
+    masterData.equipment[eIdx].complaints.splice(cIdx, 1);
+    markDirty();
+    renderMasterTable();
+  }
+}
+function addNature(eIdx) {
+  const inp = document.getElementById(`newNature-${eIdx}`);
+  const name = inp.value.trim();
+  if (!name) return;
+  
+  const complaints = masterData.equipment[eIdx].complaints || [];
+  const exists = complaints.some(c => c.name.toLowerCase() === name.toLowerCase());
+  if (exists) { showToast('⚠️ Nature already exists', 'warn'); return; }
+  
+  const id = 'NC' + String(Date.now()).slice(-6);
+  complaints.push({ id, name, status: 'active' });
+  inp.value = '';
+  markDirty();
+  renderMasterTable();
+}
+
+/* ─────────────── USER MASTER (ENGINEERS) ─────────────── */
+function renderUserTable() {
+  const tbody = document.getElementById('userTableBody');
+  const users = masterData.users || [];
+  if (users.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--muted);">No users defined yet. Anyone can log in.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = users.map((u, index) => `
+    <tr>
+      <td><b>${u.id}</b></td>
+      <td>${esc(u.name)}</td>
+      <td>${esc(u.phone)}</td>
+      <td>${esc(u.role || 'Field Engineer')}</td>
+      <td><span class="badge badge-${u.status === 'active' ? 'active' : 'inactive'}">${u.status}</span></td>
+      <td>
+        <button class="btn btn-ghost btn-sm" onclick="toggleUser(${index})">${u.status === 'active' ? 'Disable' : 'Enable'}</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteUser(${index})">🗑️ Delete</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function openAddUserModal() {
+  document.getElementById('newUserName').value = '';
+  document.getElementById('newUserPhone').value = '';
+  document.getElementById('addUserModal').classList.add('show');
+}
+
+function confirmAddUser() {
+  const name  = document.getElementById('newUserName').value.trim();
+  const phone = document.getElementById('newUserPhone').value.trim();
+  const role  = document.getElementById('newUserRole').value;
+  if (!name || !phone) { showToast('⚠️ Enter name and phone', 'warn'); return; }
+  if (!/^\d{10}$/.test(phone)) { showToast('⚠️ Phone must be 10 digits', 'warn'); return; }
+
+  const exists = (masterData.users || []).some(u => u.phone === phone);
+  if (exists) { showToast('⚠️ User with this phone already exists', 'warn'); return; }
+
+  const id = 'USR' + String(100 + (masterData.users?.length || 0));
+  masterData.users.push({ id, name, phone, role, status: 'active' });
+  closeModal('addUserModal');
+  markDirty();
+  renderUserTable();
+  showToast(`Authorized engineer: ${name} added!`, 'success');
+}
+
+function toggleUser(index) {
+  const u = masterData.users[index];
+  u.status = u.status === 'active' ? 'inactive' : 'active';
+  markDirty();
+  renderUserTable();
+}
+
+function deleteUser(index) {
+  if (confirm("Remove this engineer from authorization?")) {
+    masterData.users.splice(index, 1);
+    markDirty();
+    renderUserTable();
+  }
+}
+
+/* ─────────────── COMPLAINTS & CENTRAL LOG ─────────────── */
+function populateFilters() {
+  const sel = document.getElementById('filterEquipment');
+  sel.innerHTML = '<option value="">All Equipment</option>';
+  (masterData.equipment || []).forEach(e => {
+    const opt = document.createElement('option');
+    opt.value = e.name;
+    opt.textContent = e.name;
+    sel.appendChild(opt);
+  });
+}
+
+function renderComplaintsTable() {
+  const tbody = document.getElementById('complaintsTableBody');
+  const filtered = getFilteredComplaints();
+  
+  document.getElementById('filteredComplaintsCount').textContent = filtered.length;
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; color:var(--muted);">No matching complaints found.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = filtered.map((c, index) => {
+    // Find index in main list to edit status
+    const origIndex = complaintsList.findIndex(orig => orig.submittedAt === c.submittedAt && orig.dise === c.dise);
+    
+    return `
+      <tr>
+        <td>
+          <b>${esc(c.caseId || 'CASE-N/A')}</b><br>
+          <span style="font-size:0.7rem; color:var(--muted); font-weight:600;">${esc(c.groupId ? 'Group: ' + c.groupId : 'Single Item')}</span>
+        </td>
+        <td>${formatDateTime(c.submittedAt)}</td>
+        <td>
+          <b>${esc(c.school || '—')}</b><br>
+          <span style="font-size:0.72rem; color:var(--muted);">DISE: ${esc(c.dise)} | Block: ${esc(c.taluka)}</span>
+        </td>
+        <td>
+          <b>${esc(c.equipment)}</b><br>
+          <span style="font-size:0.72rem; color:var(--muted);">${esc(c.natureOfComplaint)}</span>
+        </td>
+        <td><code>${esc(c.serialNumber || 'N/A')}</code></td>
+        <td>
+          ${(() => {
+            const photoSrc = getComplaintPhoto(c);
+            return photoSrc 
+              ? `<img src="${photoSrc}" style="width:60px; height:60px; object-fit:cover; border-radius:8px; border:1px solid var(--border); cursor:pointer; display:block;" onclick="viewAdminPhoto('${esc(photoSrc)}')" />`
+              : '<span style="color:var(--muted); font-size:0.8rem;">❌ No Photo</span>';
+          })()}
+        </td>
+        <td>
+          ${c.latitude ? `<a href="https://maps.google.com/?q=${c.latitude},${c.longitude}" target="_blank" style="color:var(--primary); font-weight:700; text-decoration:none;">📍 Maps (${c.latitude.toFixed(4)}, ${c.longitude.toFixed(4)})</a>` : '❌ No GPS'}
+        </td>
+        <td>${esc(c.complainantName)}<br><span style="font-size:0.72rem; color:var(--muted);">${esc(c.complainantPhone)}</span></td>
+        <td>
+          <select onchange="updateComplaintStatus(${origIndex}, this.value)" style="padding:4px 8px; font-size:0.75rem; border-radius:6px; font-weight:700;">
+            <option value="Open" ${c.status === 'Open' || !c.status ? 'selected' : ''}>Open</option>
+            <option value="In Progress" ${c.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
+            <option value="Resolved" ${c.status === 'Resolved' ? 'selected' : ''}>Resolved</option>
+            <option value="Closed" ${c.status === 'Closed' ? 'selected' : ''}>Closed</option>
+          </select>
+        </td>
+        <td>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <button class="btn btn-ghost btn-sm" onclick="shareComplaintReport(${origIndex})" style="padding: 4px 8px;">📤</button>
+            ${deleteModeUnlocked ? `<button class="btn btn-danger btn-sm" onclick="deleteComplaint(${origIndex})" style="padding: 4px 8px; background: #ef4444; color: white; border-radius: 6px; font-size: 0.75rem;">🗑️ Delete</button>` : ''}
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function getFilteredComplaints() {
+  const proj = document.getElementById('filterProject').value;
+  const equip = document.getElementById('filterEquipment').value;
+  const status = document.getElementById('filterStatus').value.toLowerCase().trim();
+  const search = document.getElementById('filterText').value.toLowerCase().trim();
+
+  return complaintsList.filter(c => {
+    if (proj && c.project !== proj) return false;
+    if (equip && c.equipment !== equip) return false;
+    if (status) {
+      const s = String(c.status || 'open').toLowerCase().trim();
+      if (status === 'open' && (s !== 'open' && s !== 'pending')) return false;
+      if (status === 'in progress' && s !== 'in progress' && s !== 'inprogress') return false;
+      if (status === 'resolved' && s !== 'resolved') return false;
+      if (status === 'closed' && s !== 'closed') return false;
+    }
+    if (search) {
+      const match = (c.school || '').toLowerCase().includes(search) ||
+                    (c.dise || '').toLowerCase().includes(search) ||
+                    (c.serialNumber || '').toLowerCase().includes(search) ||
+                    (c.caseId || '').toLowerCase().includes(search) ||
+                    (c.groupId || '').toLowerCase().includes(search);
+      if (!match) return false;
+    }
+    return true;
+  });
+}
+
+function filterComplaints() {
+  renderComplaintsTable();
+}
+
+function updateComplaintStatus(origIndex, newStatus) {
+  complaintsList[origIndex].status = newStatus;
+  markDirty();
+  showToast(`Complaint status changed to: ${newStatus}`, 'success');
+}
+
+function shareComplaintReport(index) {
+  const c = complaintsList[index];
+  const grp = c.groupId ? `\nGroup ID: ${c.groupId} (Item ${c.itemNumber}/${c.quantity})` : '';
+  const txt = [
+    `📋 SCHOOL COMPLAINT REPORT`,
+    `School: ${c.school}`,
+    `DISE: ${c.dise}`,
+    `Equipment: ${c.equipment}`,
+    `Nature: ${c.natureOfComplaint}`,
+    `Serial: ${c.serialNumber || 'N/A'}`,
+    `GPS: ${c.latitude ? c.latitude + ',' + c.longitude : 'N/A'}`,
+    `Status: ${c.status || 'Open'}`,
+    `By: ${c.complainantName} (${c.complainantPhone})`,
+    `Logged: ${new Date(c.submittedAt).toLocaleString()}`,
+    grp,
+  ].join('\n');
+  navigator.clipboard.writeText(txt).then(() => showToast('Report copied to clipboard!', 'success'));
+}
+
+/* ─────────────── DOWNLOAD REPORTS (EXCEL/CSV) ─────────────── */
+function downloadReport(format) {
+  const filtered = getFilteredComplaints();
+  if (filtered.length === 0) {
+    showToast('⚠️ No records to download!', 'warn');
+    return;
+  }
+
+  if (format === 'csv') {
+    // 1. Build CSV content
+    const headers = [
+      'SR No.', 'Submitted At', 'Complainant Name', 'Complainant Phone', 'Complainant Role', 'Project',
+      'DISE Code', 'School Code', 'District', 'Taluka', 'School Name', 'Principal Name', 'Principal Contact',
+      'Address', 'Pin Code', 'Equipment', 'Nature of Complaint', 'Serial Number', 'Quantity', 'Complaint Date',
+      'Medium', 'Description', 'Photo Count', 'Status', 'Case ID', 'Latitude', 'Longitude', 'Photo URL'
+    ];
+
+    const rows = [headers];
+    filtered.forEach((c, index) => {
+      const photoSrc = getComplaintPhoto(c) || '';
+      rows.push([
+        index + 1, c.submittedAt || '', c.complainantName || '', c.complainantPhone || '', c.complainantRole || '', c.project || '',
+        c.dise || '', c.schoolCode || '', c.district || '', c.taluka || '', c.school || '', c.principal || '', c.contact || '',
+        c.address || '', c.pincode || '', c.equipment || '', c.natureOfComplaint || '', c.serialNumber || '', c.quantity || 1, c.complaintDate || '',
+        c.medium || '', c.description || '', c.photoCount || 0, c.status || 'Open', c.caseId || '', c.latitude || '', c.longitude || '',
+        photoSrc.startsWith('data:') ? 'Local Photo (Base64)' : photoSrc
+      ]);
+    });
+
+
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + rows.map(r => r.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
+      
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `ArMee_School_Complaints_Report_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast('📥 CSV downloaded successfully!', 'success');
+  } 
+  else if (format === 'excel') {
+    // 2. Build branded Excel HTML format (which Excel parses correctly with custom headers and styles)
+    let html = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="utf-8">
+        <style>
+          th { background-color: #1a56db; color: white; font-weight: bold; padding: 8px; text-align: left; }
+          td { border: 1px solid #e2e8f0; padding: 6px; }
+          .header-row { background-color: #f1f5f9; font-weight: bold; font-size: 14px; text-align: center; }
+          .title { font-size: 18px; font-weight: bold; color: #1e3a8a; }
+        </style>
+      </head>
+      <body>
+        <table>
+          <tr>
+            <td colspan="28" class="title">ArMee Technology Services Pvt. Ltd.</td>
+          </tr>
+          <tr>
+            <td colspan="28" style="font-weight:bold; font-size:12px;">School Complaint Management Report</td>
+          </tr>
+          <tr>
+            <td colspan="28" style="color:#64748b; font-size:10px;">Generated At: ${new Date().toLocaleString()}</td>
+          </tr>
+          <tr><td colspan="28"></td></tr>
+          <tr>
+            <th>SR No.</th>
+            <th>Submitted At</th>
+            <th>Complainant Name</th>
+            <th>Complainant Phone</th>
+            <th>Complainant Role</th>
+            <th>Project</th>
+            <th>DISE Code</th>
+            <th>School Code</th>
+            <th>District</th>
+            <th>Taluka</th>
+            <th>School Name</th>
+            <th>Principal Name</th>
+            <th>Principal Contact</th>
+            <th>Address</th>
+            <th>Pin Code</th>
+            <th>Equipment</th>
+            <th>Nature of Complaint</th>
+            <th>Serial Number</th>
+            <th>Quantity</th>
+            <th>Complaint Date</th>
+            <th>Medium</th>
+            <th>Description</th>
+            <th>Photo Count</th>
+            <th>Status</th>
+            <th>Case ID</th>
+            <th>Latitude</th>
+            <th>Longitude</th>
+            <th>Photo URL</th>
+          </tr>
+    `;
+
+    filtered.forEach((c, index) => {
+      const photoSrc = getComplaintPhoto(c) || '';
+      html += `
+        <tr>
+          <td>${index + 1}</td>
+          <td>${c.submittedAt || ''}</td>
+          <td>${esc(c.complainantName)}</td>
+          <td>'${esc(c.complainantPhone)}</td>
+          <td>${esc(c.complainantRole)}</td>
+          <td>${esc(c.project)}</td>
+          <td>'${esc(c.dise)}</td>
+          <td>${esc(c.schoolCode)}</td>
+          <td>${esc(c.district)}</td>
+          <td>${esc(c.taluka)}</td>
+          <td>${esc(c.school)}</td>
+          <td>${esc(c.principal || '')}</td>
+          <td>'${esc(c.contact || '')}</td>
+          <td>${esc(c.address)}</td>
+          <td>'${esc(c.pincode || '')}</td>
+          <td>${esc(c.equipment)}</td>
+          <td>${esc(c.natureOfComplaint)}</td>
+          <td>'${esc(c.serialNumber || 'N/A')}</td>
+          <td>${c.quantity || 1}</td>
+          <td>${c.complaintDate || ''}</td>
+          <td>${esc(c.medium || '')}</td>
+          <td>${esc(c.description)}</td>
+          <td>${c.photoCount || 0}</td>
+          <td>${c.status || 'Open'}</td>
+          <td>${esc(c.caseId)}</td>
+          <td>${c.latitude || ''}</td>
+          <td>${c.longitude || ''}</td>
+          <td>${photoSrc ? (photoSrc.startsWith('data:') ? 'Local Photo (Base64)' : `<a href="${photoSrc}" target="_blank">View Photo</a>`) : 'No Photo'}</td>
+        </tr>
+      `;
+    });
+
+    html += `
+        </table>
+        <br>
+        <p style="font-size:9px; text-align:center; color:#64748b;">Powered By ArMee Technology Services Pvt. Ltd.</p>
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob([html], { type: "application/vnd.ms-excel" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `ArMee_School_Complaints_Report_${new Date().toISOString().split('T')[0]}.xls`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast('📥 Excel downloaded successfully!', 'success');
+  }
+}
+
+/* ─────────────── COMMON HELPERS ─────────────── */
+function markDirty() {
+  isDirty = true;
+  updateSaveBar();
+}
+function updateSaveBar() {
+  document.getElementById('saveBar').classList.toggle('visible', isDirty);
+  document.getElementById('btnSave').disabled = !isDirty;
+}
+function closeModal(id) {
+  document.getElementById(id).classList.remove('show');
+}
+function esc(str) {
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function getComplaintPhoto(c) {
+  if (c.photoUrl) return c.photoUrl;
+  if (c.photos && c.photos.length > 0 && c.photos[0]) return c.photos[0];
+  if (c.viewPhoto) {
+    const match = c.viewPhoto.match(/=HYPERLINK\("([^"]+)"/i);
+    if (match) return match[1];
+  }
+  return null;
+}
+
+function viewAdminPhoto(src) {
+  const modal = document.getElementById('adminPhotoModal');
+  const img = document.getElementById('adminPhotoImg');
+  const downloadBtn = document.getElementById('adminPhotoDownload');
+  
+  img.src = src;
+  downloadBtn.href = src;
+  
+  if (src.startsWith('http')) {
+    downloadBtn.target = '_blank';
+  } else {
+    downloadBtn.removeAttribute('target');
+  }
+  
+  modal.classList.add('show');
+}
+
+function formatDateTime(dateStr) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return esc(dateStr);
+  return d.toLocaleDateString() + '<br><span style="font-size:0.7rem; color:var(--muted);">' + d.toLocaleTimeString() + '</span>';
+}
+
+
+let toastT;
+function showToast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.className = 'toast ' + type;
+  clearTimeout(toastT); el.classList.add('show');
+  toastT = setTimeout(() => el.classList.remove('show'), 3000);
+}
+function triggerAdminDeleteLogin() {
+  document.getElementById('adminUsername').value = '';
+  document.getElementById('adminPassword').value = '';
+  document.getElementById('adminDeleteLoginModal').classList.add('show');
+}
+
+function submitAdminDeleteLogin() {
+  const user = document.getElementById('adminUsername').value.trim();
+  const pass = document.getElementById('adminPassword').value;
+
+  if (user === 'admin' && pass === 'armee@2026') {
+    deleteModeUnlocked = true;
+    closeModal('adminDeleteLoginModal');
+    renderComplaintsTable();
+    showToast('🔓 Admin delete actions unlocked successfully!', 'success');
+  } else {
+    showToast('❌ Invalid admin credentials!', 'danger');
+  }
+}
+
+async function deleteComplaint(origIndex) {
+  const c = complaintsList[origIndex];
+  if (!c) return;
+
+  if (!confirm(`Are you sure you want to permanently delete complaint ${c.caseId || 'CASE-N/A'}?\nSchool: ${c.school || ''}\nEquipment: ${c.equipment || ''}\nThis action cannot be undone.`)) {
+    return;
+  }
+
+  // Remove from memory
+  complaintsList.splice(origIndex, 1);
+
+  // Re-render UI immediately for real-time visual update
+  renderDashboard();
+  renderComplaintsTable();
+  markDirty();
+
+  // Save to localStorage immediately
+  try {
+    localStorage.setItem(LS_COMPLAINTS_KEY, JSON.stringify(complaintsList));
+  } catch (err) {
+    showToast('⚠️ Could not update local storage cache: ' + err.message, 'warn');
+  }
+
+  // Sync with backend
+  const local = isLocal();
+  if (local) {
+    try {
+      const res = await fetch('/update_complaints', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(complaintsList),
+      });
+      if (res.ok) {
+        showToast('🗑️ Complaint deleted successfully locally!', 'success');
+      } else {
+        throw new Error('HTTP ' + res.status);
+      }
+    } catch (err) {
+      showToast('⚠️ Local server sync failed: ' + err.message, 'warn');
+    }
+  } else if (GOOGLE_SCRIPT_URL && navigator.onLine) {
+    try {
+      showToast('📡 Deleting complaint from Google Sheet...', 'info');
+      // POST deletion action directly to Google Apps Script
+      await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ action: 'delete_complaint', caseId: c.caseId }),
+      });
+      showToast('🗑️ Complaint deleted from Google Sheet!', 'success');
+    } catch (err) {
+      showToast('⚠️ Sync to Google Sheet failed: ' + err.message, 'warn');
+    }
+  }
+}
+
+// Close modals on backdrop click
+document.addEventListener('click', e => {
+  if (e.target.classList.contains('modal-bg')) e.target.classList.remove('show');
+});
+</script>
+</body>
+</html>

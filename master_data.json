@@ -1,0 +1,512 @@
+{
+  "equipment": [
+    {
+      "id": "EQ01",
+      "name": "Desktop Computer",
+      "status": "active",
+      "complaints": [
+        {
+          "id": "NC001",
+          "name": "Not Starting / Dead",
+          "status": "active"
+        },
+        {
+          "id": "NC002",
+          "name": "Power Issue",
+          "status": "active"
+        },
+        {
+          "id": "NC003",
+          "name": "No Display",
+          "status": "active"
+        },
+        {
+          "id": "NC004",
+          "name": "Slow Performance",
+          "status": "active"
+        },
+        {
+          "id": "NC005",
+          "name": "Hardware Issue",
+          "status": "active"
+        },
+        {
+          "id": "NC006",
+          "name": "Software Issue",
+          "status": "active"
+        },
+        {
+          "id": "NC007",
+          "name": "Physical Damage",
+          "status": "active"
+        },
+        {
+          "id": "NC008",
+          "name": "Missing / Theft",
+          "status": "active"
+        },
+        {
+          "id": "NC009",
+          "name": "Installation Required",
+          "status": "active"
+        },
+        {
+          "id": "NC010",
+          "name": "Other",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "id": "EQ02",
+      "name": "Laptop",
+      "status": "active",
+      "complaints": [
+        {
+          "id": "NC011",
+          "name": "Not Starting / Dead",
+          "status": "active"
+        },
+        {
+          "id": "NC012",
+          "name": "Battery Issue",
+          "status": "active"
+        },
+        {
+          "id": "NC013",
+          "name": "No Display",
+          "status": "active"
+        },
+        {
+          "id": "NC014",
+          "name": "Slow Performance",
+          "status": "active"
+        },
+        {
+          "id": "NC015",
+          "name": "Keyboard Issue",
+          "status": "active"
+        },
+        {
+          "id": "NC016",
+          "name": "Touchpad Issue",
+          "status": "active"
+        },
+        {
+          "id": "NC017",
+          "name": "Software Issue",
+          "status": "active"
+        },
+        {
+          "id": "NC018",
+          "name": "Physical Damage",
+          "status": "active"
+        },
+        {
+          "id": "NC019",
+          "name": "Missing / Theft",
+          "status": "active"
+        },
+        {
+          "id": "NC020",
+          "name": "Other",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "id": "EQ03",
+      "name": "Projector",
+      "status": "active",
+      "complaints": [
+        {
+          "id": "NC021",
+          "name": "No Display / Projection",
+          "status": "active"
+        },
+        {
+          "id": "NC022",
+          "name": "Lamp / Bulb Issue",
+          "status": "active"
+        },
+        {
+          "id": "NC023",
+          "name": "Remote Not Working",
+          "status": "active"
+        },
+        {
+          "id": "NC024",
+          "name": "Not Starting",
+          "status": "active"
+        },
+        {
+          "id": "NC025",
+          "name": "Physical Damage",
+          "status": "active"
+        },
+        {
+          "id": "NC026",
+          "name": "Other",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "id": "EQ04",
+      "name": "Interactive Smartboard",
+      "status": "active",
+      "complaints": [
+        {
+          "id": "NC027",
+          "name": "Touch Not Working",
+          "status": "active"
+        },
+        {
+          "id": "NC028",
+          "name": "Display Issue",
+          "status": "active"
+        },
+        {
+          "id": "NC029",
+          "name": "Not Starting",
+          "status": "active"
+        },
+        {
+          "id": "NC030",
+          "name": "Software Issue",
+          "status": "active"
+        },
+        {
+          "id": "NC031",
+          "name": "Physical Damage",
+          "status": "active"
+        },
+        {
+          "id": "NC032",
+          "name": "Other",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "id": "EQ05",
+      "name": "Printer",
+      "status": "active",
+      "complaints": [
+        {
+          "id": "NC033",
+          "name": "Paper Jam",
+          "status": "active"
+        },
+        {
+          "id": "NC034",
+          "name": "Cartridge / Ink Issue",
+          "status": "active"
+        },
+        {
+          "id": "NC035",
+          "name": "Print Quality Issue",
+          "status": "active"
+        },
+        {
+          "id": "NC036",
+          "name": "Not Printing",
+          "status": "active"
+        },
+        {
+          "id": "NC037",
+          "name": "Physical Damage",
+          "status": "active"
+        },
+        {
+          "id": "NC038",
+          "name": "Other",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "id": "EQ06",
+      "name": "Scanner",
+      "status": "active",
+      "complaints": [
+        {
+          "id": "NC039",
+          "name": "Not Scanning",
+          "status": "active"
+        },
+        {
+          "id": "NC040",
+          "name": "Scan Quality Issue",
+          "status": "active"
+        },
+        {
+          "id": "NC041",
+          "name": "Driver Issue",
+          "status": "active"
+        },
+        {
+          "id": "NC042",
+          "name": "Physical Damage",
+          "status": "active"
+        },
+        {
+          "id": "NC043",
+          "name": "Other",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "id": "EQ07",
+      "name": "UPS / Power Backup",
+      "status": "active",
+      "complaints": [
+        {
+          "id": "NC044",
+          "name": "Battery Fault",
+          "status": "active"
+        },
+        {
+          "id": "NC045",
+          "name": "Not Charging",
+          "status": "active"
+        },
+        {
+          "id": "NC046",
+          "name": "No Output",
+          "status": "active"
+        },
+        {
+          "id": "NC047",
+          "name": "Alarm / Beeping",
+          "status": "active"
+        },
+        {
+          "id": "NC048",
+          "name": "Physical Damage",
+          "status": "active"
+        },
+        {
+          "id": "NC049",
+          "name": "Other",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "id": "EQ08",
+      "name": "Networking / Switch / Router",
+      "status": "active",
+      "complaints": [
+        {
+          "id": "NC050",
+          "name": "No Connectivity",
+          "status": "active"
+        },
+        {
+          "id": "NC051",
+          "name": "Port Not Working",
+          "status": "active"
+        },
+        {
+          "id": "NC052",
+          "name": "Configuration Issue",
+          "status": "active"
+        },
+        {
+          "id": "NC053",
+          "name": "Physical Damage",
+          "status": "active"
+        },
+        {
+          "id": "NC054",
+          "name": "Other",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "id": "EQ09",
+      "name": "Webcam",
+      "status": "active",
+      "complaints": [
+        {
+          "id": "NC055",
+          "name": "No Video",
+          "status": "active"
+        },
+        {
+          "id": "NC056",
+          "name": "Poor Video Quality",
+          "status": "active"
+        },
+        {
+          "id": "NC057",
+          "name": "Driver Issue",
+          "status": "active"
+        },
+        {
+          "id": "NC058",
+          "name": "Physical Damage",
+          "status": "active"
+        },
+        {
+          "id": "NC059",
+          "name": "Other",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "id": "EQ10",
+      "name": "Speaker / Audio System",
+      "status": "active",
+      "complaints": [
+        {
+          "id": "NC060",
+          "name": "No Sound",
+          "status": "active"
+        },
+        {
+          "id": "NC061",
+          "name": "Poor Sound Quality",
+          "status": "active"
+        },
+        {
+          "id": "NC062",
+          "name": "Not Working",
+          "status": "active"
+        },
+        {
+          "id": "NC063",
+          "name": "Physical Damage",
+          "status": "active"
+        },
+        {
+          "id": "NC064",
+          "name": "Other",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "id": "EQ11",
+      "name": "Tablet",
+      "status": "active",
+      "complaints": [
+        {
+          "id": "NC065",
+          "name": "Not Starting",
+          "status": "active"
+        },
+        {
+          "id": "NC066",
+          "name": "Touchscreen Issue",
+          "status": "active"
+        },
+        {
+          "id": "NC067",
+          "name": "Battery Issue",
+          "status": "active"
+        },
+        {
+          "id": "NC068",
+          "name": "Software Issue",
+          "status": "active"
+        },
+        {
+          "id": "NC069",
+          "name": "Physical Damage",
+          "status": "active"
+        },
+        {
+          "id": "NC070",
+          "name": "Missing / Theft",
+          "status": "active"
+        },
+        {
+          "id": "NC071",
+          "name": "Other",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "id": "EQ12",
+      "name": "Server",
+      "status": "active",
+      "complaints": [
+        {
+          "id": "NC072",
+          "name": "Not Starting",
+          "status": "active"
+        },
+        {
+          "id": "NC073",
+          "name": "Hard Disk Issue",
+          "status": "active"
+        },
+        {
+          "id": "NC074",
+          "name": "Network Issue",
+          "status": "active"
+        },
+        {
+          "id": "NC075",
+          "name": "Software Issue",
+          "status": "active"
+        },
+        {
+          "id": "NC076",
+          "name": "Physical Damage",
+          "status": "active"
+        },
+        {
+          "id": "NC077",
+          "name": "Other",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "id": "EQ13",
+      "name": "Other",
+      "status": "active",
+      "complaints": [
+        {
+          "id": "NC078",
+          "name": "Hardware Issue",
+          "status": "active"
+        },
+        {
+          "id": "NC079",
+          "name": "Software Issue",
+          "status": "active"
+        },
+        {
+          "id": "NC080",
+          "name": "Physical Damage",
+          "status": "active"
+        },
+        {
+          "id": "NC081",
+          "name": "Missing / Theft",
+          "status": "active"
+        },
+        {
+          "id": "NC082",
+          "name": "Not Working",
+          "status": "active"
+        },
+        {
+          "id": "NC083",
+          "name": "Other",
+          "status": "active"
+        }
+      ]
+    }
+  ],
+  "users": [],
+  "_v": "1780815539926"
+}

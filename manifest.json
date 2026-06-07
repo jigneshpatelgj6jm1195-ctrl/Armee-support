@@ -1,0 +1,27 @@
+{
+  "name": "School Complaint Form",
+  "short_name": "Complaint",
+  "description": "School Equipment Complaint Registration — GK / ICT Project",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#1a56db",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "armee_logo_square.png",
+      "sizes": "123x123",
+      "type": "image/png"
+    },
+    {
+      "src": "armee_logo_square.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "armee_logo_square.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
