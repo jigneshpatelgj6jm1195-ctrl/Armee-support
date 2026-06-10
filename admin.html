@@ -2630,6 +2630,108 @@ function updateComplaintStatus(origIndex, newStatus) {
   markDirty();
 }
 
+function downloadReport(format) {
+  const filtered = getFilteredComplaints();
+  if (filtered.length === 0) {
+    showToast('⚠️ No data available to download', 'warn');
+    return;
+  }
+
+  // Define CSV headers
+  const csvHeaders = [
+    'Case ID',
+    'Submitted At',
+    'Complainant Name',
+    'Phone',
+    'Role',
+    'Project',
+    'DISE Code',
+    'School Code',
+    'District',
+    'Taluka',
+    'School Name',
+    'Principal Name',
+    'Principal Contact',
+    'Address',
+    'Pin Code',
+    'Equipment',
+    'Nature of Complaint',
+    'Serial Number',
+    'Quantity',
+    'Complaint Date',
+    'Suspected Part',
+    'Description',
+    'Status',
+    'Latitude',
+    'Longitude',
+    'Photo URL',
+    'Duplicate Status'
+  ];
+
+  // Map rows
+  const csvRows = filtered.map(c => [
+    c.caseId || 'N/A',
+    c.submittedAt || '',
+    c.complainantName || '',
+    c.complainantPhone || '',
+    c.complainantRole || '',
+    c.project || '',
+    c.dise || '',
+    c.schoolCode || '',
+    c.district || '',
+    c.taluka || '',
+    c.school || '',
+    c.principal || '',
+    c.contact || '',
+    c.address || '',
+    c.pincode || '',
+    c.equipment || '',
+    c.natureOfComplaint || '',
+    c.serialNumber || '',
+    c.quantity || 1,
+    c.complaintDate || '',
+    c.suspectedPart || c.medium || '',
+    c.description || '',
+    c.status || 'Open',
+    c.latitude || '',
+    c.longitude || '',
+    c.photoUrl || '',
+    c.duplicateStatus || 'NO'
+  ]);
+
+  // Escape CSV fields helper
+  const escapeCSV = val => {
+    let str = String(val === null || val === undefined ? '' : val);
+    str = str.replace(/"/g, '""');
+    // If it contains commas, double quotes, or newlines, wrap in quotes
+    if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+      str = `"${str}"`;
+    }
+    return str;
+  };
+
+  const headerRow = csvHeaders.map(escapeCSV).join(',');
+  const dataRows = csvRows.map(row => row.map(escapeCSV).join(',')).join('\n');
+  const csvContent = '\uFEFF' + headerRow + '\n' + dataRows; // UTF-8 BOM for Microsoft Excel compatibility
+
+  // Create download link
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  
+  // Set filename
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const filename = `armee_complaints_${format}_${dateStr}.csv`;
+  
+  link.setAttribute('href', url);
+  link.setAttribute('download', filename);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  showToast(`📥 ${format === 'excel' ? 'Excel-compatible' : 'CSV'} report downloaded successfully!`, 'success');
+}
+
 /* ─────────────── CENTRAL COMPLAINTS LOG ─────────────── */
 function renderComplaintsTable() {
   const tbody = document.getElementById('complaintsTableBody');
