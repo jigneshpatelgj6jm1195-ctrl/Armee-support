@@ -1562,10 +1562,10 @@ function renderDashboard() {
 
   complaints.forEach(c => {
     if (c.dise) uniqueSchools.add(c.dise);
-    if (c.serialNumber) uniqueSerials.add(c.serialNumber.trim().toUpperCase());
+    if (c.serialNumber) uniqueSerials.add(String(c.serialNumber).trim().toUpperCase());
     if (c.duplicateStatus === 'YES') duplicateCount++;
     if (c.project) projects.add(c.project);
-    if (c.district) districts.add(c.district.toUpperCase().trim());
+    if (c.district) districts.add(String(c.district).toUpperCase().trim());
     if (c.equipment) equipTypes.add(c.equipment);
   });
 
@@ -1661,7 +1661,7 @@ function drawDistrictChart(data) {
   const counts = {};
   data.forEach(c => {
     if (!c.district) return;
-    const key = c.district.toUpperCase().trim();
+    const key = String(c.district).toUpperCase().trim();
     counts[key] = (counts[key] || 0) + 1;
   });
 
@@ -1697,7 +1697,7 @@ function drawProjectChart(data) {
   const counts = {};
   data.forEach(c => {
     if (!c.project) return;
-    const key = c.project.toUpperCase().trim();
+    const key = String(c.project).toUpperCase().trim();
     counts[key] = (counts[key] || 0) + 1;
   });
 
