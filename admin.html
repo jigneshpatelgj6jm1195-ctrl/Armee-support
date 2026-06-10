@@ -1114,9 +1114,7 @@ tr:hover td { background: #f8fafc; }
       <label for="loginPassword">Password</label>
       <input type="password" id="loginPassword" placeholder="Enter password" onkeydown="if(event.key==='Enter') submitAdminLogin()" />
     </div>
-    <div style="text-align:right; margin-bottom:12px;">
-      <span style="font-size:0.75rem; color:var(--muted);">Default: admin@armee.in / armee@2026</span>
-    </div>
+    <div style="height:12px;"></div>
     <button class="btn btn-primary" style="width: 100%; justify-content: center;" onclick="submitAdminLogin()">Login</button>
   </div>
 </div>
@@ -1186,6 +1184,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     logToDebug('Running under file:// protocol. Local file requests will be blocked by browser CORS security.', 'warning');
   }
 
+  // Always load the master data first, so access users list is available for login!
+  await loadData();
+
   const session = getSession();
   if (!session) {
     showLoginModal();
@@ -1193,7 +1194,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   }
   
   updateUserProfileUI(session);
-  await loadData();
   await loadComplaints();
   await loadSchoolList();
   startAutoRefresh();
@@ -2300,6 +2300,7 @@ function renderAccessControl() {
       <td><span class="badge badge-${u.status === 'active' ? 'active' : 'inactive'}">${u.status}</span></td>
       <td>
         <button class="btn btn-ghost btn-sm" onclick="toggleAccessUser(${idx})">${u.status === 'active' ? 'Disable' : 'Enable'}</button>
+        <button class="btn btn-ghost btn-sm" onclick="resetAccessUserPassword(${idx})">🔑 Reset Pass</button>
         <button class="btn btn-danger btn-sm" onclick="deleteAccessUser(${idx})">🗑️ Delete</button>
       </td>
     </tr>
@@ -2369,6 +2370,22 @@ function deleteAccessUser(idx) {
     markDirty();
     renderAccessControl();
   }
+}
+
+function resetAccessUserPassword(idx) {
+  const u = masterData.accessUsers[idx];
+  if (!u) return;
+  const newPass = prompt(`Enter new password for ${u.name} (${u.email}):`, u.password || '');
+  if (newPass === null) return; // cancelled
+  const trimmed = newPass.trim();
+  if (!trimmed) {
+    showToast('⚠️ Password cannot be empty', 'warn');
+    return;
+  }
+  u.password = trimmed;
+  markDirty();
+  renderAccessControl();
+  showToast(`🔑 Password updated for ${u.name}. Remember to click "Save Data" to apply.`, 'success');
 }
 
 /* ─────────────── ARCHIVE MANAGER ─────────────── */
