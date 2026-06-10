@@ -2560,6 +2560,50 @@ function renderUserTable() {
   `).join('');
 }
 
+function getFilteredComplaints() {
+  let list = filterByUserDistricts(complaintsList);
+  
+  const project = document.getElementById('filterProject').value;
+  const equip = document.getElementById('filterEquipment').value;
+  const status = document.getElementById('filterStatus').value;
+  const date = document.getElementById('filterDate').value;
+  const duplicate = document.getElementById('filterDuplicate').value;
+  const query = document.getElementById('filterText').value.toLowerCase().trim();
+
+  return list.filter(c => {
+    if (project && c.project !== project) return false;
+    if (equip && c.equipment !== equip) return false;
+    if (status && String(c.status || 'open').toLowerCase().trim() !== status.toLowerCase().trim()) return false;
+    
+    if (date) {
+      const d = new Date(c.submittedAt || c.complaintDate);
+      if (!isNaN(d.getTime())) {
+        const localDStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        if (localDStr !== date) return false;
+      }
+    }
+    
+    if (duplicate === 'yes' && c.duplicateStatus !== 'YES') return false;
+    if (duplicate === 'no' && c.duplicateStatus === 'YES') return false;
+    
+    if (query) {
+      const school = String(c.school || '').toLowerCase();
+      const dise = String(c.dise || '').toLowerCase();
+      const serial = String(c.serialNumber || '').toLowerCase();
+      const caseId = String(c.caseId || '').toLowerCase();
+      if (!school.includes(query) && !dise.includes(query) && !serial.includes(query) && !caseId.includes(query)) {
+        return false;
+      }
+    }
+    
+    return true;
+  });
+}
+
+function filterComplaints() {
+  renderComplaintsTable();
+}
+
 /* ─────────────── CENTRAL COMPLAINTS LOG ─────────────── */
 function renderComplaintsTable() {
   const tbody = document.getElementById('complaintsTableBody');
