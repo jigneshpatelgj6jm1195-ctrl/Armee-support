@@ -78,8 +78,19 @@ body {
   padding: 0 32px;
   display: flex;
   gap: 8px;
+  overflow-x: auto;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+}
+.tabs-bar::-webkit-scrollbar {
+  height: 4px;
+}
+.tabs-bar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
 }
 .tab-btn {
+  flex-shrink: 0;
   background: none;
   border: none;
   padding: 16px 20px;
@@ -108,6 +119,17 @@ body {
 }
 .tab-content { display: none; }
 .tab-content.active { display: block; }
+
+@keyframes pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.2); opacity: 0.4; } }
+
+.duplicate-row { background: #fff5f5 !important; border-left: 4px solid var(--danger) !important; }
+
+@media print {
+  body * { visibility: hidden; }
+  #tab-dash, #tab-dash * { visibility: visible; }
+  #tab-dash { position: absolute; left: 0; top: 0; width: 100%; }
+  .header, .tabs-bar, .save-bar, .footer, .card-title select, .card-title button, .btn { display: none !important; }
+}
 
 /* ═══════════════ LAYOUT CONTAINER ═══════════════ */
 .container {
@@ -313,6 +335,8 @@ tr:hover td { background: #f8fafc; }
     </div>
   </div>
   <div style="display:flex; gap:12px; align-items:center;">
+    <span id="liveIndicator" style="display:inline-flex;align-items:center;gap:4px;font-size:0.75rem;color:#10b981;margin-right:4px;"><span style="width:8px;height:8px;background:#10b981;border-radius:50%;display:inline-block;animation:pulse 2s infinite;"></span>Live</span>
+    <button onclick="silentRefreshData()" style="background:none;border:1px solid rgba(255,255,255,0.3);border-radius:8px;padding:4px 8px;cursor:pointer;font-size:0.85rem;color:white;display:flex;align-items:center;justify-content:center;" title="Refresh Data">🔄</button>
     <button class="btn btn-ghost btn-sm" style="background:rgba(255,255,255,0.18); border-color:rgba(255,255,255,0.3); color:white;" onclick="saveAll()" id="btnSave" disabled>💾 Save Data</button>
     <a href="index.html" class="header-link">← Back to Form</a>
   </div>
@@ -322,9 +346,13 @@ tr:hover td { background: #f8fafc; }
 <div class="tabs-bar">
   <button class="tab-btn active" id="btn-tab-dash" onclick="switchTab('dash')">📊 Dashboard</button>
   <button class="tab-btn" id="btn-tab-schools" onclick="switchTab('schools')">🏫 School Master</button>
+  <button class="tab-btn" id="btn-tab-projects" onclick="switchTab('projects')">🏗️ Project Master</button>
   <button class="tab-btn" id="btn-tab-equip" onclick="switchTab('equip')">🖥️ Equipment Master</button>
+  <button class="tab-btn" id="btn-tab-parts" onclick="switchTab('parts')">🔧 Parts Master</button>
   <button class="tab-btn" id="btn-tab-users" onclick="switchTab('users')">👤 User Master</button>
+  <button class="tab-btn" id="btn-tab-access" onclick="switchTab('access')">🔒 Access Control</button>
   <button class="tab-btn" id="btn-tab-complaints" onclick="switchTab('complaints')">📋 Complaints &amp; Reports</button>
+  <button class="tab-btn" id="btn-tab-archive" onclick="switchTab('archive')">📦 Archive Manager</button>
 </div>
 
 <!-- CONTAINER -->
@@ -332,43 +360,167 @@ tr:hover td { background: #f8fafc; }
 
   <!-- ================= TAB: DASHBOARD ================= -->
   <div class="tab-content active" id="tab-dash">
-    <div class="stat-grid">
-      <div class="stat-card" style="max-width: 280px;">
-        <div class="stat-icon-box">🏫</div>
-        <div class="stat-info">
-          <span class="stat-label">Total Schools</span>
-          <span class="stat-value" id="dashTotalSchools">0</span>
+    <!-- Filters Row -->
+    <div class="card" style="padding: 16px; margin-bottom: 20px;">
+      <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;">
+        <div style="flex: 1; min-width: 140px;">
+          <label style="font-size:0.75rem;margin-bottom:4px;">From Date</label>
+          <input type="date" id="dashFromDate" style="padding:8px 12px;font-size:0.8rem;" onchange="renderDashboard()" />
         </div>
-      </div>
-    </div>
-
-    <!-- Daily Ticket Volume Chart -->
-    <div class="card" style="margin-bottom: 24px; padding: 24px;">
-      <div class="card-title" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-        <span>📈 Ticket Volume Chart</span>
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <label style="font-size: 0.8rem; font-weight: 700; color: var(--muted); margin-bottom: 0; white-space: nowrap;">Group By:</label>
-          <select id="chartGroupSelect" onchange="drawDailyTicketsChart()" style="width: auto; padding: 6px 12px; font-size: 0.8rem; border-radius: 8px; margin: 0; background: #fff;">
-            <option value="daily">Date-wise (Everyday)</option>
-            <option value="monthly">Month-wise</option>
-            <option value="yearly">Year-wise</option>
+        <div style="flex: 1; min-width: 140px;">
+          <label style="font-size:0.75rem;margin-bottom:4px;">To Date</label>
+          <input type="date" id="dashToDate" style="padding:8px 12px;font-size:0.8rem;" onchange="renderDashboard()" />
+        </div>
+        <div style="flex: 1; min-width: 140px;">
+          <label style="font-size:0.75rem;margin-bottom:4px;">Project</label>
+          <select id="dashProject" style="padding:8px 12px;font-size:0.8rem;margin:0;" onchange="renderDashboard()">
+            <option value="">All Projects</option>
           </select>
         </div>
-      </div>
-      <div style="position: relative; height: 320px; width: 100%;">
-        <canvas id="chartDailyTickets"></canvas>
+        <div style="flex: 1; min-width: 140px;">
+          <label style="font-size:0.75rem;margin-bottom:4px;">District</label>
+          <select id="dashDistrict" style="padding:8px 12px;font-size:0.8rem;margin:0;" onchange="renderDashboard()">
+            <option value="">All Districts</option>
+          </select>
+        </div>
+        <div style="flex: 1; min-width: 140px;">
+          <label style="font-size:0.75rem;margin-bottom:4px;">Equipment</label>
+          <select id="dashEquipment" style="padding:8px 12px;font-size:0.8rem;margin:0;" onchange="renderDashboard()">
+            <option value="">All Equipment</option>
+          </select>
+        </div>
+        <div style="flex: 1; min-width: 140px;">
+          <label style="font-size:0.75rem;margin-bottom:4px;">Suspected Part</label>
+          <select id="dashPart" style="padding:8px 12px;font-size:0.8rem;margin:0;" onchange="renderDashboard()">
+            <option value="">All Suspected Parts</option>
+          </select>
+        </div>
+        <div style="display:flex; gap:6px;">
+          <button class="btn btn-ghost btn-sm" onclick="resetDashboardFilters()" style="height:38px;">Reset</button>
+          <button class="btn btn-success btn-sm" onclick="exportDashboardPDF()" style="height:38px;">📥 PDF</button>
+        </div>
       </div>
     </div>
 
-    <!-- Charts Row -->
-    <div class="chart-container">
-      <div class="chart-card">
-        <h4 style="font-size:0.85rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin-bottom:14px;">Complaints by Equipment</h4>
-        <div id="chartEquipmentBox"></div>
+    <!-- 7 KPI Cards Row -->
+    <div class="stat-grid" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin-bottom: 20px;">
+      <div class="stat-card" style="padding:14px; gap:10px;">
+        <div class="stat-icon-box" style="width:34px; height:34px; font-size:16px;">📋</div>
+        <div class="stat-info">
+          <span class="stat-label" style="font-size:0.6rem;">Total Complaints</span>
+          <span class="stat-value" id="kpiTotal" style="font-size:1.2rem;">0</span>
+        </div>
       </div>
-      <div class="chart-card">
-        <h4 style="font-size:0.85rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin-bottom:14px;">Complaints by Project</h4>
-        <div id="chartProjectBox"></div>
+      <div class="stat-card" style="padding:14px; gap:10px;">
+        <div class="stat-icon-box" style="width:34px; height:34px; font-size:16px;">🏫</div>
+        <div class="stat-info">
+          <span class="stat-label" style="font-size:0.6rem;">Unique Schools</span>
+          <span class="stat-value" id="kpiSchools" style="font-size:1.2rem;">0</span>
+        </div>
+      </div>
+      <div class="stat-card" style="padding:14px; gap:10px;">
+        <div class="stat-icon-box" style="width:34px; height:34px; font-size:16px;">🔢</div>
+        <div class="stat-info">
+          <span class="stat-label" style="font-size:0.6rem;">Unique Serials</span>
+          <span class="stat-value" id="kpiSerials" style="font-size:1.2rem;">0</span>
+        </div>
+      </div>
+      <div class="stat-card" style="padding:14px; gap:10px; border-color: #fca5a5; background: #fff5f5;">
+        <div class="stat-icon-box" style="width:34px; height:34px; font-size:16px; background:#ffe2e2; color:#ef4444;">⚠️</div>
+        <div class="stat-info">
+          <span class="stat-label" style="font-size:0.6rem; color:#ef4444;">Duplicates</span>
+          <span class="stat-value" id="kpiDuplicates" style="font-size:1.2rem; color:#b91c1c;">0</span>
+        </div>
+      </div>
+      <div class="stat-card" style="padding:14px; gap:10px;">
+        <div class="stat-icon-box" style="width:34px; height:34px; font-size:16px;">🏗️</div>
+        <div class="stat-info">
+          <span class="stat-label" style="font-size:0.6rem;">Projects</span>
+          <span class="stat-value" id="kpiProjects" style="font-size:1.2rem;">0</span>
+        </div>
+      </div>
+      <div class="stat-card" style="padding:14px; gap:10px;">
+        <div class="stat-icon-box" style="width:34px; height:34px; font-size:16px;">📍</div>
+        <div class="stat-info">
+          <span class="stat-label" style="font-size:0.6rem;">Districts</span>
+          <span class="stat-value" id="kpiDistricts" style="font-size:1.2rem;">0</span>
+        </div>
+      </div>
+      <div class="stat-card" style="padding:14px; gap:10px;">
+        <div class="stat-icon-box" style="width:34px; height:34px; font-size:16px;">🖥️</div>
+        <div class="stat-info">
+          <span class="stat-label" style="font-size:0.6rem;">Equipment Types</span>
+          <span class="stat-value" id="kpiEquipTypes" style="font-size:1.2rem;">0</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 8 Charts Grid (2x4) -->
+    <div id="dashboardPrintArea">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 20px;">
+        <div class="chart-card">
+          <h4 style="font-size:0.8rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin-bottom:10px;">📈 Date-wise Complaint Trend</h4>
+          <div style="position: relative; height: 180px; width: 100%;">
+            <canvas id="chartTrend"></canvas>
+          </div>
+        </div>
+        <div class="chart-card">
+          <h4 style="font-size:0.8rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin-bottom:10px;">📍 District-wise Distribution</h4>
+          <div style="position: relative; height: 180px; width: 100%;">
+            <canvas id="chartDistrict"></canvas>
+          </div>
+        </div>
+        <div class="chart-card">
+          <h4 style="font-size:0.8rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin-bottom:10px;">🏗️ Project Distribution</h4>
+          <div style="position: relative; height: 180px; width: 100%;">
+            <canvas id="chartProject"></canvas>
+          </div>
+        </div>
+        <div class="chart-card">
+          <h4 style="font-size:0.8rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin-bottom:10px;">🖥️ Equipment Distribution</h4>
+          <div style="position: relative; height: 180px; width: 100%;">
+            <canvas id="chartEquip"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 20px;">
+        <div class="chart-card">
+          <h4 style="font-size:0.8rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin-bottom:10px;">🔧 Suspected Part Distribution</h4>
+          <div style="position: relative; height: 180px; width: 100%;">
+            <canvas id="chartPart"></canvas>
+          </div>
+        </div>
+        <div class="chart-card">
+          <h4 style="font-size:0.8rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin-bottom:10px;">🗂️ Nature of Complaint</h4>
+          <div style="position: relative; height: 180px; width: 100%;">
+            <canvas id="chartNature"></canvas>
+          </div>
+        </div>
+        <div class="chart-card">
+          <h4 style="font-size:0.8rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin-bottom:10px;">⚠️ Monthly Duplicate Trend</h4>
+          <div style="position: relative; height: 180px; width: 100%;">
+            <canvas id="chartDupTrend"></canvas>
+          </div>
+        </div>
+        <div class="chart-card" style="max-height:220px; overflow-y:auto;">
+          <h4 style="font-size:0.8rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin-bottom:10px;">Top 5 Complaint-heavy Schools</h4>
+          <div class="table-responsive" style="border:none;">
+            <table style="font-size:0.75rem;">
+              <thead>
+                <tr>
+                  <th style="padding:6px 10px;">School Name</th>
+                  <th style="padding:6px 10px;text-align:right;">Complaints</th>
+                </tr>
+              </thead>
+              <tbody id="topSchoolsTableBody">
+                <tr>
+                  <td colspan="2" style="text-align:center;color:var(--muted);padding:10px;">No data</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -562,6 +714,14 @@ tr:hover td { background: #f8fafc; }
           <input type="date" id="filterDate" onchange="filterComplaints()" />
         </div>
         <div>
+          <label>Filter by Duplicates</label>
+          <select id="filterDuplicate" onchange="filterComplaints()">
+            <option value="">All Complaints</option>
+            <option value="yes">Duplicates Only</option>
+            <option value="no">Non-Duplicates Only</option>
+          </select>
+        </div>
+        <div>
           <label>Search text (School/DISE/SN)</label>
           <input type="text" id="filterText" placeholder="Type to search..." oninput="filterComplaints()" />
         </div>
@@ -597,6 +757,129 @@ tr:hover td { background: #f8fafc; }
           <tbody id="complaintsTableBody">
             <tr>
               <td colspan="10" style="text-align:center; color:var(--muted);">No complaints submitted to local database yet.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= TAB: PROJECTS ================= -->
+  <div class="tab-content" id="tab-projects">
+    <div class="card">
+      <div class="card-title">
+        <span>🏗️ Project Master Configuration</span>
+        <button class="btn btn-primary btn-sm" onclick="openAddProject()">＋ Add Project</button>
+      </div>
+      <p style="color:var(--muted);font-size:0.82rem;margin-bottom:16px;">Create projects and map active equipment to them. These mappings dynamically control what equipment option users see in the complaint registration form.</p>
+      <div class="eq-grid" id="projectGrid">
+        <div style="text-align:center;padding:20px;color:var(--muted);">No projects configured.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= TAB: PARTS ================= -->
+  <div class="tab-content" id="tab-parts">
+    <div class="card">
+      <div class="card-title">
+        <span>🔧 Suspected Parts Master List</span>
+      </div>
+      <p style="color:var(--muted);font-size:0.82rem;margin-bottom:16px;">Manage suspected parts that engineers select during complaint registration.</p>
+      
+      <div style="display:flex;gap:10px;margin-bottom:18px;max-width:480px;">
+        <input type="text" id="newPartName" placeholder="New Part Name (e.g. Motherboard)..." style="flex:1;margin:0;" />
+        <button class="btn btn-primary" onclick="addSuspectedPart()">＋ Add Part</button>
+      </div>
+      
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Part Name</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="partsTableBody">
+            <tr>
+              <td colspan="4" style="text-align:center; color:var(--muted);">No suspected parts configured.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= TAB: ACCESS CONTROL ================= -->
+  <div class="tab-content" id="tab-access">
+    <div class="card">
+      <div class="card-title">
+        <span>🔒 User Access Control</span>
+        <button class="btn btn-primary btn-sm" onclick="openAddAccessUser()">＋ Add Access User</button>
+      </div>
+      <p style="color:var(--muted);font-size:0.82rem;margin-bottom:16px;">Manage role-based access control. District Admins are filtered to see only complaints from their assigned districts.</p>
+      
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Phone</th>
+              <th>Role</th>
+              <th>Assigned Districts</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="accessTableBody">
+            <tr>
+              <td colspan="8" style="text-align:center; color:var(--muted);">No access users configured.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= TAB: ARCHIVE MANAGER ================= -->
+  <div class="tab-content" id="tab-archive">
+    <div class="card">
+      <div class="card-title">📦 Data Archive Manager</div>
+      <p style="color:var(--muted);font-size:0.82rem;margin-bottom:16px;">Move older complaint records to monthly tagged archive sheets inside the spreadsheet to maintain optimal performance.</p>
+      
+      <div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:20px;flex-wrap:wrap;">
+        <div>
+          <label>From Date</label>
+          <input type="date" id="archiveFromDate" style="width:160px;" />
+        </div>
+        <div>
+          <label>To Date</label>
+          <input type="date" id="archiveToDate" style="width:160px;" />
+        </div>
+        <button class="btn btn-danger" onclick="archiveDataRange()">📦 Archive Range</button>
+      </div>
+      
+      <div class="card-title" style="margin-top:20px; border-bottom:1px solid var(--border); padding-bottom:8px;">📦 Archive History &amp; Monthly Tagged Sheets</div>
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th>Archive Sheet</th>
+              <th>Case ID</th>
+              <th>DISE Code</th>
+              <th>School Name</th>
+              <th>Equipment</th>
+              <th>Serial Number</th>
+              <th>Date</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="archiveHistoryBody">
+            <tr>
+              <td colspan="8" style="text-align:center; color:var(--muted);">No archived records found.</td>
             </tr>
           </tbody>
         </table>
@@ -716,6 +999,86 @@ tr:hover td { background: #f8fafc; }
   </div>
 </div>
 
+<!-- ADD ACCESS USER MODAL -->
+<div class="modal-bg" id="addAccessModal">
+  <div class="modal" style="max-width: 500px;">
+    <h3>🔒 Add Access User</h3>
+    <div class="field">
+      <label for="accessUserName">Full Name *</label>
+      <input type="text" id="accessUserName" placeholder="e.g. Jig Patel" />
+    </div>
+    <div class="field">
+      <label for="accessUserEmail">Email Address *</label>
+      <input type="text" id="accessUserEmail" placeholder="e.g. jig@armee.in" />
+    </div>
+    <div class="field">
+      <label for="accessUserPhone">Mobile Number (10 digit) *</label>
+      <input type="tel" id="accessUserPhone" placeholder="e.g. 9988776655" maxlength="10" />
+    </div>
+    <div class="field">
+      <label for="accessUserPassword">Password *</label>
+      <input type="password" id="accessUserPassword" placeholder="Enter password" />
+    </div>
+    <div class="field">
+      <label for="accessUserRole">Role *</label>
+      <select id="accessUserRole" onchange="onAccessRoleChange()">
+        <option value="super_admin">Super Admin (All Districts)</option>
+        <option value="district_admin">District Admin (Filtered Districts)</option>
+        <option value="viewer">Viewer (Read-only)</option>
+      </select>
+    </div>
+    <div class="field" id="accessDistrictSelectBox" style="display:none;">
+      <label>Assigned Districts (Hold Ctrl to select multiple) *</label>
+      <select id="accessUserDistricts" multiple style="height: 120px;"></select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('addAccessModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmAddAccessUser()">Add User</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD PROJECT MODAL -->
+<div class="modal-bg" id="addProjectModal">
+  <div class="modal">
+    <h3>🏗️ Add New Project</h3>
+    <div class="field">
+      <label for="newProjName">Project Code (e.g. GK, ICT) *</label>
+      <input type="text" id="newProjName" placeholder="e.g. GK" />
+    </div>
+    <div class="field">
+      <label for="newProjFullName">Project Full Name *</label>
+      <input type="text" id="newProjFullName" placeholder="e.g. Gyan Kunj Project" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('addProjectModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmAddProject()">Add Project</button>
+    </div>
+  </div>
+</div>
+
+<!-- SECURE ADMIN LOGIN MODAL -->
+<div class="modal-bg" id="adminLoginModal">
+  <div class="modal" style="max-width:400px;">
+    <div style="text-align:center; margin-bottom: 20px;">
+      <img src="armee_logo.png" alt="ArMee Logo" style="height:60px; width:auto; border-radius:6px; background:white; padding:3px; margin-bottom: 8px;" />
+      <h3 style="margin: 0;">🔐 ArMee Admin Login</h3>
+    </div>
+    <div class="field">
+      <label for="loginEmail">Email Address</label>
+      <input type="text" id="loginEmail" placeholder="Enter your email" onkeydown="if(event.key==='Enter') submitAdminLogin()" />
+    </div>
+    <div class="field">
+      <label for="loginPassword">Password</label>
+      <input type="password" id="loginPassword" placeholder="Enter password" onkeydown="if(event.key==='Enter') submitAdminLogin()" />
+    </div>
+    <div style="text-align:right; margin-bottom:12px;">
+      <span style="font-size:0.75rem; color:var(--muted);">Default: admin@armee.in / armee@2026</span>
+    </div>
+    <button class="btn btn-primary" style="width: 100%; justify-content: center;" onclick="submitAdminLogin()">Login</button>
+  </div>
+</div>
+
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
@@ -723,7 +1086,7 @@ tr:hover td { background: #f8fafc; }
 <script>
 'use strict';
 
-const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx3I2A-QxKg1bI3EBt1H3sAKPm0_2EKUfQrxqtYT0DBZsaobOaOqaIki4V0p0QIE7AFHA/exec'; // Paste your Google Web App URL here to pull real-time submissions from Google Sheet
+const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx3I2A-QxKg1bI3EBt1H3sAKPm0_2EKUfQrxqtYT0DBZsaoboOaOqalki4V0p0QIE7AFHA/exec'; // Paste your Google Web App URL here to pull real-time submissions from Google Sheet
 let masterData = { equipment: [], users: [] };
 let complaintsList = [];
 let schoolDataRaw = {};
@@ -749,9 +1112,17 @@ function isLocal() {
 
 /* ─────────────── INIT ─────────────── */
 window.addEventListener('DOMContentLoaded', async () => {
+  const session = getSession();
+  if (!session) {
+    showLoginModal();
+    return;
+  }
+  
+  updateUserProfileUI(session);
   await loadData();
   await loadComplaints();
   await loadSchoolList();
+  startAutoRefresh();
 });
 
 const LS_MASTER_KEY = 'armeeAdmin_masterData';
@@ -808,9 +1179,14 @@ async function loadData() {
 
   isDirty = false;
   updateSaveBar();
+  renderProjectMaster();
   renderMasterTable();
+  renderPartsTable();
   renderUserTable();
+  renderAccessControl();
+  renderArchiveManager();
   populateFilters();
+  populateDashboardFilters();
 }
 
 async function loadComplaints() {
@@ -1121,7 +1497,7 @@ function drawDailyTicketsChart() {
       const dateObj = new Date(y, m - 1, 1);
       return dateObj.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
     });
-    dataPoints = monthList.map(monthStr => counts[monthStr] || 0);
+  dataPoints = monthList.map(monthStr => counts[monthStr] || 0);
 
   } else if (groupBy === 'yearly') {
     // Generate consecutive years
@@ -1193,6 +1569,114 @@ function drawDailyTicketsChart() {
   });
 }
 
+/* ─────────────── DASHBOARD ─────────────── */
+let charts = {};
+
+function renderChart(id, config) {
+  if (charts[id]) {
+    charts[id].destroy();
+  }
+  const canvas = document.getElementById(id);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  charts[id] = new Chart(ctx, config);
+}
+
+function renderDashboard() {
+  // 1. Filter complaints by user assigned districts
+  let complaints = filterByUserDistricts(complaintsList);
+
+  // 2. Apply Dashboard filter card values
+  const fromDate = document.getElementById('dashFromDate').value;
+  const toDate = document.getElementById('dashToDate').value;
+  const filterProj = document.getElementById('dashProject').value;
+  const filterDist = document.getElementById('dashDistrict').value;
+  const filterEquip = document.getElementById('dashEquipment').value;
+  const filterPart = document.getElementById('dashPart').value;
+
+  complaints = complaints.filter(c => {
+    if (filterProj && c.project !== filterProj) return false;
+    if (filterDist && String(c.district || '').toUpperCase().trim() !== filterDist.toUpperCase().trim()) return false;
+    if (filterEquip && c.equipment !== filterEquip) return false;
+    if (filterPart) {
+      const part = (c.medium || c.suspectedPart || '').toLowerCase().trim();
+      if (part !== filterPart.toLowerCase().trim()) return false;
+    }
+    
+    if (fromDate) {
+      const d = new Date(c.submittedAt || c.complaintDate);
+      if (!isNaN(d.getTime())) {
+        const localDStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        if (localDStr < fromDate) return false;
+      }
+    }
+    if (toDate) {
+      const d = new Date(c.submittedAt || c.complaintDate);
+      if (!isNaN(d.getTime())) {
+        const localDStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        if (localDStr > toDate) return false;
+      }
+    }
+    return true;
+  });
+
+  // Calculate 7 KPI Cards
+  const totalCount = complaints.length;
+  const uniqueSchools = new Set();
+  const uniqueSerials = new Set();
+  let duplicateCount = 0;
+  const projects = new Set();
+  const districts = new Set();
+  const equipTypes = new Set();
+
+  complaints.forEach(c => {
+    if (c.dise) uniqueSchools.add(c.dise);
+    if (c.serialNumber) uniqueSerials.add(c.serialNumber.trim().toUpperCase());
+    if (c.duplicateStatus === 'YES') duplicateCount++;
+    if (c.project) projects.add(c.project);
+    if (c.district) districts.add(c.district.toUpperCase().trim());
+    if (c.equipment) equipTypes.add(c.equipment);
+  });
+
+  document.getElementById('kpiTotal').textContent = totalCount;
+  document.getElementById('kpiSchools').textContent = uniqueSchools.size;
+  document.getElementById('kpiSerials').textContent = uniqueSerials.size;
+  document.getElementById('kpiDuplicates').textContent = duplicateCount;
+  document.getElementById('kpiProjects').textContent = projects.size;
+  document.getElementById('kpiDistricts').textContent = districts.size;
+  document.getElementById('kpiEquipTypes').textContent = equipTypes.size;
+
+  // Render recent 5 complaints
+  const recentComplaints = [...complaints].reverse().slice(0, 5);
+  const tbody = document.getElementById('dashRecentComplaintsTable');
+  if (recentComplaints.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--muted);">No complaints matching filters.</td></tr>';
+  } else {
+    tbody.innerHTML = recentComplaints.map(c => `
+      <tr>
+        <td><b>${esc(c.groupId ? c.groupId + ' #' + c.itemNumber : (c.caseId || 'CASE-N/A'))}</b></td>
+        <td>${new Date(c.submittedAt).toLocaleDateString()}</td>
+        <td>${esc(c.school || '—')}</td>
+        <td>${esc(c.dise || '—')}</td>
+        <td>${esc(c.equipment || '—')}</td>
+        <td>${esc(c.natureOfComplaint || '—')}</td>
+        <td>${esc(c.complainantName || '—')}</td>
+        <td><span class="badge badge-${getBadgeClass(c.status)}">${c.status || 'Open'}</span></td>
+      </tr>
+    `).join('');
+  }
+
+  // Draw Charts
+  drawTrendChart(complaints);
+  drawDistrictChart(complaints);
+  drawProjectChart(complaints);
+  drawEquipChart(complaints);
+  drawPartChart(complaints);
+  drawNatureChart(complaints);
+  drawDupTrendChart(complaints);
+  drawTopSchoolsTable(complaints);
+}
+
 function getBadgeClass(status) {
   const s = String(status || 'open').toLowerCase().trim();
   if (s === 'resolved' || s === 'closed') return 'resolved';
@@ -1200,75 +1684,354 @@ function getBadgeClass(status) {
   return 'open';
 }
 
-function drawEquipmentChart() {
+function drawTrendChart(data) {
   const counts = {};
-  complaintsList.forEach(c => {
+  data.forEach(c => {
+    const d = new Date(c.submittedAt || c.complaintDate);
+    if (isNaN(d.getTime())) return;
+    const dateKey = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    counts[dateKey] = (counts[dateKey] || 0) + 1;
+  });
+
+  const sortedDates = Object.keys(counts).sort();
+  const values = sortedDates.map(k => counts[k]);
+  const labels = sortedDates.map(k => {
+    const [y, m, d] = k.split('-');
+    return `${d}/${m}`;
+  });
+
+  renderChart('chartTrend', {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Tickets Logged',
+        data: values,
+        borderColor: '#1a56db',
+        backgroundColor: 'rgba(26, 86, 219, 0.1)',
+        borderWidth: 2,
+        fill: true,
+        tension: 0.3
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 9 } } },
+        y: { ticks: { stepSize: 1, font: { size: 9 } } }
+      }
+    }
+  });
+}
+
+function drawDistrictChart(data) {
+  const counts = {};
+  data.forEach(c => {
+    if (!c.district) return;
+    const key = c.district.toUpperCase().trim();
+    counts[key] = (counts[key] || 0) + 1;
+  });
+
+  const sorted = Object.entries(counts).sort((a,b) => b[1] - a[1]).slice(0, 5);
+  const labels = sorted.map(x => x[0]);
+  const values = sorted.map(x => x[1]);
+
+  renderChart('chartDistrict', {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Complaints',
+        data: values,
+        backgroundColor: '#06b6d4',
+        borderRadius: 4
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { stepSize: 1, font: { size: 9 } } },
+        y: { grid: { display: false }, ticks: { font: { size: 9 } } }
+      }
+    }
+  });
+}
+
+function drawProjectChart(data) {
+  const counts = {};
+  data.forEach(c => {
+    if (!c.project) return;
+    const key = c.project.toUpperCase().trim();
+    counts[key] = (counts[key] || 0) + 1;
+  });
+
+  const labels = Object.keys(counts);
+  const values = Object.values(counts);
+
+  renderChart('chartProject', {
+    type: 'doughnut',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: values,
+        backgroundColor: ['#10b981', '#1a56db', '#f59e0b', '#8b5cf6', '#ec4899']
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { boxWidth: 10, font: { size: 9 } } }
+      }
+    }
+  });
+}
+
+function drawEquipChart(data) {
+  const counts = {};
+  data.forEach(c => {
+    if (!c.equipment) return;
     counts[c.equipment] = (counts[c.equipment] || 0) + 1;
   });
 
   const sorted = Object.entries(counts).sort((a,b) => b[1] - a[1]).slice(0, 5);
-  const max = sorted.length ? sorted[0][1] : 1;
-  const box = document.getElementById('chartEquipmentBox');
-  if (sorted.length === 0) {
-    box.innerHTML = '<div style="text-align:center; padding:20px; color:var(--muted); font-size:0.8rem;">No data to display.</div>';
-    return;
-  }
-  box.innerHTML = sorted.map(([name, count]) => {
-    const pct = Math.round((count / max) * 100);
-    return `
-      <div class="chart-bar-row">
-        <div class="chart-bar-label">
-          <span>${esc(name)}</span>
-          <b>${count}</b>
-        </div>
-        <div class="chart-bar-bg">
-          <div class="chart-bar-fill" style="width: ${pct}%;"></div>
-        </div>
-      </div>
-    `;
-  }).join('');
+  const labels = sorted.map(x => x[0]);
+  const values = sorted.map(x => x[1]);
+
+  renderChart('chartEquip', {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Complaints',
+        data: values,
+        backgroundColor: '#3b82f6',
+        borderRadius: 4
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { stepSize: 1, font: { size: 9 } } },
+        y: { grid: { display: false }, ticks: { font: { size: 9 } } }
+      }
+    }
+  });
 }
 
-function drawProjectChart() {
-  let gkCount = 0;
-  let ictCount = 0;
-  complaintsList.forEach(c => {
-    const p = String(c.project || '').toUpperCase();
-    if (p.includes('GK')) gkCount++;
-    else if (p.includes('ICT')) ictCount++;
+function drawPartChart(data) {
+  const counts = {};
+  data.forEach(c => {
+    const key = c.medium || c.suspectedPart || 'Unknown';
+    counts[key] = (counts[key] || 0) + 1;
   });
+
+  const sorted = Object.entries(counts).sort((a,b) => b[1] - a[1]).slice(0, 5);
+  const labels = sorted.map(x => x[0]);
+  const values = sorted.map(x => x[1]);
+
+  renderChart('chartPart', {
+    type: 'pie',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: values,
+        backgroundColor: ['#ec4899', '#f59e0b', '#8b5cf6', '#06b6d4', '#10b981']
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { boxWidth: 10, font: { size: 9 } } }
+      }
+    }
+  });
+}
+
+function drawNatureChart(data) {
+  const counts = {};
+  data.forEach(c => {
+    if (!c.natureOfComplaint) return;
+    counts[c.natureOfComplaint] = (counts[c.natureOfComplaint] || 0) + 1;
+  });
+
+  const sorted = Object.entries(counts).sort((a,b) => b[1] - a[1]).slice(0, 5);
+  const labels = sorted.map(x => x[0]);
+  const values = sorted.map(x => x[1]);
+
+  renderChart('chartNature', {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Complaints',
+        data: values,
+        backgroundColor: '#8b5cf6',
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 9 } } },
+        y: { ticks: { stepSize: 1, font: { size: 9 } } }
+      }
+    }
+  });
+}
+
+function drawDupTrendChart(data) {
+  const counts = {};
+  data.forEach(c => {
+    if (c.duplicateStatus !== 'YES') return;
+    const d = new Date(c.submittedAt || c.complaintDate);
+    if (isNaN(d.getTime())) return;
+    const monthKey = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    counts[monthKey] = (counts[monthKey] || 0) + 1;
+  });
+
+  const sortedMonths = Object.keys(counts).sort();
+  const values = sortedMonths.map(k => counts[k]);
+  const labels = sortedMonths.map(k => {
+    const [y, m] = k.split('-');
+    const dateObj = new Date(y, m - 1, 1);
+    return dateObj.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  });
+
+  renderChart('chartDupTrend', {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Duplicate Tickets',
+        data: values,
+        borderColor: '#ef4444',
+        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+        borderWidth: 2,
+        fill: true,
+        tension: 0.3
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 9 } } },
+        y: { ticks: { stepSize: 1, font: { size: 9 } } }
+      }
+    }
+  });
+}
+
+function drawTopSchoolsTable(data) {
+  const counts = {};
+  data.forEach(c => {
+    if (!c.school) return;
+    counts[c.school] = (counts[c.school] || 0) + 1;
+  });
+
+  const sorted = Object.entries(counts).sort((a,b) => b[1] - a[1]).slice(0, 5);
+  const tbody = document.getElementById('topSchoolsTableBody');
+  if (!tbody) return;
   
-  const tot = gkCount + ictCount;
-  const max = Math.max(gkCount, ictCount, 1);
-  const box = document.getElementById('chartProjectBox');
-  if (tot === 0) {
-    box.innerHTML = '<div style="text-align:center; padding:20px; color:var(--muted); font-size:0.8rem;">No data to display.</div>';
+  if (sorted.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;color:var(--muted);padding:10px;">No data</td></tr>';
     return;
   }
 
-  const gkPct = Math.round((gkCount / max) * 100);
-  const ictPct = Math.round((ictCount / max) * 100);
+  tbody.innerHTML = sorted.map(([name, count]) => `
+    <tr>
+      <td style="padding:6px 10px;">${esc(name)}</td>
+      <td style="padding:6px 10px;text-align:right;font-weight:bold;">${count}</td>
+    </tr>
+  `).join('');
+}
 
-  box.innerHTML = `
-    <div class="chart-bar-row">
-      <div class="chart-bar-label">
-        <span>GK (Gyan Kunj) Project</span>
-        <b>${gkCount}</b>
-      </div>
-      <div class="chart-bar-bg">
-        <div class="chart-bar-fill" style="width: ${gkPct}%; background: linear-gradient(135deg, #10b981, #059669);"></div>
-      </div>
-    </div>
-    <div class="chart-bar-row" style="margin-top:16px;">
-      <div class="chart-bar-label">
-        <span>ICT Project</span>
-        <b>${ictCount}</b>
-      </div>
-      <div class="chart-bar-bg">
-        <div class="chart-bar-fill" style="width: ${ictPct}%; background: linear-gradient(135deg, #1a56db, #06b6d4);"></div>
-      </div>
-    </div>
-  `;
+function populateDashboardFilters() {
+  const projSel = document.getElementById('dashProject');
+  const equipSel = document.getElementById('dashEquipment');
+  const partSel = document.getElementById('dashPart');
+  const distSel = document.getElementById('dashDistrict');
+  
+  if (projSel) {
+    projSel.innerHTML = '<option value="">All Projects</option>';
+    (masterData.projects || []).forEach(p => {
+      if (p.status === 'active') {
+        const opt = document.createElement('option');
+        opt.value = p.name;
+        opt.textContent = p.fullName + ' (' + p.name + ')';
+        projSel.appendChild(opt);
+      }
+    });
+  }
+  
+  if (equipSel) {
+    equipSel.innerHTML = '<option value="">All Equipment</option>';
+    (masterData.equipment || []).forEach(e => {
+      if (e.status === 'active') {
+        const opt = document.createElement('option');
+        opt.value = e.name;
+        opt.textContent = e.name;
+        equipSel.appendChild(opt);
+      }
+    });
+  }
+  
+  if (partSel) {
+    partSel.innerHTML = '<option value="">All Suspected Parts</option>';
+    (masterData.suspectedParts || []).forEach(p => {
+      if (p.status === 'active') {
+        const opt = document.createElement('option');
+        opt.value = p.name;
+        opt.textContent = p.name;
+        partSel.appendChild(opt);
+      }
+    });
+  }
+  
+  if (distSel) {
+    distSel.innerHTML = '<option value="">All Districts</option>';
+    const uniqueDistricts = new Set();
+    for (const dise in schoolDataRaw) {
+      const entries = schoolDataRaw[dise];
+      const recs = Array.isArray(entries) ? entries : [entries];
+      recs.forEach(r => {
+        if (r.district) uniqueDistricts.add(r.district.toUpperCase().trim());
+      });
+    }
+    Array.from(uniqueDistricts).sort().forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d;
+      opt.textContent = d;
+      distSel.appendChild(opt);
+    });
+  }
+}
+
+function resetDashboardFilters() {
+  document.getElementById('dashFromDate').value = '';
+  document.getElementById('dashToDate').value = '';
+  document.getElementById('dashProject').value = '';
+  document.getElementById('dashDistrict').value = '';
+  document.getElementById('dashEquipment').value = '';
+  document.getElementById('dashPart').value = '';
+  renderDashboard();
+}
+
+function exportDashboardPDF() {
+  window.print();
 }
 
 /* ─────────────── SCHOOL MASTER ─────────────── */
@@ -1376,12 +2139,416 @@ async function saveSchoolEdit() {
   }
 }
 
+/* ─────────────── PROJECT MASTER ─────────────── */
+function renderProjectMaster() {
+  const grid = document.getElementById('projectGrid');
+  if (!grid) return;
+  const proj = masterData.projects || [];
+  
+  if (proj.length === 0) {
+    grid.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);">No projects configured.</div>';
+    return;
+  }
+  
+  const activeEquip = (masterData.equipment || []).filter(e => e.status === 'active');
+  const mappings = masterData.projectEquipmentMap || [];
+
+  grid.innerHTML = proj.map((p, pIdx) => {
+    return `
+      <div class="eq-card ${p.status !== 'active' ? 'inactive' : ''}">
+        <div class="eq-header">
+          <div class="eq-icon">🏗️</div>
+          <div class="eq-name"><b>${esc(p.name)}</b> - ${esc(p.fullName)}</div>
+          <div class="eq-actions">
+            <button class="btn btn-sm ${p.status === 'active' ? 'btn-danger' : 'btn-success'}" onclick="toggleProject(${pIdx})" style="padding:4px 8px;">
+              ${p.status === 'active' ? 'Disable' : 'Enable'}
+            </button>
+          </div>
+        </div>
+        <div class="eq-body">
+          <div style="font-size:0.75rem; font-weight:700; margin-bottom:8px; color:var(--muted);">Mapped Equipment:</div>
+          <div style="display:grid; grid-template-columns:1fr; gap:6px; max-height:150px; overflow-y:auto; padding-right:4px;">
+            ${activeEquip.map(e => {
+              const isMapped = mappings.some(m => m.projectId === p.id && m.equipmentId === e.id);
+              return `
+                <label style="display:flex; align-items:center; gap:8px; font-weight:normal; margin:0; cursor:pointer;">
+                  <input type="checkbox" style="width:16px; height:16px;" ${isMapped ? 'checked' : ''} onchange="updateProjectEquipmentMap('${p.id}', '${e.id}', this.checked)" />
+                  <span style="font-size:0.8rem;">${esc(e.name)}</span>
+                </label>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function openAddProject() {
+  document.getElementById('newProjName').value = '';
+  document.getElementById('newProjFullName').value = '';
+  document.getElementById('addProjectModal').classList.add('show');
+}
+
+function confirmAddProject() {
+  const name = document.getElementById('newProjName').value.trim().toUpperCase();
+  const fullName = document.getElementById('newProjFullName').value.trim();
+  if (!name || !fullName) {
+    showToast('⚠️ Project Code and Full Name required', 'warn');
+    return;
+  }
+  
+  if (!masterData.projects) masterData.projects = [];
+  const exists = masterData.projects.some(p => p.name === name);
+  if (exists) {
+    showToast('⚠️ Project with this code already exists', 'warn');
+    return;
+  }
+  
+  const id = 'PRJ' + String(Date.now()).slice(-5);
+  masterData.projects.push({ id, name, fullName, status: 'active' });
+  closeModal('addProjectModal');
+  markDirty();
+  renderProjectMaster();
+  showToast(`🏗️ Project ${name} added successfully!`, 'success');
+}
+
+function toggleProject(pIdx) {
+  const p = masterData.projects[pIdx];
+  p.status = p.status === 'active' ? 'inactive' : 'active';
+  markDirty();
+  renderProjectMaster();
+}
+
+function updateProjectEquipmentMap(projectId, equipmentId, isChecked) {
+  if (!masterData.projectEquipmentMap) masterData.projectEquipmentMap = [];
+  
+  if (isChecked) {
+    const exists = masterData.projectEquipmentMap.some(m => m.projectId === projectId && m.equipmentId === equipmentId);
+    if (!exists) {
+      masterData.projectEquipmentMap.push({ projectId, equipmentId });
+    }
+  } else {
+    masterData.projectEquipmentMap = masterData.projectEquipmentMap.filter(m => !(m.projectId === projectId && m.equipmentId === equipmentId));
+  }
+  markDirty();
+}
+
+/* ─────────────── PARTS MASTER ─────────────── */
+function renderPartsTable() {
+  const tbody = document.getElementById('partsTableBody');
+  if (!tbody) return;
+  const parts = masterData.suspectedParts || [];
+  
+  if (parts.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--muted);">No suspected parts configured.</td></tr>';
+    return;
+  }
+  
+  tbody.innerHTML = parts.map((p, idx) => `
+    <tr>
+      <td><code>${p.id}</code></td>
+      <td><b>${esc(p.name)}</b></td>
+      <td><span class="badge badge-${p.status === 'active' ? 'active' : 'inactive'}">${p.status}</span></td>
+      <td>
+        <button class="btn btn-ghost btn-sm" onclick="togglePart(${idx})">${p.status === 'active' ? 'Disable' : 'Enable'}</button>
+        <button class="btn btn-danger btn-sm" onclick="deletePart(${idx})">🗑️ Delete</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function addSuspectedPart() {
+  const inp = document.getElementById('newPartName');
+  const name = inp.value.trim();
+  if (!name) {
+    showToast('⚠️ Part name required', 'warn');
+    return;
+  }
+  
+  if (!masterData.suspectedParts) masterData.suspectedParts = [];
+  const exists = masterData.suspectedParts.some(p => p.name.toLowerCase() === name.toLowerCase());
+  if (exists) {
+    showToast('⚠️ Part already exists', 'warn');
+    return;
+  }
+  
+  const id = 'SP' + String(Date.now()).slice(-5);
+  masterData.suspectedParts.push({ id, name, status: 'active' });
+  inp.value = '';
+  markDirty();
+  renderPartsTable();
+  showToast(`🔧 Part ${name} added!`, 'success');
+}
+
+function togglePart(idx) {
+  const p = masterData.suspectedParts[idx];
+  p.status = p.status === 'active' ? 'inactive' : 'active';
+  markDirty();
+  renderPartsTable();
+}
+
+function deletePart(idx) {
+  if (confirm(`Are you sure you want to delete suspected part "${masterData.suspectedParts[idx].name}"?`)) {
+    masterData.suspectedParts.splice(idx, 1);
+    markDirty();
+    renderPartsTable();
+  }
+}
+
+/* ─────────────── ACCESS CONTROL ─────────────── */
+function onAccessRoleChange() {
+  const role = document.getElementById('accessUserRole').value;
+  const box = document.getElementById('accessDistrictSelectBox');
+  if (role === 'district_admin' || role === 'viewer') {
+    box.style.display = 'block';
+    populateAccessDistricts();
+  } else {
+    box.style.display = 'none';
+  }
+}
+
+function populateAccessDistricts() {
+  const sel = document.getElementById('accessUserDistricts');
+  if (!sel) return;
+  sel.innerHTML = '';
+  
+  const uniqueDistricts = new Set();
+  for (const dise in schoolDataRaw) {
+    const entries = schoolDataRaw[dise];
+    const recs = Array.isArray(entries) ? entries : [entries];
+    recs.forEach(r => {
+      if (r.district) {
+        uniqueDistricts.add(r.district.toUpperCase().trim());
+      }
+    });
+  }
+  
+  const sorted = Array.from(uniqueDistricts).sort();
+  sorted.forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = d;
+    opt.textContent = d;
+    sel.appendChild(opt);
+  });
+}
+
+function renderAccessControl() {
+  const tbody = document.getElementById('accessTableBody');
+  if (!tbody) return;
+  const users = masterData.accessUsers || [];
+  
+  if (users.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--muted);">No access users configured.</td></tr>';
+    return;
+  }
+  
+  tbody.innerHTML = users.map((u, idx) => `
+    <tr>
+      <td><code>${u.id}</code></td>
+      <td><b>${esc(u.name)}</b></td>
+      <td>${esc(u.email)}</td>
+      <td>${esc(u.phone || '—')}</td>
+      <td><code>${esc(u.role)}</code></td>
+      <td><span style="font-size:0.75rem; color:var(--muted);">${esc((u.assignedDistricts || []).join(', '))}</span></td>
+      <td><span class="badge badge-${u.status === 'active' ? 'active' : 'inactive'}">${u.status}</span></td>
+      <td>
+        <button class="btn btn-ghost btn-sm" onclick="toggleAccessUser(${idx})">${u.status === 'active' ? 'Disable' : 'Enable'}</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteAccessUser(${idx})">🗑️ Delete</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function openAddAccessUser() {
+  document.getElementById('accessUserName').value = '';
+  document.getElementById('accessUserEmail').value = '';
+  document.getElementById('accessUserPhone').value = '';
+  document.getElementById('accessUserPassword').value = '';
+  document.getElementById('accessUserRole').value = 'viewer';
+  document.getElementById('accessDistrictSelectBox').style.display = 'block';
+  populateAccessDistricts();
+  document.getElementById('addAccessModal').classList.add('show');
+}
+
+function confirmAddAccessUser() {
+  const name = document.getElementById('accessUserName').value.trim();
+  const email = document.getElementById('accessUserEmail').value.trim();
+  const phone = document.getElementById('accessUserPhone').value.trim();
+  const password = document.getElementById('accessUserPassword').value;
+  const role = document.getElementById('accessUserRole').value;
+  
+  if (!name || !email || !password) {
+    showToast('⚠️ Name, Email and Password required', 'warn');
+    return;
+  }
+  
+  let assignedDistricts = [];
+  if (role === 'district_admin' || role === 'viewer') {
+    const sel = document.getElementById('accessUserDistricts');
+    assignedDistricts = Array.from(sel.selectedOptions).map(opt => opt.value);
+    if (assignedDistricts.length === 0) {
+      showToast('⚠️ Please select at least one assigned district', 'warn');
+      return;
+    }
+  } else {
+    assignedDistricts = ['ALL'];
+  }
+  
+  if (!masterData.accessUsers) masterData.accessUsers = [];
+  const exists = masterData.accessUsers.some(u => u.email.toLowerCase() === email.toLowerCase());
+  if (exists) {
+    showToast('⚠️ Email already has access', 'warn');
+    return;
+  }
+  
+  const id = 'ACC' + String(Date.now()).slice(-5);
+  masterData.accessUsers.push({ id, name, email, phone, password, role, assignedDistricts, status: 'active' });
+  closeModal('addAccessModal');
+  markDirty();
+  renderAccessControl();
+  showToast(`🔒 Access user ${name} created successfully!`, 'success');
+}
+
+function toggleAccessUser(idx) {
+  const u = masterData.accessUsers[idx];
+  u.status = u.status === 'active' ? 'inactive' : 'active';
+  markDirty();
+  renderAccessControl();
+}
+
+function deleteAccessUser(idx) {
+  if (confirm(`Are you sure you want to delete access for "${masterData.accessUsers[idx].name}"?`)) {
+    masterData.accessUsers.splice(idx, 1);
+    markDirty();
+    renderAccessControl();
+  }
+}
+
+/* ─────────────── ARCHIVE MANAGER ─────────────── */
+let archiveList = [];
+
+async function renderArchiveManager() {
+  const tbody = document.getElementById('archiveHistoryBody');
+  if (!tbody) return;
+  
+  const local = isLocal();
+  try {
+    if (GOOGLE_SCRIPT_URL && !local && navigator.onLine) {
+      const res = await fetch(GOOGLE_SCRIPT_URL + '?action=get_archive_list');
+      if (res.ok) {
+        archiveList = await res.json();
+      }
+    } else {
+      archiveList = [];
+    }
+  } catch (e) {
+    archiveList = [];
+  }
+  
+  if (archiveList.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--muted);">No archived records found in Google Sheet.</td></tr>';
+    return;
+  }
+  
+  tbody.innerHTML = archiveList.map((c, idx) => `
+    <tr>
+      <td><code>${esc(c.archiveTab)}</code></td>
+      <td><b>${esc(c.caseId)}</b></td>
+      <td><code>${esc(c.dise)}</code></td>
+      <td>${esc(c.school)}</td>
+      <td>${esc(c.equipment)}</td>
+      <td><code>${esc(c.serialNumber || '—')}</code></td>
+      <td>${new Date(c.submittedAt).toLocaleDateString()}</td>
+      <td>
+        <button class="btn btn-ghost btn-sm" onclick="restoreArchiveRecord('${esc(c.caseId)}')">📥 Restore</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function archiveDataRange() {
+  const fromDate = document.getElementById('archiveFromDate').value;
+  const toDate = document.getElementById('archiveToDate').value;
+  
+  if (!fromDate || !toDate) {
+    showToast('⚠️ From and To date required for archiving', 'warn');
+    return;
+  }
+  
+  if (new Date(fromDate) > new Date(toDate)) {
+    showToast('⚠️ From Date cannot be after To Date', 'warn');
+    return;
+  }
+  
+  if (!confirm(`Are you sure you want to archive complaints between ${fromDate} and ${toDate}?\nActive complaints will be moved to separate monthly archive sheets in Google Sheets.`)) {
+    return;
+  }
+  
+  showToast('⏳ Archiving data in progress...', 'info');
+  const local = isLocal();
+  
+  if (local) {
+    showToast('⚠️ Archiving is only supported in production (Google Apps Script). Local file-based mock has no archive sheet.', 'warn');
+    return;
+  }
+  
+  try {
+    const res = await fetch(GOOGLE_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ action: 'archive_complaints', fromDate, toDate }),
+    });
+    const result = await res.json();
+    if (result.status === 'ok') {
+      showToast(`📦 Archived ${result.archived} records successfully!`, 'success');
+      await loadComplaints();
+      await renderArchiveManager();
+    } else {
+      throw new Error(result.message);
+    }
+  } catch (e) {
+    showToast(`❌ Archive failed: ${e.message}`, 'danger');
+  }
+}
+
+async function restoreArchiveRecord(caseId) {
+  if (!confirm(`Are you sure you want to restore complaint ${caseId} from archive?`)) {
+    return;
+  }
+  
+  showToast('⏳ Restoring complaint...', 'info');
+  const local = isLocal();
+  
+  if (local) {
+    showToast('⚠️ Restoring is only supported in production (Google Apps Script).', 'warn');
+    return;
+  }
+  
+  try {
+    const res = await fetch(GOOGLE_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ action: 'restore_complaints', caseIds: [caseId] }),
+    });
+    const result = await res.json();
+    if (result.status === 'ok') {
+      showToast(`📥 Restored ${result.restored} records successfully!`, 'success');
+      await loadComplaints();
+      await renderArchiveManager();
+    } else {
+      throw new Error(result.message);
+    }
+  } catch (e) {
+    showToast(`❌ Restore failed: ${e.message}`, 'danger');
+  }
+}
+
 /* ─────────────── EQUIPMENT MASTER ─────────────── */
 function renderMasterTable() {
   const grid = document.getElementById('eqGrid');
   const eq = masterData.equipment || [];
   
-  // Render stats counts
   document.getElementById('eqCountTotal').textContent = eq.length;
   document.getElementById('eqCountActive').textContent = eq.filter(e => e.status === 'active').length;
   document.getElementById('natureCountTotal').textContent = eq.reduce((s, e) => s + (e.complaints?.filter(c => c.status === 'active').length || 0), 0);
@@ -1424,73 +2591,6 @@ function renderMasterTable() {
   `).join('');
 }
 
-function openAddEquip() {
-  document.getElementById('newEquipName').value = '';
-  document.getElementById('addEquipModal').classList.add('show');
-}
-function confirmAddEquip() {
-  const name = document.getElementById('newEquipName').value.trim();
-  if (!name) { showToast('⚠️ Enter name', 'warn'); return; }
-  const exists = masterData.equipment.some(e => e.name.toLowerCase() === name.toLowerCase());
-  if (exists) { showToast('⚠️ Already exists', 'warn'); return; }
-  
-  const id = 'EQ' + String(Date.now()).slice(-5);
-  masterData.equipment.push({ id, name, status: 'active', complaints: [] });
-  closeModal('addEquipModal');
-  markDirty();
-  renderMasterTable();
-}
-
-function openRenameEquip(eIdx) {
-  document.getElementById('renameEquipInput').value = masterData.equipment[eIdx].name;
-  document.getElementById('renameEquipId').value = eIdx;
-  document.getElementById('renameEquipModal').classList.add('show');
-}
-function confirmRenameEquip() {
-  const eIdx = parseInt(document.getElementById('renameEquipId').value);
-  const name = document.getElementById('renameEquipInput').value.trim();
-  if (!name) return;
-  masterData.equipment[eIdx].name = name;
-  closeModal('renameEquipModal');
-  markDirty();
-  renderMasterTable();
-}
-
-function toggleEquip(eIdx) {
-  const e = masterData.equipment[eIdx];
-  e.status = e.status === 'active' ? 'inactive' : 'active';
-  markDirty();
-  renderMasterTable();
-}
-function toggleNature(eIdx, cIdx) {
-  const c = masterData.equipment[eIdx].complaints[cIdx];
-  c.status = c.status === 'active' ? 'inactive' : 'active';
-  markDirty();
-  renderMasterTable();
-}
-function deleteNature(eIdx, cIdx) {
-  if (confirm("Are you sure you want to delete this complaint type?")) {
-    masterData.equipment[eIdx].complaints.splice(cIdx, 1);
-    markDirty();
-    renderMasterTable();
-  }
-}
-function addNature(eIdx) {
-  const inp = document.getElementById(`newNature-${eIdx}`);
-  const name = inp.value.trim();
-  if (!name) return;
-  
-  const complaints = masterData.equipment[eIdx].complaints || [];
-  const exists = complaints.some(c => c.name.toLowerCase() === name.toLowerCase());
-  if (exists) { showToast('⚠️ Nature already exists', 'warn'); return; }
-  
-  const id = 'NC' + String(Date.now()).slice(-6);
-  complaints.push({ id, name, status: 'active' });
-  inp.value = '';
-  markDirty();
-  renderMasterTable();
-}
-
 /* ─────────────── USER MASTER (ENGINEERS) ─────────────── */
 function renderUserTable() {
   const tbody = document.getElementById('userTableBody');
@@ -1514,57 +2614,7 @@ function renderUserTable() {
   `).join('');
 }
 
-function openAddUserModal() {
-  document.getElementById('newUserName').value = '';
-  document.getElementById('newUserPhone').value = '';
-  document.getElementById('addUserModal').classList.add('show');
-}
-
-function confirmAddUser() {
-  const name  = document.getElementById('newUserName').value.trim();
-  const phone = document.getElementById('newUserPhone').value.trim();
-  const role  = document.getElementById('newUserRole').value;
-  if (!name || !phone) { showToast('⚠️ Enter name and phone', 'warn'); return; }
-  if (!/^\d{10}$/.test(phone)) { showToast('⚠️ Phone must be 10 digits', 'warn'); return; }
-
-  const exists = (masterData.users || []).some(u => u.phone === phone);
-  if (exists) { showToast('⚠️ User with this phone already exists', 'warn'); return; }
-
-  const id = 'USR' + String(100 + (masterData.users?.length || 0));
-  masterData.users.push({ id, name, phone, role, status: 'active' });
-  closeModal('addUserModal');
-  markDirty();
-  renderUserTable();
-  showToast(`Authorized engineer: ${name} added!`, 'success');
-}
-
-function toggleUser(index) {
-  const u = masterData.users[index];
-  u.status = u.status === 'active' ? 'inactive' : 'active';
-  markDirty();
-  renderUserTable();
-}
-
-function deleteUser(index) {
-  if (confirm("Remove this engineer from authorization?")) {
-    masterData.users.splice(index, 1);
-    markDirty();
-    renderUserTable();
-  }
-}
-
-/* ─────────────── COMPLAINTS & CENTRAL LOG ─────────────── */
-function populateFilters() {
-  const sel = document.getElementById('filterEquipment');
-  sel.innerHTML = '<option value="">All Equipment</option>';
-  (masterData.equipment || []).forEach(e => {
-    const opt = document.createElement('option');
-    opt.value = e.name;
-    opt.textContent = e.name;
-    sel.appendChild(opt);
-  });
-}
-
+/* ─────────────── CENTRAL COMPLAINTS LOG ─────────────── */
 function renderComplaintsTable() {
   const tbody = document.getElementById('complaintsTableBody');
   const filtered = getFilteredComplaints();
@@ -1577,11 +2627,11 @@ function renderComplaintsTable() {
   }
 
   tbody.innerHTML = filtered.map((c, index) => {
-    // Find index in main list to edit status
     const origIndex = complaintsList.findIndex(orig => orig.submittedAt === c.submittedAt && orig.dise === c.dise);
+    const isDuplicate = c.duplicateStatus === 'YES';
     
     return `
-      <tr>
+      <tr ${isDuplicate ? 'class="duplicate-row"' : ''}>
         <td>
           <b>${esc(c.caseId || 'CASE-N/A')}</b><br>
           <span style="font-size:0.7rem; color:var(--muted); font-weight:600;">${esc(c.groupId ? 'Group: ' + c.groupId : 'Single Item')}</span>
@@ -1600,7 +2650,7 @@ function renderComplaintsTable() {
           ${(() => {
             const photoSrc = getComplaintPhoto(c);
             return photoSrc 
-              ? `<img src="${photoSrc}" style="width:60px; height:60px; object-fit:cover; border-radius:8px; border:1px solid var(--border); cursor:pointer; display:block;" onclick="viewAdminPhoto('${esc(photoSrc)}')" />`
+              ? `<img src="${photoSrc}" style="width:60px; height:60px; object-fit:cover; border-radius:8px; border:1px solid var(--border); cursor:pointer; display:block;" onclick="viewAdminPhoto(${origIndex})" />`
               : '<span style="color:var(--muted); font-size:0.8rem;">❌ No Photo</span>';
           })()}
         </td>
@@ -1627,176 +2677,140 @@ function renderComplaintsTable() {
   }).join('');
 }
 
-function getFilteredComplaints() {
-  const proj = document.getElementById('filterProject').value;
-  const equip = document.getElementById('filterEquipment').value;
-  const status = document.getElementById('filterStatus').value.toLowerCase().trim();
-  const search = document.getElementById('filterText').value.toLowerCase().trim();
-  const filterDate = document.getElementById('filterDate').value; // YYYY-MM-DD
+/* ─────────────── SESSION & ACCESS LOGIC ─────────────── */
+const SESSION_KEY = 'armeeAdmin_session';
+let currentUser = null;
 
-  return complaintsList.filter(c => {
-    if (proj && c.project !== proj) return false;
-    if (equip && c.equipment !== equip) return false;
-    if (status) {
-      const s = String(c.status || 'open').toLowerCase().trim();
-      if (status === 'open' && (s !== 'open' && s !== 'pending')) return false;
-      if (status === 'in progress' && s !== 'in progress' && s !== 'inprogress') return false;
-      if (status === 'resolved' && s !== 'resolved') return false;
-      if (status === 'closed' && s !== 'closed') return false;
+function getSession() {
+  try {
+    const s = localStorage.getItem(SESSION_KEY);
+    if (!s) return null;
+    const session = JSON.parse(s);
+    if (Date.now() - session.timestamp > 8 * 60 * 60 * 1000) {
+      localStorage.removeItem(SESSION_KEY);
+      return null;
     }
-    if (filterDate) {
-      if (!c.submittedAt) return false;
-      const subDate = new Date(c.submittedAt);
-      if (isNaN(subDate.getTime())) {
-        if (!c.submittedAt.includes(filterDate)) return false;
-      } else {
-        const yyyy = subDate.getFullYear();
-        const mm = String(subDate.getMonth() + 1).padStart(2, '0');
-        const dd = String(subDate.getDate()).padStart(2, '0');
-        const localDateStr = `${yyyy}-${mm}-${dd}`;
-        if (localDateStr !== filterDate) return false;
-      }
-    }
-    if (search) {
-      const match = (c.school || '').toLowerCase().includes(search) ||
-                    (c.dise || '').toLowerCase().includes(search) ||
-                    (c.serialNumber || '').toLowerCase().includes(search) ||
-                    (c.caseId || '').toLowerCase().includes(search) ||
-                    (c.groupId || '').toLowerCase().includes(search);
-      if (!match) return false;
-    }
-    return true;
-  });
+    currentUser = session.user;
+    return currentUser;
+  } catch (e) {
+    return null;
+  }
 }
 
-function filterComplaints() {
-  renderComplaintsTable();
+function showLoginModal() {
+  document.getElementById('adminLoginModal').classList.add('show');
 }
 
-function updateComplaintStatus(origIndex, newStatus) {
-  complaintsList[origIndex].status = newStatus;
-  markDirty();
-  showToast(`Complaint status changed to: ${newStatus}`, 'success');
-}
+function submitAdminLogin() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const pass = document.getElementById('loginPassword').value;
 
-function shareComplaintReport(index) {
-  const c = complaintsList[index];
-  const grp = c.groupId ? `\nGroup ID: ${c.groupId} (Item ${c.itemNumber}/${c.quantity})` : '';
-  const txt = [
-    `📋 SCHOOL COMPLAINT REPORT`,
-    `School: ${c.school}`,
-    `DISE: ${c.dise}`,
-    `Equipment: ${c.equipment}`,
-    `Nature: ${c.natureOfComplaint}`,
-    `Serial: ${c.serialNumber || 'N/A'}`,
-    `GPS: ${c.latitude ? c.latitude + ',' + c.longitude : 'N/A'}`,
-    `Status: ${c.status || 'Open'}`,
-    `By: ${c.complainantName} (${c.complainantPhone})`,
-    `Logged: ${new Date(c.submittedAt).toLocaleString()}`,
-    grp,
-  ].join('\n');
-  navigator.clipboard.writeText(txt).then(() => showToast('Report copied to clipboard!', 'success'));
-}
-
-/* ─────────────── DOWNLOAD REPORTS (EXCEL/CSV) ─────────────── */
-function downloadReport(format) {
-  const filtered = getFilteredComplaints();
-  if (filtered.length === 0) {
-    showToast('⚠️ No records to download!', 'warn');
+  if (!email || !pass) {
+    showToast('⚠️ Email and password required', 'warn');
     return;
   }
 
-  if (format === 'csv') {
-    // 1. Build CSV content
-    const headers = [
-      'SR No.', 'Submitted At', 'Complainant Name', 'Complainant Phone', 'Complainant Role', 'Project',
-      'DISE Code', 'School Code', 'District', 'Taluka', 'School Name', 'Principal Name', 'Principal Contact',
-      'Address', 'Pin Code', 'Equipment', 'Nature of Complaint', 'Serial Number', 'Quantity', 'Complaint Date',
-      'Medium', 'Description', 'Photo Count', 'Status', 'Case ID', 'Latitude', 'Longitude', 'Photo URL'
-    ];
+  const accessUsers = masterData.accessUsers || [];
+  let user = null;
 
-    const rows = [headers];
-    filtered.forEach((c, index) => {
-      const photoSrc = getComplaintPhoto(c) || '';
-      rows.push([
-        index + 1, c.submittedAt || '', c.complainantName || '', c.complainantPhone || '', c.complainantRole || '', c.project || '',
-        c.dise || '', c.schoolCode || '', c.district || '', c.taluka || '', c.school || '', c.principal || '', c.contact || '',
-        c.address || '', c.pincode || '', c.equipment || '', c.natureOfComplaint || '', c.serialNumber || '', c.quantity || 1, c.complaintDate || '',
-        c.medium || '', c.description || '', c.photoCount || 0, c.status || 'Open', c.caseId || '', c.latitude || '', c.longitude || '',
-        photoSrc.startsWith('data:') ? 'Local Photo (Base64)' : photoSrc
-      ]);
-    });
-
-    const csvContent = "data:text/csv;charset=utf-8," 
-      + rows.map(r => r.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
-      
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `ArMee_School_Complaints_Report_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showToast('📥 CSV downloaded successfully!', 'success');
-  } 
-  else if (format === 'excel') {
-    // 2. Generate a real XLSX file using SheetJS (no warning dialog, no corruption)
-    const data = filtered.map((c, index) => {
-      const photoSrc = getComplaintPhoto(c) || '';
-      return {
-        'SR No.': index + 1,
-        'Submitted At': c.submittedAt || '',
-        'Complainant Name': c.complainantName || '',
-        'Complainant Phone': c.complainantPhone || '',
-        'Complainant Role': c.complainantRole || '',
-        'Project': c.project || '',
-        'DISE Code': c.dise || '',
-        'School Code': c.schoolCode || '',
-        'District': c.district || '',
-        'Taluka': c.taluka || '',
-        'School Name': c.school || '',
-        'Principal Name': c.principal || '',
-        'Principal Contact': c.contact || '',
-        'Address': c.address || '',
-        'Pin Code': c.pincode || '',
-        'Equipment': c.equipment || '',
-        'Nature of Complaint': c.natureOfComplaint || '',
-        'Serial Number': c.serialNumber || '',
-        'Quantity': c.quantity || 1,
-        'Complaint Date': c.complaintDate || '',
-        'Medium': c.medium || '',
-        'Description': c.description || '',
-        'Photo Count': c.photoCount || 0,
-        'Status': c.status || 'Open',
-        'Case ID': c.caseId || '',
-        'Latitude': c.latitude || '',
-        'Longitude': c.longitude || '',
-        'Photo URL': photoSrc.startsWith('data:') ? 'Local Photo (Base64)' : photoSrc
+  if (accessUsers.length === 0) {
+    if (email === 'admin@armee.in' && pass === 'armee@2026') {
+      user = {
+        id: 'USR100',
+        name: 'Super Admin',
+        email: 'admin@armee.in',
+        role: 'super_admin',
+        assignedDistricts: ['ALL'],
+        status: 'active'
       };
-    });
-
-    const ws = XLSX.utils.json_to_sheet(data);
-
-    // Set hyperlinks for the "Photo URL" column (which is index 27, Column AB)
-    const range = XLSX.utils.decode_range(ws['!ref']);
-    for (let r = 1; r <= range.e.r; r++) {
-      const cellRef = XLSX.utils.encode_cell({ r: r, c: 27 }); // column 27 (AB)
-      const cell = ws[cellRef];
-      if (cell && cell.v && cell.v.startsWith('http')) {
-        ws[cellRef] = {
-          t: 's',
-          v: 'View Photo',
-          l: { Target: cell.v, Tooltip: 'Click to open photo link' }
-        };
-      }
     }
+  } else {
+    user = accessUsers.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === pass && u.status === 'active');
+  }
 
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Complaints List");
+  if (user) {
+    currentUser = user;
+    const session = {
+      user: user,
+      timestamp: Date.now()
+    };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    closeModal('adminLoginModal');
+    updateUserProfileUI(user);
+    startAutoRefresh();
+    loadData();
+    loadComplaints();
+    showToast(`🔓 Welcome back, ${user.name}!`, 'success');
+  } else {
+    showToast('❌ Invalid email, password, or account inactive', 'danger');
+  }
+}
 
-    // Write to a real .xlsx file
-    XLSX.writeFile(wb, `ArMee_School_Complaints_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
-    showToast('📥 Excel downloaded successfully!', 'success');
+function updateUserProfileUI(user) {
+  const chip = document.getElementById('userChip');
+  const logoutBtn = document.getElementById('btnLogout');
+  
+  if (chip && logoutBtn) {
+    chip.textContent = `👤 ${user.name} (${user.role === 'super_admin' ? 'Admin' : 'District'})`;
+    chip.style.display = 'inline-flex';
+    logoutBtn.style.display = 'inline-flex';
+  }
+}
+
+function logout() {
+  localStorage.removeItem(SESSION_KEY);
+  currentUser = null;
+  stopAutoRefresh();
+  location.reload();
+}
+
+function filterByUserDistricts(complaints) {
+  if (!currentUser) return complaints;
+  if (currentUser.role === 'super_admin') return complaints;
+  const districts = currentUser.assignedDistricts || [];
+  if (districts.includes('ALL')) return complaints;
+  
+  return complaints.filter(c => {
+    const d = String(c.district || '').toUpperCase().trim();
+    return districts.some(ad => ad.toUpperCase().trim() === d);
+  });
+}
+
+/* ─────────────── AUTO REFRESH ─────────────── */
+let refreshInterval = null;
+
+function startAutoRefresh() {
+  stopAutoRefresh();
+  refreshInterval = setInterval(async () => {
+    if (!isDirty) {
+      await silentRefreshData();
+    }
+  }, 120000);
+}
+
+function stopAutoRefresh() {
+  if (refreshInterval) {
+    clearInterval(refreshInterval);
+    refreshInterval = null;
+  }
+}
+
+async function silentRefreshData() {
+  const liveDot = document.querySelector('#liveIndicator span');
+  if (liveDot) {
+    liveDot.style.background = '#e2e8f0';
+  }
+  
+  try {
+    await loadData();
+    await loadComplaints();
+    showToast('🔄 Data refreshed silently', 'success');
+  } catch (e) {
+    showToast('⚠️ Silent refresh failed: ' + e.message, 'warn');
+  }
+  
+  if (liveDot) {
+    liveDot.style.background = '#10b981';
   }
 }
 
@@ -1826,18 +2840,54 @@ function getComplaintPhoto(c) {
   return null;
 }
 
-function viewAdminPhoto(src) {
+function viewAdminPhoto(index) {
+  const c = complaintsList[index];
+  const src = getComplaintPhoto(c);
+  
   const modal = document.getElementById('adminPhotoModal');
   const img = document.getElementById('adminPhotoImg');
   const downloadBtn = document.getElementById('adminPhotoDownload');
   
   img.src = src;
-  downloadBtn.href = src;
   
-  if (src.startsWith('http')) {
+  let fileId = '';
+  if (src && src.startsWith('http')) {
+    if (src.includes('lh3.googleusercontent.com/d/')) {
+      fileId = src.split('lh3.googleusercontent.com/d/')[1];
+      if (fileId && fileId.includes('?')) fileId = fileId.split('?')[0];
+    } else if (src.includes('drive.google.com/file/d/')) {
+      fileId = src.split('drive.google.com/file/d/')[1].split('/')[0];
+    }
+  }
+  
+  const existingDriveBtn = document.getElementById('adminPhotoDriveLink');
+  if (existingDriveBtn) {
+    existingDriveBtn.remove();
+  }
+  
+  if (fileId) {
+    downloadBtn.href = `https://drive.google.com/uc?export=download&id=${fileId}`;
     downloadBtn.target = '_blank';
+    
+    const driveLink = document.createElement('a');
+    driveLink.id = 'adminPhotoDriveLink';
+    driveLink.href = `https://drive.google.com/file/d/${fileId}/view`;
+    driveLink.target = '_blank';
+    driveLink.className = 'btn btn-success';
+    driveLink.style.textDecoration = 'none';
+    driveLink.style.display = 'inline-flex';
+    driveLink.style.alignItems = 'center';
+    driveLink.style.gap = '6px';
+    driveLink.innerHTML = '🔗 View in Drive';
+    
+    downloadBtn.parentNode.insertBefore(driveLink, downloadBtn);
   } else {
-    downloadBtn.removeAttribute('target');
+    downloadBtn.href = src || '';
+    if (src && src.startsWith('http')) {
+      downloadBtn.target = '_blank';
+    } else {
+      downloadBtn.removeAttribute('target');
+    }
   }
   
   modal.classList.add('show');
@@ -1850,10 +2900,10 @@ function formatDateTime(dateStr) {
   return d.toLocaleDateString() + '<br><span style="font-size:0.7rem; color:var(--muted);">' + d.toLocaleTimeString() + '</span>';
 }
 
-
 let toastT;
 function showToast(msg, type = '') {
   const el = document.getElementById('toast');
+  if (!el) return;
   el.textContent = msg; el.className = 'toast ' + type;
   clearTimeout(toastT); el.classList.add('show');
   toastT = setTimeout(() => el.classList.remove('show'), 3000);

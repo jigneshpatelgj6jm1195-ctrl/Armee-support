@@ -592,10 +592,8 @@ textarea { resize: none; min-height: 80px; }
         <p>Enter DISE Code to auto-fill all school details instantly.</p>
         <div class="field" style="margin-bottom:12px;">
           <label for="lookupProject">Project</label>
-          <select id="lookupProject">
-            <option value="">— Select Project —</option>
-            <option value="GK">GK (Gyan Kunj)</option>
-            <option value="ICT">ICT</option>
+          <select id="lookupProject" onchange="onProjectChange()">
+            <option value="">— All Projects —</option>
           </select>
         </div>
         <div class="field" style="margin-bottom:0;">
@@ -748,21 +746,17 @@ textarea { resize: none; min-height: 80px; }
 
         <div class="field mt-12">
           <label for="fSerial">Serial Number <span class="req">*</span></label>
-          <div style="display:flex; gap:8px;">
+          <div style="display:flex; gap:4px; align-items: center;">
             <input type="text" id="fSerial" placeholder="e.g. SN20240001" autocapitalize="characters" style="flex:1; margin-bottom:0;" />
-            <button type="button" class="btn-cam" style="flex-shrink:0; width:auto; padding:0 18px; margin:0; border-radius:12px; font-size:0.85rem; border:none;" onclick="startScanner()">📷 Scan</button>
+            <button type="button" class="btn-cam" style="flex-shrink:0; width:auto; padding:0 14px; height:46px; margin:0; border-radius:12px; font-size:0.82rem; border:none;" onclick="startScanner()">📷 Scan</button>
+            <button type="button" class="btn-cam" style="flex-shrink:0; width:auto; padding:0 14px; height:46px; margin:0; border-radius:12px; font-size:0.82rem; border:none; background:linear-gradient(135deg,#8b5cf6,#6d28d9);box-shadow: 0 4px 14px rgba(139,92,246,0.35);" onclick="startOCR()">📸 OCR</button>
           </div>
         </div>
 
         <div class="field">
-          <label for="fMedium">Medium of Complaint</label>
-          <select id="fMedium">
-            <option value="">— Select —</option>
-            <option>Phone Call</option>
-            <option>WhatsApp</option>
-            <option>Email</option>
-            <option>Visit</option>
-            <option>Online Portal</option>
+          <label for="fSuspectedPart" class="req">Suspected Part *</label>
+          <select id="fSuspectedPart">
+            <option value="">— Select Suspected Part —</option>
           </select>
         </div>
 
@@ -968,12 +962,52 @@ textarea { resize: none; min-height: 80px; }
   </div>
 </div>
 
+<!-- OCR Overlay -->
+<div class="overlay" id="ocrOverlay" onclick="closeOcrOverlay(event)">
+  <div class="sheet" style="max-height:85vh">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">📸 OCR Serial Number Capture</div>
+    <div class="sheet-body">
+      <div id="ocrVideoContainer" style="width:100%;border-radius:12px;overflow:hidden;background:#000;position:relative;margin-bottom:12px;">
+        <video id="ocrVideo" autoplay playsinline style="width:100%;display:block;transform:scaleX(1);"></video>
+        <div style="position:absolute;top:50%;left:5%;right:5%;height:60px;border:2px dashed #06b6d4;border-radius:8px;transform:translateY(-50%);pointer-events:none;box-shadow:0 0 0 9999px rgba(0,0,0,0.5)"></div>
+      </div>
+      <div style="text-align:center;margin-bottom:12px;">
+        <button type="button" class="btn-cam" onclick="captureOCR()" style="width:100%;justify-content:center;">📷 Capture & Read Text</button>
+      </div>
+      <div id="ocrResultContainer" style="display:none;margin-top:12px;">
+        <label style="font-weight:700;font-size:0.8rem;color:var(--text);margin-bottom:4px;display:block;">Extracted Serial Number:</label>
+        <input type="text" id="ocrResult" style="width:100%;padding:12px;border:2px solid var(--primary);border-radius:10px;font-size:1.1rem;font-weight:800;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px;" />
+        <div style="display:flex;gap:8px;">
+          <button type="button" class="btn-submit-final" onclick="confirmOCR()" style="margin:0;">✅ Use This</button>
+          <button type="button" class="btn-back" onclick="retryOCR()" style="margin:0;flex:1;justify-content:center;">🔄 Retry</button>
+        </div>
+      </div>
+      <canvas id="ocrCanvas" style="display:none"></canvas>
+      <button class="btn-back" style="width:100%; justify-content:center; padding:12px; margin-top:12px;" onclick="stopOCR()">✕ Cancel OCR</button>
+    </div>
+  </div>
+</div>
+
+<!-- Duplicate Warning Overlay -->
+<div class="overlay" id="duplicateWarningOverlay">
+  <div class="success-sheet" style="padding: 24px; max-width: 400px; margin: 0 auto;">
+    <div class="success-icon" style="background:linear-gradient(135deg,#f59e0b,#d97706);font-size:32px;margin-bottom:12px;">⚠️</div>
+    <h3 style="color:#d97706;margin-bottom:8px;">Duplicate Serial Number!</h3>
+    <p id="duplicateWarningMsg" style="font-size:0.85rem;color:var(--text);margin-bottom:20px;text-align:left;line-height:1.5;"></p>
+    <div style="display:flex;gap:8px;">
+      <button type="button" class="btn-success-new outline" onclick="cancelDuplicateSubmit()" style="margin:0;padding:12px;">❌ Cancel</button>
+      <button type="button" class="btn-success-new" onclick="confirmDuplicateSubmit()" style="margin:0;padding:12px;background:linear-gradient(135deg,#f59e0b,#d97706);">⚠️ Submit Anyway</button>
+    </div>
+  </div>
+</div>
+
 <!-- ═══════════════════════ SCRIPTS ═══════════════════════ -->
 <script>
 'use strict';
 
 /* ─────────────── CONFIG ─────────────── */
-const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx3I2A-QxKg1bI3EBt1H3sAKPm0_2EKUfQrxqtYT0DBZsaobOaOqaIki4V0p0QIE7AFHA/exec';
+const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx3I2A-QxKg1bI3EBt1H3sAKPm0_2EKUfQrxqtYT0DBZsaoboOaOqalki4V0p0QIE7AFHA/exec';
 
 /* ─────────────── STATE ─────────────── */
 let SCHOOL_DB  = {};
@@ -1152,7 +1186,9 @@ function applyMasterData(data) {
   // Store a fingerprint: use _v timestamp if present, else stringify active equipment names
   const fp = data._v || JSON.stringify((data.equipment || []).map(e => e.name + e.status));
   _masterFingerprint = fp;
+  populateProjectDropdown();
   populateEquipmentDropdown();
+  populateSuspectedParts();
 }
 
 // ── Cross-device real-time polling ───────────────────────────────────────────
@@ -1187,19 +1223,69 @@ function startMasterDataPolling() {
 }
 
 
+function populateProjectDropdown() {
+  const sel = document.getElementById('lookupProject');
+  if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— All Projects —</option>';
+  const projects = (MASTER_DB.projects || []).filter(p => p.status === 'active');
+  projects.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.name;
+    opt.textContent = p.name + (p.fullName ? ' (' + p.fullName + ')' : '');
+    sel.appendChild(opt);
+  });
+  if (cur) sel.value = cur;
+}
+
+function onProjectChange() {
+  const dise = document.getElementById('lookupDise').value.trim();
+  if (dise.length >= 11) {
+    triggerLookup();
+  }
+}
+
 function populateEquipmentDropdown() {
   const sel = document.getElementById('fEquipment');
+  if (!sel) return;
   const cur = sel.value;
   sel.innerHTML = '<option value="">— Select Equipment —</option>';
-  (MASTER_DB.equipment || [])
-    .filter(e => e.status === 'active')
-    .forEach(eq => {
-      const opt = document.createElement('option');
-      opt.value = eq.name;
-      opt.textContent = eq.name;
-      sel.appendChild(opt);
-    });
+  
+  let eqList = (MASTER_DB.equipment || []).filter(e => e.status === 'active');
+  const selectedProject = foundRecord ? foundRecord.project : '';
+  
+  if (selectedProject && MASTER_DB.projectEquipmentMap && MASTER_DB.projectEquipmentMap.length > 0) {
+    const projectObj = (MASTER_DB.projects || []).find(p => p.name === selectedProject);
+    if (projectObj) {
+      const allowedEqIds = MASTER_DB.projectEquipmentMap
+        .filter(m => m.projectId === projectObj.id)
+        .map(m => m.equipmentId);
+      eqList = eqList.filter(eq => allowedEqIds.indexOf(eq.id) !== -1);
+    }
+  }
+  
+  eqList.forEach(eq => {
+    const opt = document.createElement('option');
+    opt.value = eq.name;
+    opt.textContent = eq.name;
+    sel.appendChild(opt);
+  });
   if (cur) { sel.value = cur; onEquipmentChange(); }
+}
+
+function populateSuspectedParts() {
+  const sel = document.getElementById('fSuspectedPart');
+  if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— Select Suspected Part —</option>';
+  const parts = (MASTER_DB.suspectedParts || []).filter(p => p.status === 'active');
+  parts.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.name;
+    opt.textContent = p.name;
+    sel.appendChild(opt);
+  });
+  if (cur) sel.value = cur;
 }
 
 function onEquipmentChange() {
@@ -1224,7 +1310,28 @@ function onEquipmentChange() {
 }
 
 function getBuiltInMasterData() {
-  return { equipment: [
+  return {
+    projects: [
+      { id: 'PRJ01', name: 'GK', fullName: 'Gyan Kunj', status: 'active' },
+      { id: 'PRJ02', name: 'ICT', fullName: 'ICT Lab', status: 'active' }
+    ],
+    projectEquipmentMap: [],
+    suspectedParts: [
+      { id: 'SP01', name: 'Motherboard', status: 'active' },
+      { id: 'SP02', name: 'RAM', status: 'active' },
+      { id: 'SP03', name: 'SSD', status: 'active' },
+      { id: 'SP04', name: 'HDD', status: 'active' },
+      { id: 'SP05', name: 'Adaptor', status: 'active' },
+      { id: 'SP06', name: 'Battery', status: 'active' },
+      { id: 'SP07', name: 'Display Panel', status: 'active' },
+      { id: 'SP08', name: 'Keyboard', status: 'active' },
+      { id: 'SP09', name: 'Touchpad', status: 'active' },
+      { id: 'SP10', name: 'TFT', status: 'active' },
+      { id: 'SP11', name: 'Power Supply', status: 'active' },
+      { id: 'SP12', name: 'LAN Card', status: 'active' },
+      { id: 'SP13', name: 'WiFi Module', status: 'active' }
+    ],
+    equipment: [
     { id:'EQ01', name:'Desktop Computer',           status:'active', complaints:[
       {id:'NC001',name:'Not Starting / Dead',status:'active'},{id:'NC002',name:'Power Issue',status:'active'},
       {id:'NC003',name:'No Display',status:'active'},{id:'NC004',name:'Slow Performance',status:'active'},
@@ -1545,6 +1652,7 @@ function gotoStep(n) {
   document.getElementById('scrollArea').scrollTo({ top: 0, behavior: 'smooth' });
   updateStepUI();
   if (currentStep === 2) fillSchoolSummary();
+  if (currentStep === 3) populateEquipmentDropdown();
   if (currentStep === 4) fillComplaintSummary();
 }
 
@@ -1577,12 +1685,14 @@ function validateStep(step) {
     const qty       = parseInt(document.getElementById('fQty').value) || 0;
     const date      = document.getElementById('fDate').value;
     const serial    = document.getElementById('fSerial').value.trim();
+    const suspectedPart = document.getElementById('fSuspectedPart').value;
     
     if (!equipment) { showToast('⚠️ Select Equipment', 'warn'); return false; }
     if (!nature)    { showToast('⚠️ Select Nature of Complaint', 'warn'); return false; }
     if (qty < 1)    { showToast('⚠️ Enter valid Quantity', 'warn'); return false; }
     if (!date)      { showToast('⚠️ Select Complaint Date', 'warn'); return false; }
     if (!serial)    { showToast('⚠️ Enter or scan Serial Number', 'warn'); return false; }
+    if (!suspectedPart) { showToast('⚠️ Select Suspected Part', 'warn'); return false; }
 
     // Check if serial is unique in the current group
     if (complaintGroup && complaintGroup.submitted) {
@@ -1602,7 +1712,7 @@ function validateStep(step) {
         equipment: equipment,
         nature:    nature,
         date:      date,
-        medium:    document.getElementById('fMedium').value,
+        medium:    document.getElementById('fSuspectedPart').value,
         desc:      document.getElementById('fDesc').value,
         submitted: [],
       };
@@ -1644,6 +1754,7 @@ function fillComplaintSummary() {
     ['Serial No.', document.getElementById('fSerial').value    || 'N/A'],
     ['Item No.',   qtyDisplay],
     ['Date',       document.getElementById('fDate').value      || '—'],
+    ['Suspected Part', document.getElementById('fSuspectedPart').value || '—'],
     ['Photos',     `${photos.filter(Boolean).length} attached`],
   ];
   if (complaintGroup) lines.push(['Group ID', complaintGroup.groupId]);
@@ -1895,6 +2006,29 @@ async function submitForm() {
     return;
   }
 
+  const btn = document.getElementById('btnSubmit');
+  btn.disabled = true;
+  btn.textContent = '⏳ Checking for duplicates…';
+
+  try {
+    const dupInfo = await checkDuplicateBeforeSubmit();
+    if (dupInfo) {
+      btn.disabled = false;
+      btn.textContent = '✅ Submit Complaint';
+      showDuplicateWarning(dupInfo);
+      return;
+    }
+  } catch (err) {
+    console.warn('Duplicate check error:', err);
+  }
+
+  pendingDuplicateStatus = 'NO';
+  btn.disabled = false;
+  btn.textContent = '✅ Submit Complaint';
+  proceedWithSubmission();
+}
+
+async function proceedWithSubmission() {
   if (!gpsLocation) {
     const btn = document.getElementById('btnSubmit');
     btn.disabled = true;
@@ -1909,7 +2043,7 @@ async function submitForm() {
         };
         btn.disabled = false;
         btn.textContent = '✅ Submit Complaint';
-        submitForm(); // retry submission with GPS acquired
+        proceedWithSubmission(); // retry submission with GPS acquired
       },
       error => {
         btn.disabled = false;
@@ -1928,6 +2062,7 @@ async function submitForm() {
     return;
   }
 
+  const activePhotos = photos.filter(Boolean);
   const user = getUser() || {};
   const r    = foundRecord;
   const itemNum    = complaintGroup ? complaintGroup.current : 1;
@@ -1955,12 +2090,14 @@ async function submitForm() {
     itemNumber:        itemNum,
     groupId:           complaintGroup?.groupId || '',
     complaintDate:     document.getElementById('fDate').value,
-    medium:            document.getElementById('fMedium').value,
+    suspectedPart:     document.getElementById('fSuspectedPart').value,
+    medium:            document.getElementById('fSuspectedPart').value,
     description:       document.getElementById('fDesc').value,
     photoCount:        activePhotos.length,
     photos:            activePhotos,
     latitude:          gpsLocation.latitude,
     longitude:         gpsLocation.longitude,
+    duplicateStatus:   pendingDuplicateStatus
   };
 
   lastComplaint = complaint;
@@ -2073,7 +2210,7 @@ function handleNextItem() {
     document.getElementById('fNature').value = complaintGroup.nature;
   }, 50);
   document.getElementById('fDate').value   = complaintGroup.date;
-  document.getElementById('fMedium').value = complaintGroup.medium;
+  document.getElementById('fSuspectedPart').value = complaintGroup.medium;
   document.getElementById('fDesc').value   = complaintGroup.desc;
   document.getElementById('fSerial').value = '';
 
@@ -2143,7 +2280,7 @@ function resetAll() {
   qtyInp.value = '1'; qtyInp.readOnly = false;
   document.getElementById('fDate').value   = todayDate();
   document.getElementById('fSerial').value = '';
-  document.getElementById('fMedium').value = '';
+  document.getElementById('fSuspectedPart').value = '';
   document.getElementById('fDesc').value   = '';
   document.getElementById('photoGrid').innerHTML = '';
   document.getElementById('noPhotosMsg').style.display = '';
@@ -2366,6 +2503,165 @@ function cancelComplaintGroup() {
     document.getElementById('complaintCardSub').textContent = 'Fill all required fields';
     showToast('Group registration cancelled', 'info');
   }
+}
+
+// ── OCR FUNCTIONS ──
+var ocrStream = null;
+var tesseractLoaded = false;
+
+async function loadTesseract() {
+  if (tesseractLoaded) return;
+  return new Promise(function(resolve, reject) {
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+    s.onload = function() { tesseractLoaded = true; resolve(); };
+    s.onerror = function() { reject(new Error('Failed to load Tesseract.js')); };
+    document.head.appendChild(s);
+  });
+}
+
+async function startOCR() {
+  try {
+    document.getElementById('ocrOverlay').classList.add('show');
+    document.getElementById('ocrResultContainer').style.display = 'none';
+    ocrStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } });
+    var video = document.getElementById('ocrVideo');
+    video.srcObject = ocrStream;
+    await video.play();
+    showToast('Point camera at serial number label', 'info');
+  } catch (err) {
+    showToast('Camera access denied: ' + err.message, 'error');
+    stopOCR();
+  }
+}
+
+async function captureOCR() {
+  var video = document.getElementById('ocrVideo');
+  var canvas = document.getElementById('ocrCanvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  var ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0);
+  
+  var cropY = Math.floor(canvas.height * 0.35);
+  var cropH = Math.floor(canvas.height * 0.3);
+  var cropX = Math.floor(canvas.width * 0.05);
+  var cropW = Math.floor(canvas.width * 0.9);
+  var cropCanvas = document.createElement('canvas');
+  cropCanvas.width = cropW;
+  cropCanvas.height = cropH;
+  var cropCtx = cropCanvas.getContext('2d');
+  cropCtx.drawImage(canvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+  
+  var imageData = cropCtx.getImageData(0, 0, cropW, cropH);
+  var d = imageData.data;
+  for (var i = 0; i < d.length; i += 4) {
+    var avg = (d[i] * 0.299 + d[i+1] * 0.587 + d[i+2] * 0.114);
+    avg = avg > 128 ? 255 : 0;
+    d[i] = d[i+1] = d[i+2] = avg;
+  }
+  cropCtx.putImageData(imageData, 0, 0);
+  
+  showToast('Reading text... please wait', 'info');
+  try {
+    await loadTesseract();
+    var result = await Tesseract.recognize(cropCanvas, 'eng', {
+      logger: function() {}
+    });
+    var text = (result.data.text || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    if (text) {
+      document.getElementById('ocrResult').value = text;
+      document.getElementById('ocrResultContainer').style.display = 'block';
+      showToast('Text captured! Review and confirm.', 'success');
+    } else {
+      showToast('No text detected. Try again with better lighting.', 'warn');
+    }
+  } catch (err) {
+    showToast('OCR failed: ' + err.message, 'error');
+  }
+}
+
+function confirmOCR() {
+  var val = document.getElementById('ocrResult').value.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  if (val) {
+    document.getElementById('fSerial').value = val;
+    showToast('Serial number set: ' + val, 'success');
+  }
+  stopOCR();
+}
+
+function retryOCR() {
+  document.getElementById('ocrResultContainer').style.display = 'none';
+  document.getElementById('ocrResult').value = '';
+}
+
+function stopOCR() {
+  if (ocrStream) {
+    ocrStream.getTracks().forEach(function(t) { t.stop(); });
+    ocrStream = null;
+  }
+  var video = document.getElementById('ocrVideo');
+  if (video) video.srcObject = null;
+  document.getElementById('ocrOverlay').classList.remove('show');
+}
+
+function closeOcrOverlay(e) {
+  if (e.target === document.getElementById('ocrOverlay')) stopOCR();
+}
+
+// ── DUPLICATE CHECK FUNCTIONS ──
+let pendingDuplicateStatus = 'NO';
+
+async function checkDuplicateBeforeSubmit() {
+  const serial = (document.getElementById('fSerial').value || '').trim().toUpperCase();
+  if (!serial) return null;
+
+  const isLocalDup = offlineQueue.some(c => c.serialNumber && c.serialNumber.trim().toUpperCase() === serial);
+  if (isLocalDup) {
+    return {
+      isDuplicate: true,
+      existingSchool: 'Saved in offline queue (pending sync)',
+      existingCaseId: 'Pending'
+    };
+  }
+
+  try {
+    if (!isLocal() && GOOGLE_SCRIPT_URL && navigator.onLine) {
+      const resp = await fetch(GOOGLE_SCRIPT_URL + '?action=check_duplicate&serial=' + encodeURIComponent(serial));
+      if (resp.ok) {
+        const result = await resp.json();
+        if (result && result.isDuplicate) {
+          return result;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Duplicate check failed, proceeding:', e);
+  }
+  return null;
+}
+
+function showDuplicateWarning(dupInfo) {
+  let msg = 'This Serial Number has already been registered in the current month.';
+  if (dupInfo.existingSchool) msg += `\n\nSchool: ${dupInfo.existingSchool}`;
+  if (dupInfo.existingCaseId) msg += `\nCase ID: ${dupInfo.existingCaseId}`;
+  if (dupInfo.existingDate) {
+    const dateStr = new Date(dupInfo.existingDate).toLocaleDateString();
+    msg += `\nDate: ${dateStr}`;
+  }
+  document.getElementById('duplicateWarningMsg').textContent = msg;
+  document.getElementById('duplicateWarningOverlay').classList.add('show');
+}
+
+function cancelDuplicateSubmit() {
+  document.getElementById('duplicateWarningOverlay').classList.remove('show');
+  pendingDuplicateStatus = 'NO';
+}
+
+function confirmDuplicateSubmit() {
+  document.getElementById('duplicateWarningOverlay').classList.remove('show');
+  pendingDuplicateStatus = 'YES';
+  proceedWithSubmission();
 }
 </script>
 </body>

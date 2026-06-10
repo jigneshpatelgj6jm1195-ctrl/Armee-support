@@ -49,7 +49,7 @@ const HEADERS = [
   'Serial Number',
   'Quantity',
   'Complaint Date',
-  'Medium',
+  'Suspected Part',
   'Description',
   'Photo Count',
   'Status',
@@ -59,6 +59,8 @@ const HEADERS = [
   'Photo Preview',
   'View Photo',
   'Photo URL',
+  'Duplicate Status',
+  'Archived'
 ];
 
 
@@ -69,6 +71,10 @@ const HEADERS = [
  * If parent is null, searches in root Drive.
  */
 function getOrCreateSubfolder(parent, folderName) {
+  if (!folderName) {
+    Logger.log("Warning: getOrCreateSubfolder was called without a folderName. This happens when running the function directly from the editor without arguments. Skipping.");
+    return null;
+  }
   var iter;
   if (parent) {
     iter = parent.getFoldersByName(folderName);
@@ -247,6 +253,18 @@ function doPost(e) {
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
+    if (data.action === 'archive_complaints') {
+      var archResult = archiveComplaints(ss, data.fromDate, data.toDate);
+      return ContentService.createTextOutput(JSON.stringify({status: 'ok', archived: archResult.archived}))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (data.action === 'restore_complaints') {
+      var restResult = restoreComplaints(ss, data.caseIds);
+      return ContentService.createTextOutput(JSON.stringify({status: 'ok', restored: restResult.restored}))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
     // Default: submit new complaint
     if (!data.action || data.action === 'submit_complaint') {
       return handleSubmitComplaint(ss, data);
@@ -287,6 +305,22 @@ function doGet(e) {
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
+    if (action === 'check_duplicate') {
+      var serial = (e.parameter.serial || '').trim().toUpperCase();
+      var result = checkDuplicateSerial(ss, serial);
+      return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (action === 'get_archive_list') {
+      var list = getArchiveList(ss);
+      return ContentService.createTextOutput(JSON.stringify(list)).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (action === 'get_complaints_with_archive') {
+      var data = getComplaintsWithArchive(ss);
+      return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON);
+    }
+
     // Default: return complaints list
     var complaints = getComplaintsList(ss);
     return ContentService.createTextOutput(JSON.stringify(complaints))
@@ -308,9 +342,9 @@ function getComplaintsList(ss) {
   // Run migration check dynamically
   try {
     var lastCol = sheet.getLastColumn();
-    var headerVal = lastCol >= 30 ? sheet.getRange(1, 30).getValue() : '';
-    if (headerVal !== 'Photo URL') {
-      migrateSheetTo30Columns(sheet);
+    var headerVal = lastCol >= 32 ? sheet.getRange(1, 32).getValue() : '';
+    if (headerVal !== 'Archived') {
+      migrateSheetTo32Columns(sheet);
     }
   } catch (e) {
     Logger.log("Migration error: " + e.toString());
@@ -337,6 +371,11 @@ function getComplaintsList(ss) {
     var rowFormulas = formulas[i];
     
     // Parse using index-based layout for 100% correctness
+    var archivedVal = String(row[31] || '').trim();
+    if (archivedVal === 'YES') {
+      continue;
+    }
+
     var obj = {
       srNo: row[0],
       submittedAt: row[1],
@@ -359,6 +398,7 @@ function getComplaintsList(ss) {
       quantity: row[18],
       complaintDate: row[19],
       medium: row[20],
+      suspectedPart: row[20],
       description: row[21],
       photoCount: parseInt(row[22]) || 0,
       status: row[23] || 'Open',
@@ -367,7 +407,9 @@ function getComplaintsList(ss) {
       longitude: parseFloat(row[26]) || 0,
       photoPreview: row[27] || '',
       viewPhoto: row[28] || '',
-      photoUrl: row[29] || ''
+      photoUrl: row[29] || '',
+      duplicateStatus: String(row[30] || 'NO'),
+      archived: archivedVal
     };
 
     // If photoUrl is empty, try extracting from formulas
@@ -548,7 +590,7 @@ function handleSubmitComplaint(ss, data) {
     data.serialNumber || '',
     data.quantity || 1,
     data.complaintDate || '',
-    data.medium || '',
+    data.suspectedPart || data.medium || '',
     data.description || '',
     photosArray.length,
     data.status || 'Open',
@@ -558,6 +600,8 @@ function handleSubmitComplaint(ss, data) {
     photoViewUrl ? '=IMAGE("' + photoViewUrl + '")' : '',
     photoOpenUrl ? '=HYPERLINK("' + photoOpenUrl + '","' + '🔗 View Photo' + '")' : '',
     photoViewUrl || '',
+    data.duplicateStatus || 'NO',
+    ''
   ];
 
   sheet.appendRow(row);
@@ -764,7 +808,7 @@ function setupHeaders(sheet) {
     18: 140,  // Serial Number
     19: 50,   // Quantity
     20: 100,  // Complaint Date
-    21: 100,  // Medium
+    21: 120,  // Suspected Part
     22: 200,  // Description
     23: 80,   // Photo Count
     24: 80,   // Status
@@ -774,6 +818,8 @@ function setupHeaders(sheet) {
     28: 100,  // Photo Preview
     29: 100,  // View Photo
     30: 280,  // Photo URL
+    31: 120,  // Duplicate Status
+    32: 100,  // Archived
   };
 
   for (var col in widths) {
@@ -799,6 +845,205 @@ function formatLastRow(sheet, row) {
   } catch (e) {
     Logger.log("Format row error: " + e.toString());
   }
+}
+
+function checkDuplicateSerial(ss, serialNumber) {
+  if (!serialNumber) return { isDuplicate: false };
+  var sheet = ss.getSheetByName('Complaints');
+  if (!sheet || sheet.getLastRow() < 2) return { isDuplicate: false };
+  var data = sheet.getDataRange().getValues();
+  var now = new Date();
+  var currentMonth = now.getMonth();
+  var currentYear = now.getFullYear();
+  for (var i = 1; i < data.length; i++) {
+    var rowSerial = String(data[i][17] || '').trim().toUpperCase(); // Col 18 = Serial Number
+    if (rowSerial === serialNumber) {
+      var rowDate = new Date(data[i][1]); // Col 2 = Submitted At
+      if (!isNaN(rowDate.getTime())) {
+        if (rowDate.getMonth() === currentMonth && rowDate.getFullYear() === currentYear) {
+          return {
+            isDuplicate: true,
+            existingDate: data[i][1],
+            existingCaseId: String(data[i][24] || ''),
+            existingSchool: String(data[i][10] || '')
+          };
+        }
+      }
+    }
+  }
+  return { isDuplicate: false };
+}
+
+function archiveComplaints(ss, fromDate, toDate) {
+  var sheet = ss.getSheetByName('Complaints');
+  if (!sheet || sheet.getLastRow() < 2) return { archived: 0 };
+  
+  var from = new Date(fromDate);
+  var to = new Date(toDate);
+  to.setHours(23, 59, 59, 999);
+  
+  // Format target sheet name based on the month/year tag as checked for separate month tagging
+  var months = ['01','02','03','04','05','06','07','08','09','10','11','12'];
+  var yearStr = from.getFullYear().toString();
+  var monthStr = months[from.getMonth()];
+  var archiveTabName = 'Archive_' + yearStr + '_' + monthStr;
+  
+  var archiveSheet = ss.getSheetByName(archiveTabName);
+  if (!archiveSheet) {
+    archiveSheet = ss.insertSheet(archiveTabName);
+    setupHeaders(archiveSheet);
+  }
+  
+  var data = sheet.getDataRange().getValues();
+  var formulas = sheet.getDataRange().getFormulas();
+  var rowsToArchive = [];
+  var rowIndicesToDelete = [];
+  
+  for (var i = data.length - 1; i >= 1; i--) {
+    var rowDate = new Date(data[i][1]);
+    if (!isNaN(rowDate.getTime())) {
+      if (rowDate >= from && rowDate <= to) {
+        var row = [];
+        for (var col = 0; col < data[i].length; col++) {
+          if (formulas[i] && formulas[i][col]) {
+            row.push(formulas[i][col]);
+          } else {
+            row.push(data[i][col]);
+          }
+        }
+        row[31] = 'YES'; // Mark as archived
+        rowsToArchive.unshift(row);
+        rowIndicesToDelete.push(i + 1); // 1-indexed row number
+      }
+    }
+  }
+  
+  if (rowsToArchive.length > 0) {
+    // Append to archive sheet
+    archiveSheet.getRange(archiveSheet.getLastRow() + 1, 1, rowsToArchive.length, rowsToArchive[0].length).setValues(rowsToArchive);
+    // Delete from main sheet (reverse order to preserve indices)
+    for (var j = 0; j < rowIndicesToDelete.length; j++) {
+      sheet.deleteRow(rowIndicesToDelete[j]);
+    }
+  }
+  
+  return { archived: rowsToArchive.length };
+}
+
+function restoreComplaints(ss, caseIds) {
+  if (!caseIds || caseIds.length === 0) return { restored: 0 };
+  
+  var sheet = ss.getSheetByName('Complaints');
+  if (!sheet) return { restored: 0 };
+  
+  var sheets = ss.getSheets();
+  var restoredCount = 0;
+  
+  for (var sIdx = 0; sIdx < sheets.length; sIdx++) {
+    var sName = sheets[sIdx].getName();
+    if (sName.indexOf('Archive') === 0 && sheets[sIdx].getLastRow() >= 2) {
+      var archiveSheet = sheets[sIdx];
+      var data = archiveSheet.getDataRange().getValues();
+      var formulas = archiveSheet.getDataRange().getFormulas();
+      var rowsToRestore = [];
+      var rowIndicesToDelete = [];
+      
+      for (var i = data.length - 1; i >= 1; i--) {
+        var caseId = String(data[i][24] || '');
+        if (caseIds.indexOf(caseId) !== -1) {
+          var row = [];
+          for (var col = 0; col < data[i].length; col++) {
+            if (formulas[i] && formulas[i][col]) {
+              row.push(formulas[i][col]);
+            } else {
+              row.push(data[i][col]);
+            }
+          }
+          row[31] = ''; // Clear archived flag
+          rowsToRestore.unshift(row);
+          rowIndicesToDelete.push(i + 1);
+        }
+      }
+      
+      if (rowsToRestore.length > 0) {
+        sheet.getRange(sheet.getLastRow() + 1, 1, rowsToRestore.length, rowsToRestore[0].length).setValues(rowsToRestore);
+        for (var j = 0; j < rowIndicesToDelete.length; j++) {
+          archiveSheet.deleteRow(rowIndicesToDelete[j]);
+        }
+        restoredCount += rowsToRestore.length;
+      }
+    }
+  }
+  
+  return { restored: restoredCount };
+}
+
+function getArchiveList(ss) {
+  var sheets = ss.getSheets();
+  var results = [];
+  
+  for (var sIdx = 0; sIdx < sheets.length; sIdx++) {
+    var sName = sheets[sIdx].getName();
+    if (sName.indexOf('Archive') === 0 && sheets[sIdx].getLastRow() >= 2) {
+      var data = sheets[sIdx].getDataRange().getValues();
+      for (var i = 1; i < data.length; i++) {
+        results.push({
+          srNo: String(data[i][0] || ''),
+          submittedAt: String(data[i][1] || ''),
+          school: String(data[i][10] || ''),
+          dise: String(data[i][6] || ''),
+          equipment: String(data[i][15] || ''),
+          serialNumber: String(data[i][17] || ''),
+          caseId: String(data[i][24] || ''),
+          status: String(data[i][23] || ''),
+          duplicateStatus: String(data[i][30] || 'NO'),
+          archived: String(data[i][31] || 'YES'),
+          archiveTab: sName
+        });
+      }
+    }
+  }
+  return results;
+}
+
+function getComplaintsWithArchive(ss) {
+  var active = getComplaintsList(ss);
+  var archived = getArchiveList(ss);
+  return { active: active, archived: archived };
+}
+
+function migrateSheetTo32Columns(sheet) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) {
+    setupHeaders(sheet);
+    return;
+  }
+  
+  var lastCol = sheet.getLastColumn();
+  if (lastCol < 30) {
+    migrateSheetTo30Columns(sheet);
+  }
+  
+  lastCol = sheet.getLastColumn();
+  if (lastCol === 30) {
+    sheet.insertColumnsAfter(30, 2);
+    sheet.getRange(1, 31).setValue('Duplicate Status');
+    sheet.getRange(1, 32).setValue('Archived');
+    
+    var totalRows = sheet.getLastRow();
+    if (totalRows > 1) {
+      sheet.getRange(2, 31, totalRows - 1, 1).setValue('NO');
+      sheet.getRange(2, 32, totalRows - 1, 1).setValue('');
+    }
+  }
+  
+  sheet.getRange(1, 21).setValue('Suspected Part');
+  
+  setupHeaders(sheet);
+  for (var r = 2; r <= sheet.getLastRow(); r++) {
+    formatLastRow(sheet, r);
+  }
+  Logger.log("✅ Sheet successfully migrated to 32 columns!");
 }
 
 /**

@@ -38,6 +38,87 @@ class FormHandler(http.server.SimpleHTTPRequestHandler):
         if args and str(args[1]) not in ('200', '304'):
             print(f"  [{args[1]}] {args[0]}")
 
+    def do_GET(self):
+        parsed = urlparse(self.path)
+        path = parsed.path
+        
+        if path == '/check_duplicate':
+            from urllib.parse import parse_qs
+            params = parse_qs(parsed.query)
+            serial = params.get('serial', [''])[0].strip().upper()
+            
+            complaints_file = SCRIPT_DIR / "complaints.json"
+            is_dup = False
+            existing_school = ""
+            existing_case_id = ""
+            existing_date = ""
+            
+            if serial and complaints_file.exists():
+                try:
+                    with open(complaints_file, 'r', encoding='utf-8') as f:
+                        complaints = json.load(f)
+                    for c in complaints:
+                        if str(c.get('serialNumber', '')).strip().upper() == serial:
+                            is_dup = True
+                            existing_school = c.get('school', '')
+                            existing_case_id = c.get('caseId', '')
+                            existing_date = c.get('submittedAt', '')
+                            break
+                except:
+                    pass
+            
+            self._respond(200, {
+                'isDuplicate': is_dup,
+                'existingSchool': existing_school,
+                'existingCaseId': existing_case_id,
+                'existingDate': existing_date
+            })
+            return
+            
+        elif path == '/get_archive_list':
+            complaints_file = SCRIPT_DIR / "complaints.json"
+            archived_list = []
+            if complaints_file.exists():
+                try:
+                    with open(complaints_file, 'r', encoding='utf-8') as f:
+                        complaints = json.load(f)
+                    for c in complaints:
+                        if c.get('archived') == 'YES':
+                            archived_list.append({
+                                'archiveTab': 'Local Archive',
+                                'caseId': c.get('caseId', ''),
+                                'dise': c.get('dise', ''),
+                                'school': c.get('school', ''),
+                                'equipment': c.get('equipment', ''),
+                                'serialNumber': c.get('serialNumber', ''),
+                                'submittedAt': c.get('submittedAt', ''),
+                                'status': c.get('status', 'Open')
+                            })
+                except:
+                    pass
+            self._respond(200, archived_list)
+            return
+            
+        elif path == '/get_complaints_with_archive':
+            complaints_file = SCRIPT_DIR / "complaints.json"
+            active = []
+            archived = []
+            if complaints_file.exists():
+                try:
+                    with open(complaints_file, 'r', encoding='utf-8') as f:
+                        complaints = json.load(f)
+                    for c in complaints:
+                        if c.get('archived') == 'YES':
+                            archived.append(c)
+                        else:
+                            active.append(c)
+                except:
+                    pass
+            self._respond(200, {'active': active, 'archived': archived})
+            return
+            
+        super().do_GET()
+
     def do_POST(self):
         path = urlparse(self.path).path
 
@@ -66,6 +147,10 @@ class FormHandler(http.server.SimpleHTTPRequestHandler):
             self._handle_submit_complaint(data)
         elif path == '/update_complaints':
             self._handle_update_complaints(data)
+        elif path == '/archive_complaints':
+            self._handle_archive_complaints(data)
+        elif path == '/restore_complaints':
+            self._handle_restore_complaints(data)
         else:
             self._respond(404, {'error': 'Unknown endpoint'})
 
@@ -162,6 +247,66 @@ class FormHandler(http.server.SimpleHTTPRequestHandler):
             self._respond(200, {'ok': True})
         except Exception as e:
             self._respond(500, {'error': f'Could not write master_data.json: {e}'})
+
+    def _handle_archive_complaints(self, data):
+        """Mock archiving complaints locally by setting archived flag to YES"""
+        from_date = data.get('fromDate')
+        to_date = data.get('toDate')
+        complaints_file = SCRIPT_DIR / "complaints.json"
+        
+        if not from_date or not to_date:
+            self._respond(400, {'error': 'Invalid parameters'})
+            return
+            
+        try:
+            if complaints_file.exists():
+                with open(complaints_file, 'r', encoding='utf-8') as f:
+                    complaints = json.load(f)
+            else:
+                complaints = []
+                
+            archived_count = 0
+            for c in complaints:
+                sub_date = c.get('submittedAt', c.get('complaintDate'))
+                if sub_date:
+                    date_str = sub_date[:10]
+                    if from_date <= date_str <= to_date:
+                        c['archived'] = 'YES'
+                        archived_count += 1
+                        
+            with open(complaints_file, 'w', encoding='utf-8') as f:
+                json.dump(complaints, f, ensure_ascii=False, indent=2)
+                
+            print(f"  [ARCHIVE] Archived {archived_count} records locally")
+            self._respond(200, {'status': 'ok', 'archived': archived_count})
+        except Exception as e:
+            self._respond(500, {'error': f'Local archive failed: {e}'})
+
+    def _handle_restore_complaints(self, data):
+        """Mock restoring complaints locally by clearing archived flag"""
+        case_ids = data.get('caseIds', [])
+        complaints_file = SCRIPT_DIR / "complaints.json"
+        
+        try:
+            if complaints_file.exists():
+                with open(complaints_file, 'r', encoding='utf-8') as f:
+                    complaints = json.load(f)
+            else:
+                complaints = []
+                
+            restored_count = 0
+            for c in complaints:
+                if c.get('caseId') in case_ids:
+                    c['archived'] = ''
+                    restored_count += 1
+                    
+            with open(complaints_file, 'w', encoding='utf-8') as f:
+                json.dump(complaints, f, ensure_ascii=False, indent=2)
+                
+            print(f"  [RESTORE] Restored {restored_count} records locally")
+            self._respond(200, {'status': 'ok', 'restored': restored_count})
+        except Exception as e:
+            self._respond(500, {'error': f'Local restore failed: {e}'})
 
     def _respond(self, code, payload):
         body = json.dumps(payload).encode('utf-8')
