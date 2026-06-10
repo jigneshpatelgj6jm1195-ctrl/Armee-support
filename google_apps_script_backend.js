@@ -289,7 +289,7 @@ function doGet(e) {
 
     if (action === 'get_master') {
       var masterData = getMasterData(ss);
-      return ContentService.createTextOutput(JSON.stringify(masterData || { equipment: [], users: [] }))
+      return ContentService.createTextOutput(JSON.stringify(masterData || { equipment: [], users: [], accessUsers: [] }))
                            .setMimeType(ContentService.MimeType.JSON);
     }
 

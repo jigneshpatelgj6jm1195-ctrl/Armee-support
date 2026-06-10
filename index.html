@@ -1406,38 +1406,11 @@ function saveUser() {
   if (!name || !phone) { showToast('Enter your name and phone number', 'warn'); return; }
   if (!/^\d{10}$/.test(phone)) { showToast('Enter valid 10-digit mobile number', 'warn'); return; }
   
-  // Security authorization check
-  const usersList = MASTER_DB.users || [];
-  if (usersList.length > 0) {
-    const match = usersList.find(u => u.phone === phone);
-    if (!match) {
-      showToast('❌ Mobile number is not authorized.', 'warn');
-      alert('❌ Access Denied: Phone number is not authorized in ArMee User Database.');
-      return;
-    }
-    if (match.status !== 'active') {
-      showToast('⚠️ Profile is deactivated.', 'warn');
-      alert('⚠️ Access Denied: Your profile has been deactivated. Contact ArMee Admin.');
-      return;
-    }
-  }
-
   localStorage.setItem('complainant', JSON.stringify({ name, phone, role }));
   document.getElementById('setupScreen').style.display = 'none';
   startApp({ name, phone, role });
 }
 function startApp(user) {
-  // Validate active login status
-  const usersList = MASTER_DB.users || [];
-  if (usersList.length > 0 && user && user.phone) {
-    const match = usersList.find(u => u.phone === user.phone);
-    if (!match || match.status !== 'active') {
-      localStorage.removeItem('complainant');
-      showToast('⚠️ Session expired or unauthorized.', 'warn');
-      showSetupScreen();
-      return;
-    }
-  }
   document.getElementById('loadingScreen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
   document.getElementById('userChipName').textContent = user.name.split(' ')[0];

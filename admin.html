@@ -1044,7 +1044,7 @@ tr:hover td { background: #f8fafc; }
 <!-- ADD ACCESS USER MODAL -->
 <div class="modal-bg" id="addAccessModal">
   <div class="modal" style="max-width: 500px;">
-    <h3>🔒 Add Access User</h3>
+    <h3 id="addAccessModalTitle">🔒 Add Access User</h3>
     <div class="field">
       <label for="accessUserName">Full Name *</label>
       <input type="text" id="accessUserName" placeholder="e.g. Jig Patel" />
@@ -1073,9 +1073,10 @@ tr:hover td { background: #f8fafc; }
       <label>Assigned Districts (Hold Ctrl to select multiple) *</label>
       <select id="accessUserDistricts" multiple style="height: 120px;"></select>
     </div>
+    <input type="hidden" id="accessUserEditIndex" value="-1" />
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('addAccessModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="confirmAddAccessUser()">Add User</button>
+      <button class="btn btn-primary" onclick="confirmAddAccessUser()" id="btnSubmitAccessUser">Add User</button>
     </div>
   </div>
 </div>
@@ -1152,8 +1153,7 @@ function clearDebugLogs() {
 }
 
 const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx3I2A-QxKg1bI3EBt1H3sAKPm0_2EKUfQrxqtYT0DBZsaobOaOqaIki4V0p0QIE7AFHA/exec'; // Paste your Google Web App URL here to pull real-time submissions from Google Sheet
-let masterData = { equipment: [], users: [] };
-masterData.accessUsers = masterData.users;
+let masterData = { equipment: [], users: [], accessUsers: [] };
 let complaintsList = [];
 let schoolDataRaw = {};
 let isDirty = false;
@@ -1194,6 +1194,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   }
   
   updateUserProfileUI(session);
+  renderNavigationMenu();
+  applyUrlModule();
   await loadComplaints();
   await loadSchoolList();
   startAutoRefresh();
@@ -1270,14 +1272,13 @@ async function loadData() {
       logToDebug(`Loaded master data from fallback JSON.`, 'success');
     } catch (e) {
       logToDebug(`Fallback master data load failed: ${e.message}`, 'error');
-      showToast('⚠️ Could not load master data — using defaults', 'warn');
-      masterData = { equipment: [], users: [] };
+      masterData = { equipment: [], users: [], accessUsers: [] };
     }
   }
   
   if (masterData) {
     if (!masterData.users) masterData.users = [];
-    masterData.accessUsers = masterData.users;
+    if (!masterData.accessUsers) masterData.accessUsers = [];
   }
 
   isDirty = false;
@@ -1467,15 +1468,98 @@ async function saveAll() {
   btn.disabled = !isDirty; btn.textContent = '💾 Save Data';
 }
 
-/* ─────────────── TAB SWITCHING ─────────────── */
+/* ─────────────── TAB SWITCHING & AUTHORIZATION ─────────────── */
+function checkTabAccess(tabId) {
+  if (!currentUser) return tabId === 'dash';
+  if (currentUser.role === 'super_admin') return true;
+  // Non-super admin (district_admin, viewer) can only access dash and complaints
+  const allowedTabs = ['dash', 'complaints'];
+  return allowedTabs.includes(tabId);
+}
+
+function renderNavigationMenu() {
+  const tabs = {
+    'schools': document.getElementById('btn-tab-schools'),
+    'projects': document.getElementById('btn-tab-projects'),
+    'equip': document.getElementById('btn-tab-equip'),
+    'parts': document.getElementById('btn-tab-parts'),
+    'users': document.getElementById('btn-tab-users'),
+    'access': document.getElementById('btn-tab-access'),
+    'archive': document.getElementById('btn-tab-archive'),
+  };
+  
+  for (const [tabId, btn] of Object.entries(tabs)) {
+    if (btn) {
+      if (checkTabAccess(tabId)) {
+        btn.style.display = '';
+      } else {
+        btn.style.display = 'none';
+      }
+    }
+  }
+}
+
+function applyUrlModule() {
+  const params = new URLSearchParams(window.location.search);
+  const moduleParam = params.get('module');
+  if (moduleParam) {
+    const moduleMap = {
+      'dashboard': 'dash',
+      'schoolmaster': 'schools',
+      'projectmaster': 'projects',
+      'equipmentmaster': 'equip',
+      'partsmaster': 'parts',
+      'usermaster': 'users',
+      'accesscontrol': 'access',
+      'complaints': 'complaints',
+      'archive': 'archive'
+    };
+    const targetTab = moduleMap[moduleParam.toLowerCase()];
+    if (targetTab) {
+      switchTab(targetTab);
+      return;
+    }
+  }
+  // Default to dash if no or invalid module parameter
+  switchTab('dash');
+}
+
 function switchTab(tabId) {
+  if (!checkTabAccess(tabId)) {
+    showToast('❌ Access Denied: You do not have permission to view this module.', 'danger');
+    alert('Access Denied: You do not have permission to access this module.');
+    if (currentTab !== tabId && checkTabAccess(currentTab)) {
+      tabId = currentTab;
+    } else {
+      tabId = 'dash';
+    }
+  }
+
   document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
   
-  document.getElementById(`btn-tab-${tabId}`).classList.add('active');
-  document.getElementById(`tab-${tabId}`).classList.add('active');
+  const btn = document.getElementById(`btn-tab-${tabId}`);
+  const content = document.getElementById(`tab-${tabId}`);
+  if (btn) btn.classList.add('active');
+  if (content) content.classList.add('active');
   currentTab = tabId;
   
+  // Update URL parameter without reloading to match current module
+  const moduleMapInv = {
+    'dash': 'dashboard',
+    'schools': 'schoolmaster',
+    'projects': 'projectmaster',
+    'equip': 'equipmentmaster',
+    'parts': 'partsmaster',
+    'users': 'usermaster',
+    'access': 'accesscontrol',
+    'complaints': 'complaints',
+    'archive': 'archive'
+  };
+  const url = new URL(window.location);
+  url.searchParams.set('module', moduleMapInv[tabId]);
+  window.history.replaceState({}, '', url);
+
   // Refresh grids if switching to them
   if (tabId === 'dash') {
     renderDashboard();
@@ -2254,27 +2338,30 @@ function onAccessRoleChange() {
   }
 }
 
-function populateAccessDistricts() {
+function populateAccessDistricts(selectedDistricts = []) {
   const sel = document.getElementById('accessUserDistricts');
   if (!sel) return;
   sel.innerHTML = '';
   
-  const uniqueDistricts = new Set();
-  for (const dise in schoolDataRaw) {
-    const entries = schoolDataRaw[dise];
-    const recs = Array.isArray(entries) ? entries : [entries];
-    recs.forEach(r => {
-      if (r.district) {
-        uniqueDistricts.add(r.district.toUpperCase().trim());
-      }
-    });
+  const activeDistricts = (masterData.districts || [])
+    .filter(d => d.status === 'active')
+    .map(d => d.name.toUpperCase().trim());
+    
+  if (activeDistricts.length === 0) {
+    const opt = document.createElement('option');
+    opt.disabled = true;
+    opt.textContent = "No Active Districts Available.";
+    sel.appendChild(opt);
+    return;
   }
   
-  const sorted = Array.from(uniqueDistricts).sort();
-  sorted.forEach(d => {
+  activeDistricts.sort().forEach(d => {
     const opt = document.createElement('option');
     opt.value = d;
     opt.textContent = d;
+    if (selectedDistricts.includes(d)) {
+      opt.selected = true;
+    }
     sel.appendChild(opt);
   });
 }
@@ -2300,6 +2387,7 @@ function renderAccessControl() {
       <td><span class="badge badge-${u.status === 'active' ? 'active' : 'inactive'}">${u.status}</span></td>
       <td>
         <button class="btn btn-ghost btn-sm" onclick="toggleAccessUser(${idx})">${u.status === 'active' ? 'Disable' : 'Enable'}</button>
+        <button class="btn btn-ghost btn-sm" onclick="openEditAccessUser(${idx})">✏️ Edit</button>
         <button class="btn btn-ghost btn-sm" onclick="resetAccessUserPassword(${idx})">🔑 Reset Pass</button>
         <button class="btn btn-danger btn-sm" onclick="deleteAccessUser(${idx})">🗑️ Delete</button>
       </td>
@@ -2308,17 +2396,48 @@ function renderAccessControl() {
 }
 
 function openAddAccessUser() {
+  document.getElementById('accessUserEditIndex').value = '-1';
+  document.getElementById('addAccessModalTitle').textContent = '🔒 Add Access User';
+  document.getElementById('btnSubmitAccessUser').textContent = 'Add User';
+  
   document.getElementById('accessUserName').value = '';
   document.getElementById('accessUserEmail').value = '';
   document.getElementById('accessUserPhone').value = '';
   document.getElementById('accessUserPassword').value = '';
   document.getElementById('accessUserRole').value = 'viewer';
   document.getElementById('accessDistrictSelectBox').style.display = 'block';
-  populateAccessDistricts();
+  populateAccessDistricts([]);
+  document.getElementById('addAccessModal').classList.add('show');
+}
+
+function openEditAccessUser(idx) {
+  const u = masterData.accessUsers[idx];
+  if (!u) return;
+  
+  document.getElementById('accessUserEditIndex').value = idx;
+  document.getElementById('addAccessModalTitle').textContent = '✏️ Edit Access User';
+  document.getElementById('btnSubmitAccessUser').textContent = 'Save User';
+  
+  document.getElementById('accessUserName').value = u.name || '';
+  document.getElementById('accessUserEmail').value = u.email || '';
+  document.getElementById('accessUserPhone').value = u.phone || '';
+  document.getElementById('accessUserPassword').value = u.password || '';
+  document.getElementById('accessUserRole').value = u.role || 'viewer';
+  
+  const role = u.role || 'viewer';
+  const box = document.getElementById('accessDistrictSelectBox');
+  if (role === 'district_admin' || role === 'viewer') {
+    box.style.display = 'block';
+    populateAccessDistricts(u.assignedDistricts || []);
+  } else {
+    box.style.display = 'none';
+  }
+  
   document.getElementById('addAccessModal').classList.add('show');
 }
 
 function confirmAddAccessUser() {
+  const editIdx = parseInt(document.getElementById('accessUserEditIndex').value);
   const name = document.getElementById('accessUserName').value.trim();
   const email = document.getElementById('accessUserEmail').value.trim();
   const phone = document.getElementById('accessUserPhone').value.trim();
@@ -2343,18 +2462,34 @@ function confirmAddAccessUser() {
   }
   
   if (!masterData.accessUsers) masterData.accessUsers = [];
-  const exists = masterData.accessUsers.some(u => u.email.toLowerCase() === email.toLowerCase());
-  if (exists) {
+  
+  // Check duplicate email (excluding the user being edited)
+  const duplicate = masterData.accessUsers.some((u, i) => i !== editIdx && u.email.toLowerCase() === email.toLowerCase());
+  if (duplicate) {
     showToast('⚠️ Email already has access', 'warn');
     return;
   }
   
-  const id = 'ACC' + String(Date.now()).slice(-5);
-  masterData.accessUsers.push({ id, name, email, phone, password, role, assignedDistricts, status: 'active' });
+  if (editIdx === -1) {
+    // Add mode
+    const id = 'ACC' + String(Date.now()).slice(-5);
+    masterData.accessUsers.push({ id, name, email, phone, password, role, assignedDistricts, status: 'active' });
+    showToast(`🔒 Access user ${name} created successfully!`, 'success');
+  } else {
+    // Edit mode
+    const u = masterData.accessUsers[editIdx];
+    u.name = name;
+    u.email = email;
+    u.phone = phone;
+    u.password = password;
+    u.role = role;
+    u.assignedDistricts = assignedDistricts;
+    showToast(`✏️ Access user ${name} updated successfully!`, 'success');
+  }
+  
   closeModal('addAccessModal');
   markDirty();
   renderAccessControl();
-  showToast(`🔒 Access user ${name} created successfully!`, 'success');
 }
 
 function toggleAccessUser(idx) {
@@ -2854,6 +2989,8 @@ function submitAdminLogin() {
     localStorage.setItem(SESSION_KEY, JSON.stringify(session));
     closeModal('adminLoginModal');
     updateUserProfileUI(user);
+    renderNavigationMenu();
+    applyUrlModule();
     startAutoRefresh();
     loadData();
     loadComplaints();
