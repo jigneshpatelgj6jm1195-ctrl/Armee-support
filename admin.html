@@ -325,6 +325,11 @@ tr:hover td { background: #f8fafc; }
 </head>
 <body>
 
+<!-- Local File Protocol Warning Banner -->
+<div id="localFileWarning" style="display:none; background:#fee2e2; color:#b91c1c; border-bottom:1px solid #fca5a5; padding:10px 20px; font-size:0.85rem; text-align:center; font-weight:bold; z-index:2000; position:relative;">
+  ⚠️ WARNING: You are opening this portal directly from the file system (file://). Browser security blocks database connection requests. Please double-click "OPEN FORM.bat" to start the local server, and visit <a href="http://localhost:8765/admin.html" style="color:#b91c1c; text-decoration:underline;">http://localhost:8765/admin.html</a>!
+</div>
+
 <!-- HEADER -->
 <div class="header">
   <div class="header-left">
@@ -335,6 +340,8 @@ tr:hover td { background: #f8fafc; }
     </div>
   </div>
   <div style="display:flex; gap:12px; align-items:center;">
+    <span id="userChip" style="font-size:0.8rem; color:white; background:rgba(255,255,255,0.18); padding:4px 10px; border-radius:12px; display:none; align-items:center;"></span>
+    <button id="btnLogout" class="btn btn-ghost btn-sm" style="background:rgba(239, 68, 68, 0.25); border-color:rgba(239, 68, 68, 0.4); color:#fca5a5; display:none;" onclick="logout()">Logout</button>
     <span id="liveIndicator" style="display:inline-flex;align-items:center;gap:4px;font-size:0.75rem;color:#10b981;margin-right:4px;"><span style="width:8px;height:8px;background:#10b981;border-radius:50%;display:inline-block;animation:pulse 2s infinite;"></span>Live</span>
     <button onclick="silentRefreshData()" style="background:none;border:1px solid rgba(255,255,255,0.3);border-radius:8px;padding:4px 8px;cursor:pointer;font-size:0.85rem;color:white;display:flex;align-items:center;justify-content:center;" title="Refresh Data">🔄</button>
     <button class="btn btn-ghost btn-sm" style="background:rgba(255,255,255,0.18); border-color:rgba(255,255,255,0.3); color:white;" onclick="saveAll()" id="btnSave" disabled>💾 Save Data</button>
@@ -547,6 +554,41 @@ tr:hover td { background: #f8fafc; }
             </tr>
           </tbody>
         </table>
+      </div>
+    </div>
+    
+    <!-- Dashboard Debug Panel -->
+    <div class="card" style="margin-top:20px; border:1px solid rgba(220,38,38,0.25); background:#fffafb; padding:15px;">
+      <div class="card-title" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer; margin-bottom:0;" onclick="toggleDebugPanel()">
+        <span style="color:#dc2626; font-weight:bold; font-size:0.95rem; display:flex; align-items:center; gap:6px;">🛠️ Dashboard Debug Panel &amp; System Logs</span>
+        <span id="debugToggleIcon" style="font-size:0.8rem; color:#dc2626; font-weight:bold; background:rgba(220,38,38,0.1); padding:2px 8px; border-radius:12px;">[Show]</span>
+      </div>
+      <div id="debugPanelContent" style="display:none; margin-top:15px; border-top:1px solid #fee2e2; padding-top:15px;">
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-bottom:12px;">
+          <div style="background:white; padding:8px 12px; border-radius:8px; border:1px solid #fecaca;">
+            <div style="font-size:0.7rem; color:var(--muted); font-weight:bold; text-transform:uppercase;">Total Records Read</div>
+            <div id="debugTotalRead" style="font-size:1.3rem; font-weight:800; color:#dc2626; margin-top:2px;">0</div>
+          </div>
+          <div style="background:white; padding:8px 12px; border-radius:8px; border:1px solid #fecaca;">
+            <div style="font-size:0.7rem; color:var(--muted); font-weight:bold; text-transform:uppercase;">Records After Filtering</div>
+            <div id="debugFilteredRead" style="font-size:1.3rem; font-weight:800; color:#16a34a; margin-top:2px;">0</div>
+          </div>
+          <div style="background:white; padding:8px 12px; border-radius:8px; border:1px solid #fecaca;">
+            <div style="font-size:0.7rem; color:var(--muted); font-weight:bold; text-transform:uppercase;">API Response Size</div>
+            <div id="debugResponseSize" style="font-size:1.3rem; font-weight:800; color:#4f46e5; margin-top:2px;">0.00 KB</div>
+          </div>
+          <div style="background:white; padding:8px 12px; border-radius:8px; border:1px solid #fecaca;">
+            <div style="font-size:0.7rem; color:var(--muted); font-weight:bold; text-transform:uppercase;">Active User Session</div>
+            <div id="debugUserRole" style="font-size:0.9rem; font-weight:700; color:#0d9488; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">N/A</div>
+          </div>
+        </div>
+        <div style="margin-bottom:12px;">
+          <div style="font-size:0.75rem; font-weight:bold; margin-bottom:6px; color:#475569;">Console &amp; Apps Script Log Output:</div>
+          <textarea id="debugSystemLogs" style="width:100%; height:120px; font-family:monospace; font-size:0.72rem; background:#0f172a; color:#38bdf8; border:none; border-radius:6px; padding:8px; resize:vertical; line-height:1.4;" readonly placeholder="System logs will compile here dynamically..."></textarea>
+        </div>
+        <div style="text-align:right;">
+          <button class="btn btn-ghost btn-sm" onclick="clearDebugLogs()" style="border-color:#fca5a5; color:#dc2626; padding:3px 10px; font-size:0.75rem;">Clear Logs</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1086,6 +1128,31 @@ tr:hover td { background: #f8fafc; }
 <script>
 'use strict';
 
+/* ─────────────── DEBUG LOGGER ─────────────── */
+function logToDebug(msg, type = 'info') {
+  const el = document.getElementById('debugSystemLogs');
+  if (!el) return;
+  const time = new Date().toLocaleTimeString();
+  const line = `[${time}] [${type.toUpperCase()}] ${msg}\n`;
+  el.value = line + el.value;
+}
+function toggleDebugPanel() {
+  const el = document.getElementById('debugPanelContent');
+  const icon = document.getElementById('debugToggleIcon');
+  if (!el || !icon) return;
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    icon.textContent = '[Hide]';
+  } else {
+    el.style.display = 'none';
+    icon.textContent = '[Show]';
+  }
+}
+function clearDebugLogs() {
+  const el = document.getElementById('debugSystemLogs');
+  if (el) el.value = '';
+}
+
 const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx3I2A-QxKg1bI3EBt1H3sAKPm0_2EKUfQrxqtYT0DBZsaobOaOqaIki4V0p0QIE7AFHA/exec'; // Paste your Google Web App URL here to pull real-time submissions from Google Sheet
 let masterData = { equipment: [], users: [] };
 masterData.accessUsers = masterData.users;
@@ -1113,6 +1180,12 @@ function isLocal() {
 
 /* ─────────────── INIT ─────────────── */
 window.addEventListener('DOMContentLoaded', async () => {
+  if (window.location.protocol === 'file:') {
+    const banner = document.getElementById('localFileWarning');
+    if (banner) banner.style.display = 'block';
+    logToDebug('Running under file:// protocol. Local file requests will be blocked by browser CORS security.', 'warning');
+  }
+
   const session = getSession();
   if (!session) {
     showLoginModal();
@@ -1132,26 +1205,34 @@ const LS_COMPLAINTS_KEY = 'armeeAdmin_complaints';
 async function loadData() {
   const local = isLocal();
   let loaded = false;
+  logToDebug(`loadData() initiated (local = ${local}, onLine = ${navigator.onLine})`, 'info');
 
   // 1. Try Google Apps Script (live, most up-to-date)
   if (!local && GOOGLE_SCRIPT_URL && navigator.onLine) {
     try {
+      logToDebug(`Fetching live master data from Google Apps Script...`, 'api');
       const res = await fetch(GOOGLE_SCRIPT_URL + '?action=get_master&t=' + Date.now());
       if (res.ok) {
-        const data = await res.json();
+        const text = await res.text();
+        const bytes = new Blob([text]).size;
+        logToDebug(`Live master data fetched. Size: ${(bytes/1024).toFixed(2)} KB`, 'api');
+        const data = JSON.parse(text);
         if (data && data.equipment && data.equipment.length > 0) {
           masterData = data;
           if (!masterData.users) masterData.users = [];
           // Sync to localStorage so offline/reload works
           try { localStorage.setItem(LS_MASTER_KEY, JSON.stringify(masterData)); } catch(_) {}
           loaded = true;
+          logToDebug(`Loaded master data successfully from Apps Script. ${masterData.equipment.length} equipment types.`, 'success');
         }
       } else {
         console.error('GAS master data load response not OK:', res.status, res.statusText);
+        logToDebug(`GAS master data HTTP error: ${res.status}`, 'error');
         showToast('⚠️ Google Apps Script master data error: HTTP ' + res.status, 'warn');
       }
     } catch (e) {
       console.error('GAS master data load failed:', e);
+      logToDebug(`GAS master data fetch failed: ${e.message}`, 'error');
       showToast('⚠️ Google Apps Script connection error: ' + e.message, 'warn');
     }
   }
@@ -1159,6 +1240,7 @@ async function loadData() {
   // 2. Try localStorage cache (persists across reloads)
   if (!loaded) {
     try {
+      logToDebug(`Attempting to load master data from localStorage cache...`, 'info');
       const cached = localStorage.getItem(LS_MASTER_KEY);
       if (cached) {
         const data = JSON.parse(cached);
@@ -1166,19 +1248,28 @@ async function loadData() {
           masterData = data;
           if (!masterData.users) masterData.users = [];
           loaded = true;
+          logToDebug(`Loaded master data from localStorage cache.`, 'success');
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      logToDebug(`localStorage read failed: ${e.message}`, 'error');
+    }
   }
 
   // 3. Fall back to static file or local server
   if (!loaded) {
     try {
+      logToDebug(`Attempting to load master data from fallback /master_data.json...`, 'info');
       const res = await fetch('/master_data.json?' + Date.now());
-      if (!res.ok) throw new Error();
-      masterData = await res.json();
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const text = await res.text();
+      const bytes = new Blob([text]).size;
+      logToDebug(`Fallback master data size: ${(bytes/1024).toFixed(2)} KB`, 'api');
+      masterData = JSON.parse(text);
       if (!masterData.users) masterData.users = [];
+      logToDebug(`Loaded master data from fallback JSON.`, 'success');
     } catch (e) {
+      logToDebug(`Fallback master data load failed: ${e.message}`, 'error');
       showToast('⚠️ Could not load master data — using defaults', 'warn');
       masterData = { equipment: [], users: [] };
     }
@@ -1203,37 +1294,64 @@ async function loadData() {
 
 async function loadComplaints() {
   const isLocalhost = isLocal();
+  logToDebug(`loadComplaints() initiated (isLocalhost = ${isLocalhost}, onLine = ${navigator.onLine})`, 'info');
   try {
     if (GOOGLE_SCRIPT_URL && !isLocalhost && navigator.onLine) {
+      logToDebug(`Fetching live complaints list from Google Apps Script...`, 'api');
       const res = await fetch(GOOGLE_SCRIPT_URL);
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
+      const text = await res.text();
+      const bytes = new Blob([text]).size;
+      const sizeKB = (bytes / 1024).toFixed(2);
+      document.getElementById('debugResponseSize').textContent = sizeKB + ' KB';
+      logToDebug(`Live complaints fetched. Response size: ${sizeKB} KB`, 'api');
+      const data = JSON.parse(text);
       if (data && data.error) {
+        logToDebug(`Backend returned error: ${data.error}`, 'error');
         showToast('⚠️ Backend Error: ' + data.error, 'error');
         complaintsList = [];
       } else if (Array.isArray(data)) {
         complaintsList = data;
+        logToDebug(`Successfully parsed ${data.length} complaints from live sheet.`, 'success');
         showToast('📡 Loaded live complaints from Google Sheet', 'success');
       } else {
+        logToDebug(`Parsed live complaints data is not an array.`, 'error');
         complaintsList = [];
       }
     } else {
+      logToDebug(`Fetching local/offline complaints from /complaints.json...`, 'api');
       const res = await fetch('/complaints.json?' + Date.now());
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
+      const text = await res.text();
+      const bytes = new Blob([text]).size;
+      const sizeKB = (bytes / 1024).toFixed(2);
+      document.getElementById('debugResponseSize').textContent = sizeKB + ' KB';
+      logToDebug(`Local complaints fetched. Size: ${sizeKB} KB`, 'api');
+      const data = JSON.parse(text);
       complaintsList = Array.isArray(data) ? data : [];
+      logToDebug(`Loaded ${complaintsList.length} complaints from local JSON.`, 'success');
     }
   } catch (e) {
     console.error('Failed to load live complaints:', e);
+    logToDebug(`Complaints loading failed: ${e.message}`, 'error');
     showToast('⚠️ Live data fetch error: ' + e.message + '. Trying offline fallback...', 'warn');
     try {
+      logToDebug(`Attempting fallback load from local /complaints.json...`, 'info');
       const res = await fetch('/complaints.json?' + Date.now());
       if (res.ok) {
-        const data = await res.json();
+        const text = await res.text();
+        const bytes = new Blob([text]).size;
+        const sizeKB = (bytes / 1024).toFixed(2);
+        document.getElementById('debugResponseSize').textContent = sizeKB + ' KB';
+        const data = JSON.parse(text);
         complaintsList = Array.isArray(data) ? data : [];
+        logToDebug(`Fallback loaded ${complaintsList.length} complaints from local JSON.`, 'success');
+      } else {
+        throw new Error('HTTP ' + res.status);
       }
     } catch (fallbackErr) {
       console.error('Offline fallback failed:', fallbackErr);
+      logToDebug(`Offline fallback failed: ${fallbackErr.message}`, 'error');
       complaintsList = [];
     }
   }
@@ -1380,8 +1498,19 @@ function renderChart(id, config) {
 }
 
 function renderDashboard() {
+  if (currentUser) {
+    const roleStr = currentUser.role === 'super_admin' ? 'Super Admin' : 'District Admin';
+    document.getElementById('debugUserRole').textContent = `${currentUser.name} (${roleStr})`;
+    logToDebug(`Rendering dashboard for active user: ${currentUser.email} (${roleStr})`, 'auth');
+  } else {
+    document.getElementById('debugUserRole').textContent = 'N/A';
+    logToDebug('Rendering dashboard (no active session)', 'auth');
+  }
+
   // 1. Filter complaints by user assigned districts
   let complaints = filterByUserDistricts(complaintsList);
+  const afterDistrictCount = complaints.length;
+  logToDebug(`District-based security filter: ${afterDistrictCount} of ${complaintsList.length} complaints allowed.`, 'auth');
 
   // 2. Apply Dashboard filter card values
   const fromDate = document.getElementById('dashFromDate').value;
@@ -1416,6 +1545,11 @@ function renderDashboard() {
     }
     return true;
   });
+
+  // Update debug stats
+  document.getElementById('debugTotalRead').textContent = complaintsList.length;
+  document.getElementById('debugFilteredRead').textContent = complaints.length;
+  logToDebug(`Applied UI filters. final records for display: ${complaints.length}`, 'filter');
 
   // Calculate 7 KPI Cards
   const totalCount = complaints.length;
