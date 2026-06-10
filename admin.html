@@ -2604,6 +2604,15 @@ function filterComplaints() {
   renderComplaintsTable();
 }
 
+function updateComplaintStatus(origIndex, newStatus) {
+  const c = complaintsList[origIndex];
+  if (!c) return;
+  c.status = newStatus;
+  renderDashboard();
+  renderComplaintsTable();
+  markDirty();
+}
+
 /* ─────────────── CENTRAL COMPLAINTS LOG ─────────────── */
 function renderComplaintsTable() {
   const tbody = document.getElementById('complaintsTableBody');
@@ -2703,17 +2712,16 @@ function submitAdminLogin() {
   const accessUsers = masterData.accessUsers || [];
   let user = null;
 
-  if (accessUsers.length === 0) {
-    if (email === 'admin@armee.in' && pass === 'armee@2026') {
-      user = {
-        id: 'USR100',
-        name: 'Super Admin',
-        email: 'admin@armee.in',
-        role: 'super_admin',
-        assignedDistricts: ['ALL'],
-        status: 'active'
-      };
-    }
+  // Always check fallback super admin first
+  if (email.toLowerCase() === 'admin@armee.in' && pass === 'armee@2026') {
+    user = {
+      id: 'USR100',
+      name: 'Super Admin',
+      email: 'admin@armee.in',
+      role: 'super_admin',
+      assignedDistricts: ['ALL'],
+      status: 'active'
+    };
   } else {
     user = accessUsers.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === pass && u.status === 'active');
   }

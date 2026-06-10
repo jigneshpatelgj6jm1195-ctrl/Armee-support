@@ -306,7 +306,7 @@ function doGet(e) {
     }
 
     if (action === 'check_duplicate') {
-      var serial = (e.parameter.serial || '').trim().toUpperCase();
+      var serial = String(e.parameter.serial || '').trim().toUpperCase();
       var result = checkDuplicateSerial(ss, serial);
       return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
     }
@@ -552,7 +552,7 @@ function handleSubmitComplaint(ss, data) {
     var folder = getPhotoFolder(data.project, data.submittedAt);
     var timestamp = new Date().getTime();
     var dise = data.dise || 'UNKNOWN';
-    var serial = (data.serialNumber || 'NA').replace(/[^a-zA-Z0-9]/g, '');
+    var serial = String(data.serialNumber || 'NA').replace(/[^a-zA-Z0-9]/g, '');
 
     for (var i = 0; i < photosArray.length; i++) {
       var fname = dise + '_' + serial + '_' + timestamp + (photosArray.length > 1 ? '_' + (i+1) : '') + '.jpg';

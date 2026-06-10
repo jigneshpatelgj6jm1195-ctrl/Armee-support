@@ -41,13 +41,8 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // Google Apps Script submissions (POST only) — network only, with offline queue
-  if (url.hostname.includes('script.google.com') && event.request.method === 'POST') {
-    event.respondWith(fetch(event.request).catch(() => {
-      return new Response(JSON.stringify({ status: 'queued' }), {
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }));
+  // Bypass service worker entirely for admin panel and Google Apps Script GET/POST calls
+  if (url.pathname.includes('admin') || url.hostname.includes('script.google.com')) {
     return;
   }
 
