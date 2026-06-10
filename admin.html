@@ -1088,6 +1088,7 @@ tr:hover td { background: #f8fafc; }
 
 const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx3I2A-QxKg1bI3EBt1H3sAKPm0_2EKUfQrxqtYT0DBZsaobOaOqaIki4V0p0QIE7AFHA/exec'; // Paste your Google Web App URL here to pull real-time submissions from Google Sheet
 let masterData = { equipment: [], users: [] };
+masterData.accessUsers = masterData.users;
 let complaintsList = [];
 let schoolDataRaw = {};
 let isDirty = false;
@@ -1175,6 +1176,11 @@ async function loadData() {
       showToast('⚠️ Could not load master data — using defaults', 'warn');
       masterData = { equipment: [], users: [] };
     }
+  }
+  
+  if (masterData) {
+    if (!masterData.users) masterData.users = [];
+    masterData.accessUsers = masterData.users;
   }
 
   isDirty = false;

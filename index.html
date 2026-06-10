@@ -754,7 +754,7 @@ textarea { resize: none; min-height: 80px; }
         </div>
 
         <div class="field">
-          <label for="fSuspectedPart" class="req">Suspected Part *</label>
+          <label for="fSuspectedPart">Suspected Part (Optional)</label>
           <select id="fSuspectedPart">
             <option value="">— Select Suspected Part —</option>
           </select>
@@ -1692,7 +1692,6 @@ function validateStep(step) {
     if (qty < 1)    { showToast('⚠️ Enter valid Quantity', 'warn'); return false; }
     if (!date)      { showToast('⚠️ Select Complaint Date', 'warn'); return false; }
     if (!serial)    { showToast('⚠️ Enter or scan Serial Number', 'warn'); return false; }
-    if (!suspectedPart) { showToast('⚠️ Select Suspected Part', 'warn'); return false; }
 
     // Check if serial is unique in the current group
     if (complaintGroup && complaintGroup.submitted) {

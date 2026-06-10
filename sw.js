@@ -4,7 +4,7 @@
    Offline queue: submissions stored in IndexedDB
 ═══════════════════════════════════════════════════════ */
 
-const CACHE_NAME = 'school-form-v9';
+const CACHE_NAME = 'school-form-v10';
 const STATIC_ASSETS = [
   './index.html',
   './school_data.json',
@@ -41,8 +41,8 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // Google Apps Script submissions — network only, with offline queue
-  if (url.hostname.includes('script.google.com')) {
+  // Google Apps Script submissions (POST only) — network only, with offline queue
+  if (url.hostname.includes('script.google.com') && event.request.method === 'POST') {
     event.respondWith(fetch(event.request).catch(() => {
       return new Response(JSON.stringify({ status: 'queued' }), {
         headers: { 'Content-Type': 'application/json' }
