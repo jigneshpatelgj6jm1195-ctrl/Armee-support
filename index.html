@@ -2496,8 +2496,26 @@ async function startOCR() {
   try {
     document.getElementById('ocrOverlay').classList.add('show');
     document.getElementById('ocrResultContainer').style.display = 'none';
-    ocrStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } });
+    
+    // Set video element to muted for Safari autoplay policy
     var video = document.getElementById('ocrVideo');
+    if (video) video.muted = true;
+
+    // Request environment camera with fallback on overconstrained error
+    const constraints = { 
+      video: { 
+        facingMode: 'environment', 
+        width: { ideal: 1280 }, 
+        height: { ideal: 720 } 
+      } 
+    };
+    try {
+      ocrStream = await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (e) {
+      console.warn("Overconstrained constraints failed, falling back to basic camera options:", e);
+      ocrStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    }
+    
     video.srcObject = ocrStream;
     await video.play();
     showToast('Point camera at serial number label', 'info');
@@ -2510,51 +2528,161 @@ async function startOCR() {
 async function captureOCR() {
   var video = document.getElementById('ocrVideo');
   var canvas = document.getElementById('ocrCanvas');
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
+  
+  var videoW = video.videoWidth;
+  var videoH = video.videoHeight;
+  if (!videoW || !videoH) {
+    showToast('Video stream not ready. Please try again.', 'warn');
+    return;
+  }
+  
+  canvas.width = videoW;
+  canvas.height = videoH;
   var ctx = canvas.getContext('2d');
   ctx.drawImage(video, 0, 0);
   
-  var cropY = Math.floor(canvas.height * 0.35);
-  var cropH = Math.floor(canvas.height * 0.3);
-  var cropX = Math.floor(canvas.width * 0.05);
-  var cropW = Math.floor(canvas.width * 0.9);
+  // Calculate crop coordinates based on the display size of the dashed box overlay
+  var displayW = video.offsetWidth || video.clientWidth || videoW;
+  var displayH = video.offsetHeight || video.clientHeight || videoH;
+  var scale = videoW / displayW;
+  
+  // Dash box in CSS: height 60px, centered vertically, width 90%
+  // Crop a slightly taller box (e.g., 85px) to ensure no letters are cut off
+  var cssBoxHeight = 85; 
+  var cssBoxWidth = displayW * 0.9;
+  
+  var cropW = Math.floor(cssBoxWidth * scale);
+  var cropH = Math.floor(cssBoxHeight * scale);
+  var cropX = Math.floor((videoW - cropW) / 2);
+  var cropY = Math.floor((videoH - cropH) / 2);
+  
   var cropCanvas = document.createElement('canvas');
   cropCanvas.width = cropW;
   cropCanvas.height = cropH;
   var cropCtx = cropCanvas.getContext('2d');
   cropCtx.drawImage(canvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
   
-  var imageData = cropCtx.getImageData(0, 0, cropW, cropH);
-  var d = imageData.data;
-  for (var i = 0; i < d.length; i += 4) {
-    var avg = (d[i] * 0.299 + d[i+1] * 0.587 + d[i+2] * 0.114);
-    avg = avg > 128 ? 255 : 0;
-    d[i] = d[i+1] = d[i+2] = avg;
+  // ── Preprocess image ──
+  preprocessOcrCanvas(cropCanvas);
+  
+  showToast('Loading OCR engine... please wait', 'info');
+  try {
+    await loadTesseract();
+  } catch (err) {
+    showToast('Unable to load OCR engine. Please check internet connection or enter manually.', 'warn');
+    alert('Unable to load OCR engine. Please check internet connection or enter manually.');
+    stopOCR();
+    return;
   }
-  cropCtx.putImageData(imageData, 0, 0);
   
   showToast('Reading text... please wait', 'info');
   try {
-    await loadTesseract();
+    // Run OCR using Tesseract.js
     var result = await Tesseract.recognize(cropCanvas, 'eng', {
       logger: function() {}
     });
-    var text = (result.data.text || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    
+    // Postprocess extracted text
+    var text = (result.data.text || '').trim();
+    text = text.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    
     if (text) {
       document.getElementById('ocrResult').value = text;
       document.getElementById('ocrResultContainer').style.display = 'block';
       showToast('Text captured! Review and confirm.', 'success');
     } else {
-      showToast('No text detected. Try again with better lighting.', 'warn');
+      showToast('Unable to read serial number. Please retake photo or enter manually.', 'warn');
+      alert('Unable to read serial number. Please retake photo or enter manually.');
     }
   } catch (err) {
     showToast('OCR failed: ' + err.message, 'error');
+    alert('OCR failed: ' + err.message + '. Please enter serial number manually.');
   }
 }
 
+function preprocessOcrCanvas(canvas) {
+  var ctx = canvas.getContext('2d');
+  var width = canvas.width;
+  var height = canvas.height;
+  
+  var imageData = ctx.getImageData(0, 0, width, height);
+  var d = imageData.data;
+  
+  // 1. Grayscale conversion + High Contrast enhancement
+  var contrast = 120; // High contrast
+  var factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+  
+  for (var i = 0; i < d.length; i += 4) {
+    var r = d[i];
+    var g = d[i+1];
+    var b = d[i+2];
+    
+    // Grayscale
+    var gray = r * 0.299 + g * 0.587 + b * 0.114;
+    
+    // Contrast
+    gray = factor * (gray - 128) + 128;
+    
+    // Clamp
+    gray = Math.min(255, Math.max(0, gray));
+    
+    d[i] = d[i+1] = d[i+2] = gray;
+  }
+  ctx.putImageData(imageData, 0, 0);
+  
+  // 2. Sharpen text using 3x3 convolution sharpening filter
+  sharpenCanvas(ctx, width, height);
+}
+
+function sharpenCanvas(ctx, width, height) {
+  var imageData = ctx.getImageData(0, 0, width, height);
+  var src = imageData.data;
+  
+  var weights = [
+     0, -1,  0,
+    -1,  5, -1,
+     0, -1,  0
+  ];
+  
+  var side = 3;
+  var halfSide = 1;
+  
+  var output = ctx.createImageData(width, height);
+  var dst = output.data;
+  
+  for (var y = 0; y < height; y++) {
+    for (var x = 0; x < width; x++) {
+      var sy = y;
+      var sx = x;
+      var dstOff = (y * width + x) * 4;
+      
+      var r = 0, g = 0, b = 0;
+      
+      for (var cy = 0; cy < side; cy++) {
+        for (var cx = 0; cx < side; cx++) {
+          var scy = Math.min(height - 1, Math.max(0, sy + cy - halfSide));
+          var scx = Math.min(width - 1, Math.max(0, sx + cx - halfSide));
+          var srcOff = (scy * width + scx) * 4;
+          var wt = weights[cy * side + cx];
+          
+          r += src[srcOff] * wt;
+          g += src[srcOff + 1] * wt;
+          b += src[srcOff + 2] * wt;
+        }
+      }
+      
+      dst[dstOff] = Math.min(255, Math.max(0, r));
+      dst[dstOff + 1] = Math.min(255, Math.max(0, g));
+      dst[dstOff + 2] = Math.min(255, Math.max(0, b));
+      dst[dstOff + 3] = 255; // opaque alpha
+    }
+  }
+  ctx.putImageData(output, 0, 0);
+}
+
 function confirmOCR() {
-  var val = document.getElementById('ocrResult').value.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  var val = document.getElementById('ocrResult').value.trim();
+  val = val.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
   if (val) {
     document.getElementById('fSerial').value = val;
     showToast('Serial number set: ' + val, 'success');

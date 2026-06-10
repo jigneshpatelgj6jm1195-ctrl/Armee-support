@@ -1279,6 +1279,9 @@ async function loadData() {
   if (masterData) {
     if (!masterData.users) masterData.users = [];
     if (!masterData.accessUsers) masterData.accessUsers = [];
+    if (!masterData.districts || masterData.districts.length === 0) {
+      masterData.districts = getDefaultDistricts();
+    }
   }
 
   isDirty = false;
@@ -1291,6 +1294,18 @@ async function loadData() {
   renderArchiveManager();
   populateFilters();
   populateDashboardFilters();
+}
+
+function getDefaultDistricts() {
+  const names = [
+    "AHMEDABAD", "AMC", "AMRELI", "ANAND", "ARAVALLI", "BANASKANTHA", "BHARUCH", 
+    "BHAVNAGAR", "BOTAD", "CHHOTAUDEPUR", "DAHOD", "DEVBHOOMI DWARKA", "GANDHINAGAR", 
+    "GIR SOMNATH", "JAMNAGAR", "JUNAGADH", "KACHCHH", "KHEDA", "MAHESANA", 
+    "MAHISAGAR", "MORBI", "NARMADA", "NAVSARI", "PANCH MAHALS", "PATAN", 
+    "PORBANDAR", "RAJKOT", "RMC", "SABAR KANTHA", "SMC", "SURAT", "SURENDRANAGAR", 
+    "TAPI", "THE DANGS", "VADODARA", "VALSAD", "VMC"
+  ];
+  return names.map((name, i) => ({ id: "D" + (i + 1), name: name, status: "active" }));
 }
 
 async function loadComplaints() {

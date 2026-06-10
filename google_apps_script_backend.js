@@ -620,14 +620,86 @@ function handleSubmitComplaint(ss, data) {
 
 function getMasterData(ss) {
   var sheet = ss.getSheetByName('MasterData');
-  if (!sheet) return null;
-  var val = sheet.getRange(1, 1).getValue();
-  if (!val) return null;
-  try {
-    return JSON.parse(val);
-  } catch (e) {
-    return null;
+  var masterData = null;
+  if (sheet) {
+    var val = sheet.getRange(1, 1).getValue();
+    if (val) {
+      try {
+        masterData = JSON.parse(val);
+      } catch (e) {
+        Logger.log("Error parsing MasterData sheet JSON: " + e.toString());
+      }
+    }
   }
+  
+  if (!masterData) {
+    masterData = { equipment: [], users: [], accessUsers: [] };
+  }
+  if (!masterData.equipment) masterData.equipment = [];
+  if (!masterData.users) masterData.users = [];
+  if (!masterData.accessUsers) masterData.accessUsers = [];
+
+  // Try to load districts dynamically from "District Master" or "Districts" tab
+  var sheetDistricts = getDistrictsFromSheet(ss);
+  if (sheetDistricts && sheetDistricts.length > 0) {
+    masterData.districts = sheetDistricts;
+  } else if (!masterData.districts || masterData.districts.length === 0) {
+    // Fallback to default districts if missing in MasterData sheet as well
+    masterData.districts = getDefaultDistricts();
+  }
+  
+  return masterData;
+}
+
+function getDistrictsFromSheet(ss) {
+  var sheet = ss.getSheetByName("District Master") || ss.getSheetByName("Districts");
+  if (!sheet) return null;
+  
+  var rows = sheet.getDataRange().getValues();
+  if (rows.length <= 1) return [];
+  
+  var headers = rows[0].map(function(h) { return String(h).trim().toLowerCase(); });
+  var nameIdx = headers.indexOf("district");
+  if (nameIdx === -1) nameIdx = headers.indexOf("district name");
+  if (nameIdx === -1) nameIdx = headers.indexOf("name");
+  if (nameIdx === -1) nameIdx = 0; // fallback to first column
+  
+  var statusIdx = headers.indexOf("status");
+  
+  var districts = [];
+  for (var i = 1; i < rows.length; i++) {
+    var name = String(rows[i][nameIdx]).trim();
+    if (!name) continue;
+    
+    var status = "active";
+    if (statusIdx !== -1) {
+      var sVal = String(rows[i][statusIdx]).trim().toLowerCase();
+      if (sVal === "inactive" || sVal === "disabled" || sVal === "no") {
+        status = "inactive";
+      }
+    }
+    
+    districts.push({
+      id: "D" + i,
+      name: name,
+      status: status
+    });
+  }
+  return districts;
+}
+
+function getDefaultDistricts() {
+  var names = [
+    "AHMEDABAD", "AMC", "AMRELI", "ANAND", "ARAVALLI", "BANASKANTHA", "BHARUCH", 
+    "BHAVNAGAR", "BOTAD", "CHHOTAUDEPUR", "DAHOD", "DEVBHOOMI DWARKA", "GANDHINAGAR", 
+    "GIR SOMNATH", "JAMNAGAR", "JUNAGADH", "KACHCHH", "KHEDA", "MAHESANA", 
+    "MAHISAGAR", "MORBI", "NARMADA", "NAVSARI", "PANCH MAHALS", "PATAN", 
+    "PORBANDAR", "RAJKOT", "RMC", "SABAR KANTHA", "SMC", "SURAT", "SURENDRANAGAR", 
+    "TAPI", "THE DANGS", "VADODARA", "VALSAD", "VMC"
+  ];
+  return names.map(function(name, i) {
+    return { id: "D" + (i + 1), name: name, status: "active" };
+  });
 }
 
 function saveMasterData(ss, data) {
