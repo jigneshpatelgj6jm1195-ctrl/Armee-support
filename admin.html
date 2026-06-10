@@ -1890,6 +1890,21 @@ function drawTopSchoolsTable(data) {
   `).join('');
 }
 
+function populateFilters() {
+  const equipSel = document.getElementById('filterEquipment');
+  if (equipSel) {
+    equipSel.innerHTML = '<option value="">All Equipment</option>';
+    (masterData.equipment || []).forEach(e => {
+      if (e.status === 'active') {
+        const opt = document.createElement('option');
+        opt.value = e.name;
+        opt.textContent = e.name;
+        equipSel.appendChild(opt);
+      }
+    });
+  }
+}
+
 function populateDashboardFilters() {
   const projSel = document.getElementById('dashProject');
   const equipSel = document.getElementById('dashEquipment');
