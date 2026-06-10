@@ -1146,8 +1146,14 @@ async function loadData() {
           try { localStorage.setItem(LS_MASTER_KEY, JSON.stringify(masterData)); } catch(_) {}
           loaded = true;
         }
+      } else {
+        console.error('GAS master data load response not OK:', res.status, res.statusText);
+        showToast('⚠️ Google Apps Script master data error: HTTP ' + res.status, 'warn');
       }
-    } catch (_) {}
+    } catch (e) {
+      console.error('GAS master data load failed:', e);
+      showToast('⚠️ Google Apps Script connection error: ' + e.message, 'warn');
+    }
   }
 
   // 2. Try localStorage cache (persists across reloads)
@@ -1200,7 +1206,7 @@ async function loadComplaints() {
   try {
     if (GOOGLE_SCRIPT_URL && !isLocalhost && navigator.onLine) {
       const res = await fetch(GOOGLE_SCRIPT_URL);
-      if (!res.ok) throw new Error();
+      if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
       if (data && data.error) {
         showToast('⚠️ Backend Error: ' + data.error, 'error');
@@ -1213,18 +1219,21 @@ async function loadComplaints() {
       }
     } else {
       const res = await fetch('/complaints.json?' + Date.now());
-      if (!res.ok) throw new Error();
+      if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
       complaintsList = Array.isArray(data) ? data : [];
     }
   } catch (e) {
+    console.error('Failed to load live complaints:', e);
+    showToast('⚠️ Live data fetch error: ' + e.message + '. Trying offline fallback...', 'warn');
     try {
       const res = await fetch('/complaints.json?' + Date.now());
       if (res.ok) {
         const data = await res.json();
         complaintsList = Array.isArray(data) ? data : [];
       }
-    } catch (_) {
+    } catch (fallbackErr) {
+      console.error('Offline fallback failed:', fallbackErr);
       complaintsList = [];
     }
   }
