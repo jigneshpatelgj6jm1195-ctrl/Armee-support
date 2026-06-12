@@ -763,7 +763,8 @@ function updateComplaintsStatus(ss, complaintsArray) {
   var lastRow = sheet.getLastRow();
   if (lastRow <= 1) return 0;
 
-  var rows = sheet.getRange(2, 1, lastRow - 1, 30).getValues();
+  var numCols = HEADERS.length;
+  var rows = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
   var updatedCount = 0;
 
   for (var j = 0; j < complaintsArray.length; j++) {
@@ -794,10 +795,79 @@ function updateComplaintsStatus(ss, complaintsArray) {
 
     if (foundIndex !== -1) {
       var rowNumber = foundIndex + 2;
-      var currentStatus = rows[foundIndex][23];
-      if (currentStatus !== c.status) {
-        sheet.getRange(rowNumber, 24).setValue(c.status);
-        rows[foundIndex][23] = c.status;
+      var changed = false;
+
+      // Define map of object keys to sheet columns (1-indexed)
+      var fieldsToCols = {
+        complainantName: 3,
+        complainantPhone: 4,
+        complainantRole: 5,
+        project: 6,
+        dise: 7,
+        schoolCode: 8,
+        district: 9,
+        taluka: 10,
+        school: 11,
+        principal: 12,
+        contact: 13,
+        address: 14,
+        pincode: 15,
+        equipment: 16,
+        natureOfComplaint: 17,
+        serialNumber: 18,
+        quantity: 19,
+        complaintDate: 20,
+        suspectedPart: 21,
+        description: 22,
+        status: 24,
+        duplicateStatus: 31,
+        latitude: 26,
+        longitude: 27
+      };
+
+      for (var field in fieldsToCols) {
+        var col = fieldsToCols[field];
+        if (c[field] === undefined) continue;
+
+        var val = c[field];
+        if (field === 'quantity') {
+          val = parseInt(val) || 1;
+        } else if (field === 'suspectedPart') {
+          val = c.suspectedPart || c.medium || '';
+        } else if (field === 'latitude' || field === 'longitude') {
+          val = val !== '' ? parseFloat(val) || '' : '';
+        }
+
+        var sheetVal = rows[foundIndex][col - 1];
+        if (String(sheetVal).trim() !== String(val).trim()) {
+          sheet.getRange(rowNumber, col).setValue(val);
+          rows[foundIndex][col - 1] = val;
+          changed = true;
+        }
+      }
+
+      // Handle photo fields if photoUrl is modified
+      if (c.photoUrl !== undefined) {
+        var sheetPhotoUrl = rows[foundIndex][29]; // col 30 (0-indexed 29)
+        if (String(sheetPhotoUrl).trim() !== String(c.photoUrl).trim()) {
+          var pUrl = String(c.photoUrl).trim();
+          sheet.getRange(rowNumber, 30).setValue(pUrl);
+          rows[foundIndex][29] = pUrl;
+          
+          if (pUrl) {
+            sheet.getRange(rowNumber, 28).setFormula('=IMAGE("' + pUrl + '")');
+            sheet.getRange(rowNumber, 29).setFormula('=HYPERLINK("' + pUrl + '","🔗 View Photo")');
+            sheet.getRange(rowNumber, 23).setValue(1); // Photo Count
+          } else {
+            sheet.getRange(rowNumber, 28).setValue('');
+            sheet.getRange(rowNumber, 29).setValue('');
+            sheet.getRange(rowNumber, 23).setValue(0); // Photo Count
+          }
+          changed = true;
+        }
+      }
+
+      if (changed) {
         updatedCount++;
       }
     }
@@ -812,7 +882,8 @@ function deleteComplaintRow(ss, caseId, submittedAt, dise) {
   var lastRow = sheet.getLastRow();
   if (lastRow <= 1) return false;
 
-  var rows = sheet.getRange(2, 1, lastRow - 1, 30).getValues();
+  var numCols = HEADERS.length;
+  var rows = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
   var foundIndex = -1;
 
   // 1. Try matching by Case ID

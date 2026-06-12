@@ -1100,6 +1100,162 @@ tr:hover td { background: #f8fafc; }
   </div>
 </div>
 
+<!-- EDIT COMPLAINT MODAL -->
+<div class="modal-bg" id="editComplaintModal">
+  <div class="modal" style="max-width: 800px; width: 95%; max-height: 85vh; overflow-y: auto; display: flex; flex-direction: column; gap: 20px;">
+    <h3 style="margin-bottom: 5px; border-bottom: 2px solid var(--border); padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+      <span>✏️ Edit Complaint Details</span>
+      <span id="editComplaintCaseId" style="font-size: 0.9rem; color: var(--muted); font-weight: 600;">CASE-ID</span>
+    </h3>
+    
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; text-align: left;">
+      
+      <!-- COLUMN 1: COMPLAINANT & SCHOOL INFO -->
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <h4 style="margin: 0; color: var(--primary); font-size: 0.9rem; border-left: 3px solid var(--primary); padding-left: 8px;">👤 Complainant & Engineer</h4>
+        
+        <div class="field">
+          <label for="editCName">Complainant Name</label>
+          <input type="text" id="editCName" />
+        </div>
+        <div class="field">
+          <label for="editCPhone">Complainant Phone</label>
+          <input type="text" id="editCPhone" />
+        </div>
+        <div class="field">
+          <label for="editCRole">Complainant Role</label>
+          <input type="text" id="editCRole" />
+        </div>
+
+        <h4 style="margin: 10px 0 0 0; color: var(--primary); font-size: 0.9rem; border-left: 3px solid var(--primary); padding-left: 8px;">🏫 School Details</h4>
+        
+        <div class="field">
+          <label for="editDise">DISE Code *</label>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="editDise" style="flex: 1;" maxlength="11" />
+            <button class="btn btn-ghost btn-sm" onclick="lookupSchoolForEdit()" style="padding: 4px 10px; border: 1px solid var(--border);">🔍 Auto-fill</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="editProject">Project</label>
+          <select id="editProject"></select>
+        </div>
+        <div class="field">
+          <label for="editSchoolCode">School Code</label>
+          <input type="text" id="editSchoolCode" />
+        </div>
+        <div class="field">
+          <label for="editDistrict">District</label>
+          <select id="editDistrict"></select>
+        </div>
+        <div class="field">
+          <label for="editTaluka">Taluka / Block</label>
+          <input type="text" id="editTaluka" />
+        </div>
+        <div class="field">
+          <label for="editSchoolName">School Name</label>
+          <input type="text" id="editSchoolName" />
+        </div>
+        <div class="field">
+          <label for="editPrincipal">Principal Name</label>
+          <input type="text" id="editPrincipal" />
+        </div>
+        <div class="field">
+          <label for="editPrincipalContact">Principal Contact</label>
+          <input type="tel" id="editPrincipalContact" maxlength="10" />
+        </div>
+        <div class="field">
+          <label for="editAddress">School Address</label>
+          <textarea id="editAddress" rows="2"></textarea>
+        </div>
+        <div class="field">
+          <label for="editPincode">Pin Code</label>
+          <input type="text" id="editPincode" />
+        </div>
+      </div>
+
+      <!-- COLUMN 2: COMPLAINT DETAILS & GPS & PHOTO -->
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <h4 style="margin: 0; color: var(--primary); font-size: 0.9rem; border-left: 3px solid var(--primary); padding-left: 8px;">⚙️ Equipment & Complaint</h4>
+        
+        <div class="field">
+          <label for="editEquipment">Equipment *</label>
+          <select id="editEquipment" onchange="onEditEquipmentChange()"></select>
+        </div>
+        <div class="field">
+          <label for="editNatureOfComplaint">Nature of Complaint *</label>
+          <select id="editNatureOfComplaint"></select>
+        </div>
+        <div class="field">
+          <label for="editSerialNumber">Serial Number</label>
+          <input type="text" id="editSerialNumber" />
+        </div>
+        <div class="field">
+          <label for="editQuantity">Quantity</label>
+          <input type="number" id="editQuantity" min="1" />
+        </div>
+        <div class="field">
+          <label for="editComplaintDate">Complaint Date</label>
+          <input type="date" id="editComplaintDate" />
+        </div>
+        <div class="field">
+          <label for="editSuspectedPart">Suspected Part</label>
+          <input type="text" id="editSuspectedPart" />
+        </div>
+        <div class="field">
+          <label for="editDescription">Description</label>
+          <textarea id="editDescription" rows="2"></textarea>
+        </div>
+        <div class="field">
+          <label for="editStatus">Status</label>
+          <select id="editStatus">
+            <option value="Open">Open</option>
+            <option value="In Progress">In Progress</option>
+            <option value="Resolved">Resolved</option>
+            <option value="Closed">Closed</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="editDuplicateStatus">Duplicate Status</label>
+          <select id="editDuplicateStatus">
+            <option value="NO">NO</option>
+            <option value="YES">YES</option>
+          </select>
+        </div>
+
+        <h4 style="margin: 10px 0 0 0; color: var(--primary); font-size: 0.9rem; border-left: 3px solid var(--primary); padding-left: 8px;">📍 GPS coordinates &amp; Photo</h4>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div class="field">
+            <label for="editLatitude">Latitude</label>
+            <input type="number" step="any" id="editLatitude" />
+          </div>
+          <div class="field">
+            <label for="editLongitude">Longitude</label>
+            <input type="number" step="any" id="editLongitude" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="editPhotoUrl">Photo URL</label>
+          <input type="text" id="editPhotoUrl" oninput="updateEditPhotoPreview()" placeholder="Paste Google Drive photo URL" />
+        </div>
+        <div id="editPhotoPreviewContainer" style="margin-top: 8px; text-align: center; border: 1px dashed var(--border); border-radius: 8px; padding: 10px; background: #f8fafc; min-height: 100px; display: flex; align-items: center; justify-content: center;">
+          <img id="editPhotoPreviewImg" src="" style="max-height: 120px; max-width: 100%; border-radius: 6px; display: none;" />
+          <span id="editPhotoPreviewPlaceholder" style="color: var(--muted); font-size: 0.8rem;">No Photo Selected</span>
+        </div>
+      </div>
+
+    </div>
+    
+    <input type="hidden" id="editComplaintIndex" value="-1" />
+    
+    <div class="modal-actions" style="margin-top: 10px; border-top: 1px solid var(--border); padding-top: 15px;">
+      <button class="btn btn-ghost" onclick="closeModal('editComplaintModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveComplaintEdit()">💾 Update Complaint</button>
+    </div>
+  </div>
+</div>
+
 <!-- SECURE ADMIN LOGIN MODAL -->
 <div class="modal-bg" id="adminLoginModal">
   <div class="modal" style="max-width:400px;">
@@ -2889,6 +3045,8 @@ function renderComplaintsTable() {
   
   document.getElementById('filteredComplaintsCount').textContent = filtered.length;
 
+  const canEdit = currentUser && (currentUser.role === 'super_admin' || currentUser.role === 'district_admin');
+
   if (filtered.length === 0) {
     tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; color:var(--muted);">No matching complaints found.</td></tr>';
     return;
@@ -2936,6 +3094,7 @@ function renderComplaintsTable() {
         </td>
         <td>
           <div style="display: flex; gap: 6px; align-items: center;">
+            ${canEdit ? `<button class="btn btn-ghost btn-sm" onclick="openEditComplaint(${origIndex})" style="padding: 4px 8px;" title="Edit Complaint">✏️</button>` : ''}
             <button class="btn btn-ghost btn-sm" onclick="shareComplaintReport(${origIndex})" style="padding: 4px 8px;">📤</button>
             ${deleteModeUnlocked ? `<button class="btn btn-danger btn-sm" onclick="deleteComplaint(${origIndex})" style="padding: 4px 8px; background: #ef4444; color: white; border-radius: 6px; font-size: 0.75rem;">🗑️ Delete</button>` : ''}
           </div>
@@ -3257,6 +3416,233 @@ async function deleteComplaint(origIndex) {
       showToast('⚠️ Sync to Google Sheet failed: ' + err.message, 'warn');
     }
   }
+}
+
+/* ─────────────── EDIT COMPLAINT MODAL CONTROLLERS ─────────────── */
+function openEditComplaint(origIndex) {
+  const c = complaintsList[origIndex];
+  if (!c) return;
+
+  // Populate project select
+  const projectSel = document.getElementById('editProject');
+  projectSel.innerHTML = '<option value="">— Select Project —</option>';
+  (masterData.projects || []).forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.name;
+    opt.textContent = p.name;
+    projectSel.appendChild(opt);
+  });
+
+  // Populate district select
+  const distSel = document.getElementById('editDistrict');
+  distSel.innerHTML = '<option value="">— Select District —</option>';
+  (masterData.districts || []).forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = d.name;
+    opt.textContent = d.name;
+    distSel.appendChild(opt);
+  });
+
+  // Populate equipment select
+  const eqSel = document.getElementById('editEquipment');
+  eqSel.innerHTML = '<option value="">— Select Equipment —</option>';
+  (masterData.equipment || []).forEach(e => {
+    const opt = document.createElement('option');
+    opt.value = e.name;
+    opt.textContent = e.name;
+    eqSel.appendChild(opt);
+  });
+
+  // Load field values
+  document.getElementById('editComplaintIndex').value = origIndex;
+  document.getElementById('editComplaintCaseId').textContent = c.caseId || 'CASE-N/A';
+  
+  document.getElementById('editCName').value = c.complainantName || '';
+  document.getElementById('editCPhone').value = c.complainantPhone || '';
+  document.getElementById('editCRole').value = c.complainantRole || '';
+  
+  document.getElementById('editDise').value = c.dise || '';
+  document.getElementById('editProject').value = c.project || '';
+  document.getElementById('editSchoolCode').value = c.schoolCode || '';
+  document.getElementById('editDistrict').value = c.district || '';
+  document.getElementById('editTaluka').value = c.taluka || '';
+  document.getElementById('editSchoolName').value = c.school || '';
+  document.getElementById('editPrincipal').value = c.principal || '';
+  document.getElementById('editPrincipalContact').value = c.contact || '';
+  document.getElementById('editAddress').value = c.address || '';
+  document.getElementById('editPincode').value = c.pincode || '';
+  
+  document.getElementById('editEquipment').value = c.equipment || '';
+  
+  // Trigger equipment change to load nature list and set selected value
+  onEditEquipmentChange();
+  document.getElementById('editNatureOfComplaint').value = c.natureOfComplaint || '';
+  
+  document.getElementById('editSerialNumber').value = c.serialNumber || '';
+  document.getElementById('editQuantity').value = c.quantity || 1;
+  
+  // Format Date for <input type="date"> (expecting YYYY-MM-DD)
+  let dateVal = '';
+  if (c.complaintDate) {
+    const dStr = String(c.complaintDate).trim();
+    if (dStr.includes('/')) {
+      const parts = dStr.split('/');
+      if (parts.length === 3) {
+        const d = parts[0].padStart(2, '0');
+        const m = parts[1].padStart(2, '0');
+        const y = parts[2];
+        dateVal = `${y}-${m}-${d}`;
+      }
+    } else if (dStr.includes('-')) {
+      dateVal = dStr;
+    }
+  }
+  document.getElementById('editComplaintDate').value = dateVal;
+  
+  document.getElementById('editSuspectedPart').value = c.suspectedPart || c.medium || '';
+  document.getElementById('editDescription').value = c.description || '';
+  document.getElementById('editStatus').value = c.status || 'Open';
+  document.getElementById('editDuplicateStatus').value = c.duplicateStatus || 'NO';
+  
+  document.getElementById('editLatitude').value = c.latitude || '';
+  document.getElementById('editLongitude').value = c.longitude || '';
+  document.getElementById('editPhotoUrl').value = getComplaintPhoto(c) || '';
+  
+  updateEditPhotoPreview();
+  
+  document.getElementById('editComplaintModal').classList.add('show');
+}
+
+function onEditEquipmentChange() {
+  const equipName = document.getElementById('editEquipment').value;
+  const natSel = document.getElementById('editNatureOfComplaint');
+  natSel.innerHTML = '<option value="">— Select Nature of Complaint —</option>';
+  
+  if (!equipName) return;
+  
+  const eq = (masterData.equipment || []).find(e => e.name === equipName);
+  if (eq && eq.complaints) {
+    eq.complaints.forEach(nat => {
+      const opt = document.createElement('option');
+      opt.value = nat.name;
+      opt.textContent = nat.name;
+      natSel.appendChild(opt);
+    });
+  }
+}
+
+function updateEditPhotoPreview() {
+  const url = document.getElementById('editPhotoUrl').value.trim();
+  const img = document.getElementById('editPhotoPreviewImg');
+  const placeholder = document.getElementById('editPhotoPreviewPlaceholder');
+  
+  if (url) {
+    img.src = url;
+    img.style.display = 'block';
+    placeholder.style.display = 'none';
+  } else {
+    img.src = '';
+    img.style.display = 'none';
+    placeholder.style.display = 'block';
+  }
+}
+
+function lookupSchoolForEdit() {
+  const dise = document.getElementById('editDise').value.trim();
+  if (!dise) {
+    showToast('⚠️ Enter a DISE Code first', 'warn');
+    return;
+  }
+  
+  const entries = schoolDataRaw[dise];
+  const list = Array.isArray(entries) ? entries : (entries ? [entries] : []);
+  const record = list[0];
+  
+  if (record) {
+    if (record.project) document.getElementById('editProject').value = record.project;
+    if (record.schoolCode || record.school_code) document.getElementById('editSchoolCode').value = record.schoolCode || record.school_code || '';
+    if (record.district) document.getElementById('editDistrict').value = record.district;
+    if (record.block || record.taluka) document.getElementById('editTaluka').value = record.block || record.taluka || '';
+    if (record.school || record.name) document.getElementById('editSchoolName').value = record.school || record.name || '';
+    if (record.principal) document.getElementById('editPrincipal').value = record.principal || '';
+    if (record.mobile || record.principal_contact) document.getElementById('editPrincipalContact').value = record.mobile || record.principal_contact || '';
+    if (record.address) document.getElementById('editAddress').value = record.address || '';
+    if (record.pincode) document.getElementById('editPincode').value = record.pincode || '';
+    showToast('✅ School details auto-filled successfully!', 'success');
+  } else {
+    showToast('❌ School not found in master database for this DISE code', 'warn');
+  }
+}
+
+function saveComplaintEdit() {
+  const idx = parseInt(document.getElementById('editComplaintIndex').value);
+  if (idx < 0 || idx >= complaintsList.length) return;
+  
+  const c = complaintsList[idx];
+  
+  const dise = document.getElementById('editDise').value.trim();
+  const equipment = document.getElementById('editEquipment').value;
+  const nature = document.getElementById('editNatureOfComplaint').value;
+  
+  if (!dise || !equipment || !nature) {
+    showToast('⚠️ DISE Code, Equipment, and Nature of Complaint are required!', 'warn');
+    return;
+  }
+  
+  c.complainantName = document.getElementById('editCName').value.trim();
+  c.complainantPhone = document.getElementById('editCPhone').value.trim();
+  c.complainantRole = document.getElementById('editCRole').value.trim();
+  
+  c.dise = dise;
+  c.project = document.getElementById('editProject').value;
+  c.schoolCode = document.getElementById('editSchoolCode').value.trim();
+  c.district = document.getElementById('editDistrict').value;
+  c.taluka = document.getElementById('editTaluka').value.trim();
+  c.school = document.getElementById('editSchoolName').value.trim();
+  c.principal = document.getElementById('editPrincipal').value.trim();
+  c.contact = document.getElementById('editPrincipalContact').value.trim();
+  c.address = document.getElementById('editAddress').value.trim();
+  c.pincode = document.getElementById('editPincode').value.trim();
+  
+  c.equipment = equipment;
+  c.natureOfComplaint = nature;
+  c.serialNumber = document.getElementById('editSerialNumber').value.trim();
+  c.quantity = parseInt(document.getElementById('editQuantity').value) || 1;
+  
+  const dateVal = document.getElementById('editComplaintDate').value;
+  if (dateVal) {
+    const parts = dateVal.split('-');
+    if (parts.length === 3) {
+      c.complaintDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+    } else {
+      c.complaintDate = dateVal;
+    }
+  } else {
+    c.complaintDate = '';
+  }
+  
+  c.suspectedPart = document.getElementById('editSuspectedPart').value.trim();
+  c.medium = c.suspectedPart;
+  c.description = document.getElementById('editDescription').value.trim();
+  c.status = document.getElementById('editStatus').value;
+  c.duplicateStatus = document.getElementById('editDuplicateStatus').value;
+  
+  c.latitude = parseFloat(document.getElementById('editLatitude').value) || '';
+  c.longitude = parseFloat(document.getElementById('editLongitude').value) || '';
+  
+  const newPhotoUrl = document.getElementById('editPhotoUrl').value.trim();
+  if (newPhotoUrl !== getComplaintPhoto(c)) {
+    c.photoUrl = newPhotoUrl;
+    c.photos = newPhotoUrl ? [newPhotoUrl] : [];
+    c.photoCount = newPhotoUrl ? 1 : 0;
+  }
+  
+  renderDashboard();
+  renderComplaintsTable();
+  markDirty();
+  
+  closeModal('editComplaintModal');
+  showToast('✏️ Complaint details updated locally! Click "Save Data" at the top to sync to server.', 'success');
 }
 
 // Close modals on backdrop click
