@@ -197,7 +197,13 @@ function uploadPhotoToDrive(base64Data, fileName, folder) {
     var blob = Utilities.newBlob(decoded, 'image/jpeg', fileName);
     var file = folder.createFile(blob);
 
-    // Skip file-level setSharing call since monthly folder is already shared, saving ~500-1000ms.
+    // Explicitly set sharing to ANYONE_WITH_LINK VIEW to guarantee access on all devices
+    try {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    } catch (sharingErr) {
+      Logger.log('Error setting file sharing: ' + sharingErr.toString());
+    }
+
     var fileId = file.getId();
     var viewUrl = 'https://lh3.googleusercontent.com/d/' + fileId;
     var openUrl = 'https://drive.google.com/file/d/' + fileId + '/view';
@@ -206,6 +212,53 @@ function uploadPhotoToDrive(base64Data, fileName, folder) {
   } catch (err) {
     Logger.log('Photo upload error: ' + err.toString());
     return null;
+  }
+}
+
+function makeAllPhotosPublic() {
+  var props = PropertiesService.getScriptProperties();
+  var rootId = props.getProperty('FOLDER_ROOT');
+  if (!rootId) {
+    var folders = DriveApp.getFoldersByName(DRIVE_ROOT_FOLDER);
+    if (folders.hasNext()) {
+      rootId = folders.next().getId();
+    }
+  }
+  
+  if (!rootId) {
+    return "Root folder " + DRIVE_ROOT_FOLDER + " not found";
+  }
+  
+  var rootFolder = DriveApp.getFolderById(rootId);
+  rootFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  
+  var counts = { folders: 1, files: 0 };
+  makeFolderContentsPublic(rootFolder, counts);
+  return "All files and folders under root made public. Updated " + counts.folders + " folders and " + counts.files + " files.";
+}
+
+function makeFolderContentsPublic(folder, counts) {
+  var files = folder.getFiles();
+  while (files.hasNext()) {
+    var file = files.next();
+    try {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      counts.files++;
+    } catch (e) {
+      Logger.log("Error sharing file " + file.getName() + ": " + e.toString());
+    }
+  }
+  
+  var subfolders = folder.getFolders();
+  while (subfolders.hasNext()) {
+    var subfolder = subfolders.next();
+    try {
+      subfolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      counts.folders++;
+      makeFolderContentsPublic(subfolder, counts);
+    } catch (e) {
+      Logger.log("Error sharing folder " + subfolder.getName() + ": " + e.toString());
+    }
   }
 }
 
@@ -319,6 +372,12 @@ function doGet(e) {
     if (action === 'get_complaints_with_archive') {
       var data = getComplaintsWithArchive(ss);
       return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (action === 'make_photos_public') {
+      var result = makeAllPhotosPublic();
+      return ContentService.createTextOutput(JSON.stringify({ status: 'ok', message: result }))
+                           .setMimeType(ContentService.MimeType.JSON);
     }
 
     // Default: return complaints list
