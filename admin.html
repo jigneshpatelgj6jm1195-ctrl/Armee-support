@@ -533,13 +533,27 @@ tr:hover td { background: #f8fafc; }
       <!-- New Row: All Districts and Hour-wise Ticket Logging -->
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 20px;">
         <div class="chart-card">
-          <h4 style="font-size:0.8rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin-bottom:10px;">📍 All Districts Distribution</h4>
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+            <h4 style="font-size:0.8rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin:0;">📍 All Districts Distribution</h4>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <input type="date" id="allDistrictsFromDate" style="padding:4px 8px; font-size:0.75rem; border:1px solid var(--border); border-radius:6px;" onchange="updateAllDistrictsChartFiltered()" />
+              <span style="font-size:0.7rem; color:var(--muted);">to</span>
+              <input type="date" id="allDistrictsToDate" style="padding:4px 8px; font-size:0.75rem; border:1px solid var(--border); border-radius:6px;" onchange="updateAllDistrictsChartFiltered()" />
+            </div>
+          </div>
           <div style="position: relative; height: 180px; width: 100%;">
             <canvas id="chartAllDistricts"></canvas>
           </div>
         </div>
         <div class="chart-card">
-          <h4 style="font-size:0.8rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin-bottom:10px;">⏰ Hour-wise Ticket Logging</h4>
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+            <h4 style="font-size:0.8rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin:0;">⏰ Hour-wise Ticket Logging</h4>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <input type="date" id="timeLoggingFromDate" style="padding:4px 8px; font-size:0.75rem; border:1px solid var(--border); border-radius:6px;" onchange="updateTimeLoggingChartFiltered()" />
+              <span style="font-size:0.7rem; color:var(--muted);">to</span>
+              <input type="date" id="timeLoggingToDate" style="padding:4px 8px; font-size:0.75rem; border:1px solid var(--border); border-radius:6px;" onchange="updateTimeLoggingChartFiltered()" />
+            </div>
+          </div>
           <div style="position: relative; height: 180px; width: 100%;">
             <canvas id="chartTimeLogging"></canvas>
           </div>
@@ -1814,15 +1828,15 @@ function renderDashboard() {
     }
     
     if (fromDate) {
-      const d = new Date(c.submittedAt || c.complaintDate);
-      if (!isNaN(d.getTime())) {
+      const d = parseDateString(c.submittedAt || c.complaintDate);
+      if (d) {
         const localDStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
         if (localDStr < fromDate) return false;
       }
     }
     if (toDate) {
-      const d = new Date(c.submittedAt || c.complaintDate);
-      if (!isNaN(d.getTime())) {
+      const d = parseDateString(c.submittedAt || c.complaintDate);
+      if (d) {
         const localDStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
         if (localDStr > toDate) return false;
       }
@@ -1904,8 +1918,8 @@ function getBadgeClass(status) {
 function drawTrendChart(data) {
   const counts = {};
   data.forEach(c => {
-    const d = new Date(c.submittedAt || c.complaintDate);
-    if (isNaN(d.getTime())) return;
+    const d = parseDateString(c.submittedAt || c.complaintDate);
+    if (!d) return;
     const dateKey = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     counts[dateKey] = (counts[dateKey] || 0) + 1;
   });
@@ -1979,9 +1993,30 @@ function drawDistrictChart(data) {
   });
 }
 
+let localAllDistrictsData = [];
 function drawAllDistrictsChart(data) {
+  localAllDistrictsData = data;
+  updateAllDistrictsChartFiltered();
+}
+
+function updateAllDistrictsChartFiltered() {
+  const fromVal = document.getElementById('allDistrictsFromDate').value;
+  const toVal = document.getElementById('allDistrictsToDate').value;
+
+  let filtered = localAllDistrictsData;
+  if (fromVal || toVal) {
+    filtered = filtered.filter(c => {
+      const d = parseDateString(c.submittedAt || c.complaintDate);
+      if (!d) return true;
+      const localDStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      if (fromVal && localDStr < fromVal) return false;
+      if (toVal && localDStr > toVal) return false;
+      return true;
+    });
+  }
+
   const counts = {};
-  data.forEach(c => {
+  filtered.forEach(c => {
     if (!c.district) return;
     const key = String(c.district).toUpperCase().trim();
     counts[key] = (counts[key] || 0) + 1;
@@ -2014,9 +2049,30 @@ function drawAllDistrictsChart(data) {
   });
 }
 
+let localTimeLoggingData = [];
 function drawTimeLoggingChart(data) {
+  localTimeLoggingData = data;
+  updateTimeLoggingChartFiltered();
+}
+
+function updateTimeLoggingChartFiltered() {
+  const fromVal = document.getElementById('timeLoggingFromDate').value;
+  const toVal = document.getElementById('timeLoggingToDate').value;
+
+  let filtered = localTimeLoggingData;
+  if (fromVal || toVal) {
+    filtered = filtered.filter(c => {
+      const d = parseDateString(c.submittedAt || c.complaintDate);
+      if (!d) return true;
+      const localDStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      if (fromVal && localDStr < fromVal) return false;
+      if (toVal && localDStr > toVal) return false;
+      return true;
+    });
+  }
+
   const counts = Array(24).fill(0);
-  data.forEach(c => {
+  filtered.forEach(c => {
     if (!c.submittedAt) return;
     const d = new Date(c.submittedAt);
     if (isNaN(d.getTime())) return;
@@ -2054,6 +2110,37 @@ function drawTimeLoggingChart(data) {
       }
     }
   });
+}
+
+function parseDateString(str) {
+  if (!str) return null;
+  const s = String(str).trim();
+  let d = new Date(s);
+  if (!isNaN(d.getTime())) return d;
+
+  if (s.includes('/')) {
+    const parts = s.split('/');
+    if (parts.length === 3) {
+      const day = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const year = parseInt(parts[2], 10);
+      d = new Date(year, month, day);
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+
+  if (s.includes('-')) {
+    const parts = s.split('-');
+    if (parts.length === 3) {
+      if (parts[0].length === 4) {
+        d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      } else {
+        d = new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+      }
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+  return null;
 }
 
 function drawProjectChart(data) {
