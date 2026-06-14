@@ -4,7 +4,7 @@
    Offline queue: submissions stored in IndexedDB
 ═══════════════════════════════════════════════════════ */
 
-const CACHE_NAME = 'school-form-v10';
+const CACHE_NAME = 'school-form-v29';
 const STATIC_ASSETS = [
   './index.html',
   './school_data.json',
@@ -12,7 +12,6 @@ const STATIC_ASSETS = [
   './html5-qrcode.min.js',
   './armee_logo.png',
   './armee_logo_square.png',
-  'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js',
 ];
 
 // ── INSTALL: cache static assets ──

@@ -748,8 +748,7 @@ textarea { resize: none; min-height: 80px; }
           <label for="fSerial">Serial Number <span class="req">*</span></label>
           <div style="display:flex; gap:4px; align-items: center;">
             <input type="text" id="fSerial" placeholder="e.g. SN20240001" autocapitalize="characters" style="flex:1; margin-bottom:0;" />
-            <button type="button" class="btn-cam" style="flex-shrink:0; width:auto; padding:0 14px; height:46px; margin:0; border-radius:12px; font-size:0.82rem; border:none;" onclick="startScanner()">📷 Scan</button>
-            <button type="button" class="btn-cam" style="flex-shrink:0; width:auto; padding:0 14px; height:46px; margin:0; border-radius:12px; font-size:0.82rem; border:none; background:linear-gradient(135deg,#8b5cf6,#6d28d9);box-shadow: 0 4px 14px rgba(139,92,246,0.35);" onclick="startOCR()">📸 OCR</button>
+            <button type="button" class="btn-cam" style="flex-shrink:0; width:auto; padding:0 18px; height:46px; margin:0; border-radius:12px; font-size:0.88rem; font-weight:600; border:none; background:linear-gradient(135deg,var(--primary),#4f46e5); color:#fff; box-shadow: 0 4px 12px rgba(99,102,241,0.25);" onclick="startScanner()">📷 Scan Barcode</button>
           </div>
         </div>
 
@@ -962,32 +961,7 @@ textarea { resize: none; min-height: 80px; }
   </div>
 </div>
 
-<!-- OCR Overlay -->
-<div class="overlay" id="ocrOverlay" onclick="closeOcrOverlay(event)">
-  <div class="sheet" style="max-height:85vh">
-    <div class="sheet-handle"></div>
-    <div class="sheet-title">📸 OCR Serial Number Capture</div>
-    <div class="sheet-body">
-      <div id="ocrVideoContainer" style="width:100%;border-radius:12px;overflow:hidden;background:#000;position:relative;margin-bottom:12px;">
-        <video id="ocrVideo" autoplay playsinline style="width:100%;display:block;transform:scaleX(1);"></video>
-        <div style="position:absolute;top:50%;left:5%;right:5%;height:60px;border:2px dashed #06b6d4;border-radius:8px;transform:translateY(-50%);pointer-events:none;box-shadow:0 0 0 9999px rgba(0,0,0,0.5)"></div>
-      </div>
-      <div style="text-align:center;margin-bottom:12px;">
-        <button type="button" class="btn-cam" onclick="captureOCR()" style="width:100%;justify-content:center;">📷 Capture & Read Text</button>
-      </div>
-      <div id="ocrResultContainer" style="display:none;margin-top:12px;">
-        <label style="font-weight:700;font-size:0.8rem;color:var(--text);margin-bottom:4px;display:block;">Extracted Serial Number:</label>
-        <input type="text" id="ocrResult" style="width:100%;padding:12px;border:2px solid var(--primary);border-radius:10px;font-size:1.1rem;font-weight:800;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px;" />
-        <div style="display:flex;gap:8px;">
-          <button type="button" class="btn-submit-final" onclick="confirmOCR()" style="margin:0;">✅ Use This</button>
-          <button type="button" class="btn-back" onclick="retryOCR()" style="margin:0;flex:1;justify-content:center;">🔄 Retry</button>
-        </div>
-      </div>
-      <canvas id="ocrCanvas" style="display:none"></canvas>
-      <button class="btn-back" style="width:100%; justify-content:center; padding:12px; margin-top:12px;" onclick="stopOCR()">✕ Cancel OCR</button>
-    </div>
-  </div>
-</div>
+
 
 <!-- Duplicate Warning Overlay -->
 <div class="overlay" id="duplicateWarningOverlay">
@@ -1004,6 +978,35 @@ textarea { resize: none; min-height: 80px; }
 
 <!-- ═══════════════════════ SCRIPTS (Vercel Build Trigger) ═══════════════════════ -->
 <script>
+// URL Cache-Busting Utility to clear Service Worker caches
+(function() {
+  const CURRENT_VERSION = 'v29';
+  const urlParams = new URLSearchParams(window.location.search);
+  const forceClear = urlParams.has('clear') || urlParams.has('update') || urlParams.has('v');
+  const localVersion = localStorage.getItem('armee_app_version');
+  
+  if (forceClear || (localVersion && localVersion !== CURRENT_VERSION)) {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(registrations) {
+        for (let registration of registrations) {
+          registration.unregister();
+        }
+      });
+    }
+    caches.keys().then(function(names) {
+      for (let name of names) caches.delete(name);
+    });
+    localStorage.clear();
+    sessionStorage.clear();
+    localStorage.setItem('armee_app_version', CURRENT_VERSION);
+    
+    const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+    window.location.replace(cleanUrl);
+  } else {
+    localStorage.setItem('armee_app_version', CURRENT_VERSION);
+  }
+})();
+
 'use strict';
 
 /* ─────────────── CONFIG ─────────────── */
@@ -2409,11 +2412,30 @@ async function runScanner(cameraConfig) {
   if (!html5QrCode) return;
   
   const config = {
-    fps: 15,
+    fps: 25,
     qrbox: (width, height) => {
-      const w = Math.min(width * 0.8, 300);
-      const h = Math.min(height * 0.4, 150);
+      // Wide rectangle box optimized for both wide 1D barcodes and QR codes
+      const w = Math.min(width * 0.9, 360);
+      const h = Math.min(height * 0.35, 120);
       return { width: w, height: h };
+    },
+    formatsToSupport: [
+      Html5QrcodeSupportedFormats.QR_CODE,
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.CODE_93,
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.ITF,
+      Html5QrcodeSupportedFormats.CODABAR,
+      Html5QrcodeSupportedFormats.DATA_MATRIX,
+      Html5QrcodeSupportedFormats.PDF_417
+    ],
+    videoConstraints: {
+      width: { ideal: 1280 },
+      height: { ideal: 720 }
     }
   };
   
@@ -2479,237 +2501,7 @@ function cancelComplaintGroup() {
   }
 }
 
-// ── OCR FUNCTIONS ──
-var ocrStream = null;
-var tesseractLoaded = false;
 
-async function loadTesseract() {
-  if (tesseractLoaded) return;
-  return new Promise(function(resolve, reject) {
-    var s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
-    s.onload = function() { tesseractLoaded = true; resolve(); };
-    s.onerror = function() { reject(new Error('Failed to load Tesseract.js')); };
-    document.head.appendChild(s);
-  });
-}
-
-async function startOCR() {
-  try {
-    document.getElementById('ocrOverlay').classList.add('show');
-    document.getElementById('ocrResultContainer').style.display = 'none';
-    
-    // Set video element to muted for Safari autoplay policy
-    var video = document.getElementById('ocrVideo');
-    if (video) video.muted = true;
-
-    // Request environment camera with fallback on overconstrained error
-    const constraints = { 
-      video: { 
-        facingMode: 'environment', 
-        width: { ideal: 1280 }, 
-        height: { ideal: 720 } 
-      } 
-    };
-    try {
-      ocrStream = await navigator.mediaDevices.getUserMedia(constraints);
-    } catch (e) {
-      console.warn("Overconstrained constraints failed, falling back to basic camera options:", e);
-      ocrStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-    }
-    
-    video.srcObject = ocrStream;
-    await video.play();
-    showToast('Point camera at serial number label', 'info');
-  } catch (err) {
-    showToast('Camera access denied: ' + err.message, 'error');
-    stopOCR();
-  }
-}
-
-async function captureOCR() {
-  var video = document.getElementById('ocrVideo');
-  var canvas = document.getElementById('ocrCanvas');
-  
-  var videoW = video.videoWidth;
-  var videoH = video.videoHeight;
-  if (!videoW || !videoH) {
-    showToast('Video stream not ready. Please try again.', 'warn');
-    return;
-  }
-  
-  canvas.width = videoW;
-  canvas.height = videoH;
-  var ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0);
-  
-  // Calculate crop coordinates based on the display size of the dashed box overlay
-  var displayW = video.offsetWidth || video.clientWidth || videoW;
-  var displayH = video.offsetHeight || video.clientHeight || videoH;
-  var scale = videoW / displayW;
-  
-  // Dash box in CSS: height 60px, centered vertically, width 90%
-  // Crop a slightly taller box (e.g., 85px) to ensure no letters are cut off
-  var cssBoxHeight = 85; 
-  var cssBoxWidth = displayW * 0.9;
-  
-  var cropW = Math.floor(cssBoxWidth * scale);
-  var cropH = Math.floor(cssBoxHeight * scale);
-  var cropX = Math.floor((videoW - cropW) / 2);
-  var cropY = Math.floor((videoH - cropH) / 2);
-  
-  var cropCanvas = document.createElement('canvas');
-  cropCanvas.width = cropW;
-  cropCanvas.height = cropH;
-  var cropCtx = cropCanvas.getContext('2d');
-  cropCtx.drawImage(canvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-  
-  // ── Preprocess image ──
-  preprocessOcrCanvas(cropCanvas);
-  
-  showToast('Loading OCR engine... please wait', 'info');
-  try {
-    await loadTesseract();
-  } catch (err) {
-    showToast('Unable to load OCR engine. Please check internet connection or enter manually.', 'warn');
-    alert('Unable to load OCR engine. Please check internet connection or enter manually.');
-    stopOCR();
-    return;
-  }
-  
-  showToast('Reading text... please wait', 'info');
-  try {
-    // Run OCR using Tesseract.js
-    var result = await Tesseract.recognize(cropCanvas, 'eng', {
-      logger: function() {}
-    });
-    
-    // Postprocess extracted text
-    var text = (result.data.text || '').trim();
-    text = text.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-    
-    if (text) {
-      document.getElementById('ocrResult').value = text;
-      document.getElementById('ocrResultContainer').style.display = 'block';
-      showToast('Text captured! Review and confirm.', 'success');
-    } else {
-      showToast('Unable to read serial number. Please retake photo or enter manually.', 'warn');
-      alert('Unable to read serial number. Please retake photo or enter manually.');
-    }
-  } catch (err) {
-    showToast('OCR failed: ' + err.message, 'error');
-    alert('OCR failed: ' + err.message + '. Please enter serial number manually.');
-  }
-}
-
-function preprocessOcrCanvas(canvas) {
-  var ctx = canvas.getContext('2d');
-  var width = canvas.width;
-  var height = canvas.height;
-  
-  var imageData = ctx.getImageData(0, 0, width, height);
-  var d = imageData.data;
-  
-  // 1. Grayscale conversion + High Contrast enhancement
-  var contrast = 120; // High contrast
-  var factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
-  
-  for (var i = 0; i < d.length; i += 4) {
-    var r = d[i];
-    var g = d[i+1];
-    var b = d[i+2];
-    
-    // Grayscale
-    var gray = r * 0.299 + g * 0.587 + b * 0.114;
-    
-    // Contrast
-    gray = factor * (gray - 128) + 128;
-    
-    // Clamp
-    gray = Math.min(255, Math.max(0, gray));
-    
-    d[i] = d[i+1] = d[i+2] = gray;
-  }
-  ctx.putImageData(imageData, 0, 0);
-  
-  // 2. Sharpen text using 3x3 convolution sharpening filter
-  sharpenCanvas(ctx, width, height);
-}
-
-function sharpenCanvas(ctx, width, height) {
-  var imageData = ctx.getImageData(0, 0, width, height);
-  var src = imageData.data;
-  
-  var weights = [
-     0, -1,  0,
-    -1,  5, -1,
-     0, -1,  0
-  ];
-  
-  var side = 3;
-  var halfSide = 1;
-  
-  var output = ctx.createImageData(width, height);
-  var dst = output.data;
-  
-  for (var y = 0; y < height; y++) {
-    for (var x = 0; x < width; x++) {
-      var sy = y;
-      var sx = x;
-      var dstOff = (y * width + x) * 4;
-      
-      var r = 0, g = 0, b = 0;
-      
-      for (var cy = 0; cy < side; cy++) {
-        for (var cx = 0; cx < side; cx++) {
-          var scy = Math.min(height - 1, Math.max(0, sy + cy - halfSide));
-          var scx = Math.min(width - 1, Math.max(0, sx + cx - halfSide));
-          var srcOff = (scy * width + scx) * 4;
-          var wt = weights[cy * side + cx];
-          
-          r += src[srcOff] * wt;
-          g += src[srcOff + 1] * wt;
-          b += src[srcOff + 2] * wt;
-        }
-      }
-      
-      dst[dstOff] = Math.min(255, Math.max(0, r));
-      dst[dstOff + 1] = Math.min(255, Math.max(0, g));
-      dst[dstOff + 2] = Math.min(255, Math.max(0, b));
-      dst[dstOff + 3] = 255; // opaque alpha
-    }
-  }
-  ctx.putImageData(output, 0, 0);
-}
-
-function confirmOCR() {
-  var val = document.getElementById('ocrResult').value.trim();
-  val = val.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-  if (val) {
-    document.getElementById('fSerial').value = val;
-    showToast('Serial number set: ' + val, 'success');
-  }
-  stopOCR();
-}
-
-function retryOCR() {
-  document.getElementById('ocrResultContainer').style.display = 'none';
-  document.getElementById('ocrResult').value = '';
-}
-
-function stopOCR() {
-  if (ocrStream) {
-    ocrStream.getTracks().forEach(function(t) { t.stop(); });
-    ocrStream = null;
-  }
-  var video = document.getElementById('ocrVideo');
-  if (video) video.srcObject = null;
-  document.getElementById('ocrOverlay').classList.remove('show');
-}
-
-function closeOcrOverlay(e) {
-  if (e.target === document.getElementById('ocrOverlay')) stopOCR();
-}
 
 // ── DUPLICATE CHECK FUNCTIONS ──
 let pendingDuplicateStatus = 'NO';
