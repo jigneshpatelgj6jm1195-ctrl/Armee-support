@@ -913,12 +913,11 @@ textarea { resize: none; min-height: 80px; }
       <span>📷 Scan Barcode / QR Code</span>
     </div>
     <div class="sheet-body">
-      <div class="field">
-        <label for="scannerCameraSelect">Select Camera</label>
-        <select id="scannerCameraSelect" style="margin-bottom: 14px;"></select>
-      </div>
       <div id="reader" style="width:100%; max-width:380px; margin:0 auto 16px; border-radius:12px; overflow:hidden; border:2px solid var(--primary); background:#000;"></div>
-      <button class="btn-back" style="width:100%; justify-content:center; padding:12px;" onclick="stopScanner()">✕ Cancel Scan</button>
+      <div style="display:flex; gap:10px; margin-bottom:8px;">
+        <button type="button" class="btn-cam" onclick="flipScannerCamera()" style="flex:1; justify-content:center; background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; border:none; border-radius:10px; padding:11px; font-weight:600; font-size:0.9rem; cursor:pointer; display:flex; align-items:center; gap:6px;">🔄 Flip Camera</button>
+        <button class="btn-back" style="flex:1; justify-content:center; padding:11px;" onclick="stopScanner()">✕ Cancel</button>
+      </div>
     </div>
   </div>
 </div>
@@ -980,7 +979,7 @@ textarea { resize: none; min-height: 80px; }
 <script>
 // URL Cache-Busting Utility to clear Service Worker caches
 (function() {
-  const CURRENT_VERSION = 'v29';
+  const CURRENT_VERSION = 'v30';
   const urlParams = new URLSearchParams(window.location.search);
   const forceClear = urlParams.has('clear') || urlParams.has('update') || urlParams.has('v');
   const localVersion = localStorage.getItem('armee_app_version');
@@ -1039,6 +1038,7 @@ let offlineQueue = JSON.parse(localStorage.getItem('offlineQueue') || '[]');
 let lastComplaint = null;
 let editFieldKey  = ''; // 'principal' | 'contact'
 let html5QrCode   = null;
+let currentScannerFacingMode = 'environment';
 let gpsLocation   = null;
 
 // Complaint group state (for qty > 1)
@@ -2366,45 +2366,86 @@ async function startScanner() {
     html5QrCode = null;
   }
   
-  const cameraSelect = document.getElementById('scannerCameraSelect');
-  cameraSelect.innerHTML = '<option value="environment">Rear Camera (Default)</option>';
-  
   html5QrCode = new Html5Qrcode("reader");
+  currentScannerFacingMode = 'environment';
   
   try {
-    await runScanner({ facingMode: "environment" });
-    
-    // Detect cameras in background
-    Html5Qrcode.getCameras().then(devices => {
-      if (devices && devices.length > 0) {
-        cameraSelect.innerHTML = '';
-        devices.forEach((device, index) => {
-          const opt = document.createElement('option');
-          opt.value = device.id;
-          const label = device.label || `Camera ${index + 1}`;
-          opt.textContent = label;
-          if (label.toLowerCase().includes('back') || label.toLowerCase().includes('environment') || label.toLowerCase().includes('rear')) {
-            opt.selected = true;
-          }
-          cameraSelect.appendChild(opt);
-        });
-        
-        cameraSelect.onchange = async () => {
-          if (html5QrCode) {
-            try { await html5QrCode.stop(); } catch(_) {}
-          }
-          html5QrCode = new Html5Qrcode("reader");
-          await runScanner(cameraSelect.value);
-        };
+    // Step 1: Use getUserMedia to get the real rear camera deviceId
+    // (same technique OCR uses — html5-qrcode ignores facingMode on many Android devices)
+    let rearDeviceId = null;
+    try {
+      const tempStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" } }
+      });
+      const activeTrack = tempStream.getVideoTracks()[0];
+      if (activeTrack) {
+        rearDeviceId = activeTrack.getSettings().deviceId;
       }
-    }).catch(err => {
-      console.warn("Could not list cameras:", err);
-    });
+      // Stop the temp stream immediately before handing camera to html5QrCode
+      tempStream.getTracks().forEach(t => t.stop());
+    } catch (gumErr) {
+      console.warn("getUserMedia pre-check failed, will try facingMode directly:", gumErr);
+    }
     
+    // Step 2: Start scanner with the resolved deviceId, or fall back to facingMode
+    if (rearDeviceId) {
+      await runScanner({ deviceId: { exact: rearDeviceId } });
+    } else {
+      await runScanner({ facingMode: "environment" });
+    }
+    showToast('Point camera at barcode or QR code', 'info');
   } catch (err) {
-    console.error(err);
-    showToast('Failed to access camera', 'warn');
+    console.error("Scanner init failed:", err);
+    alert('Camera access failed: ' + err.message + '\n\nNote: Camera features require a secure HTTPS connection or localhost, and camera permissions must be granted.');
     closeScannerOverlayDirect();
+  }
+}
+
+async function flipScannerCamera() {
+  // ── Same technique as flipOcrCamera: use getUserMedia to get real deviceId ──
+  
+  // Step 1: figure out which facingMode is currently active so we can toggle it
+  currentScannerFacingMode = currentScannerFacingMode === 'environment' ? 'user' : 'environment';
+  const targetFacing = currentScannerFacingMode;
+  
+  // Step 2: stop html5QrCode
+  if (html5QrCode) {
+    try { await html5QrCode.stop(); } catch(_) {}
+  }
+  
+  // Delay 250ms for camera hardware resource release (same as OCR)
+  await new Promise(r => setTimeout(r, 250));
+  
+  // Step 3: Use getUserMedia to resolve the real deviceId for the target facingMode
+  let targetDeviceId = null;
+  try {
+    const tempStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: targetFacing } }
+    });
+    const activeTrack = tempStream.getVideoTracks()[0];
+    if (activeTrack) {
+      targetDeviceId = activeTrack.getSettings().deviceId;
+    }
+    // Stop temp stream immediately before passing camera to html5QrCode
+    tempStream.getTracks().forEach(t => t.stop());
+  } catch (gumErr) {
+    console.warn('getUserMedia flip pre-check failed, falling back to facingMode:', gumErr);
+  }
+  
+  await new Promise(r => setTimeout(r, 150));
+  
+  // Step 4: restart html5QrCode with the resolved deviceId or facingMode fallback
+  try {
+    if (!html5QrCode) html5QrCode = new Html5Qrcode('reader');
+    if (targetDeviceId) {
+      await runScanner({ deviceId: { exact: targetDeviceId } });
+    } else {
+      await runScanner({ facingMode: targetFacing });
+    }
+    showToast('Switched to: ' + (targetFacing === 'environment' ? 'Rear Camera' : 'Front Camera'), 'success');
+  } catch (err) {
+    console.error('Scanner flip failed:', err);
+    alert('Failed to flip camera: ' + err.message);
   }
 }
 
