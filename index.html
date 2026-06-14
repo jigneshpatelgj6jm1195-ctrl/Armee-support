@@ -578,7 +578,7 @@ textarea { resize: none; min-height: 80px; }
       <div class="step-label" id="lbl1">Lookup</div>
       <div class="step-label" id="lbl2">School</div>
       <div class="step-label" id="lbl3">Complaint</div>
-      <div class="step-label" id="lbl4">Photos</div>
+      <div class="step-label" id="lbl4">Summary</div>
     </div>
   </div>
 
@@ -781,9 +781,43 @@ textarea { resize: none; min-height: 80px; }
 
         <div class="field">
           <label for="fSuspectedPart" style="color: #ef4444; font-weight: 600;">Suspected Part <span style="font-size: 0.82rem; font-weight: normal; color: #ef4444;">(if having a part issue)</span></label>
-          <select id="fSuspectedPart">
+          <select id="fSuspectedPart" onchange="onSuspectedPartChange()">
             <option value="">— Select Suspected Part —</option>
           </select>
+          <div id="suspectedPartNotice" style="margin-top:6px; font-size:0.78rem; font-weight:700; color:var(--muted); line-height:1.4;">
+            ℹ️ Note: No Suspected Part selected. Photo upload below is optional.
+          </div>
+        </div>
+
+        <!-- Suspected Part Photo Field -->
+        <div class="field mt-12" id="suspectedPartPhotoField">
+          <label style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Suspected Part Photo <span class="req" id="suspectedPhotoReq" style="display:none;">*</span></span>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="photo-count-badge" id="photoCountBadge" style="margin-left:0;">0</span>
+              <span style="font-size:0.75rem; font-weight:normal; color:var(--muted);" id="suspectedPhotoStatus">Optional</span>
+            </div>
+          </label>
+          <div style="display:flex; gap:8px; margin-bottom:8px;">
+            <button type="button" class="btn-cam" onclick="document.getElementById('cameraInput').click()" style="flex:1; justify-content:center; padding:11px; margin:0; font-size:0.82rem;">📷 Camera</button>
+            <button type="button" class="btn-gal" onclick="document.getElementById('galleryInput').click()" style="flex:1; justify-content:center; padding:11px; margin:0; font-size:0.82rem;">🖼️ Gallery</button>
+          </div>
+          <input type="file" id="cameraInput" accept="image/*" capture="environment" multiple style="display:none" onchange="addPhotos(event)" />
+          <input type="file" id="galleryInput" accept="image/*,application/pdf" multiple style="display:none" onchange="addPhotos(event)" />
+          <input type="file" id="retakeInput" accept="image/*" capture="environment" style="display:none" />
+          
+          <!-- Upload Progress Indicator -->
+          <div class="upload-progress" id="uploadProgress">
+            <span>📤 Compressing...</span>
+            <div class="upload-progress-bar">
+              <div class="upload-progress-fill" id="uploadProgressFill" style="width: 0%"></div>
+            </div>
+          </div>
+          
+          <div class="photo-grid" id="photoGrid"></div>
+          <div id="noPhotosMsg" style="text-align:center;padding:12px;color:var(--muted);font-size:0.8rem;font-weight:700;border:1px dashed rgba(0,0,0,0.1);border-radius:10px;background:#fafafa;">
+            📷 Photo upload is optional (no suspected part selected).
+          </div>
         </div>
 
         <div class="field">
@@ -793,41 +827,10 @@ textarea { resize: none; min-height: 80px; }
       </div>
     </div>
 
-    <!-- ── STEP 4: PHOTOS ── -->
+    <!-- ── STEP 4: SUMMARY ── -->
     <div class="step-page" id="step4">
       <div id="offlineNotice" class="queue-notice hidden">
         📶 You are <b>offline</b>. Submission will be queued and sent automatically when online.
-      </div>
-
-      <div class="card">
-        <div class="card-header">
-          <div class="card-icon">📸</div>
-          <div>
-            <div class="card-title">Attach Photos <span class="req">*</span></div>
-            <div class="card-sub" id="photoStepSub">Take photos of the faulty equipment (Mandatory)</div>
-          </div>
-          <span class="photo-count-badge" id="photoCountBadge">0</span>
-        </div>
-        <div class="photo-action-row">
-          <button class="btn-cam" onclick="document.getElementById('cameraInput').click()">📷 Camera</button>
-          <button class="btn-gal" onclick="document.getElementById('galleryInput').click()">🖼️ Gallery</button>
-        </div>
-        <input type="file" id="cameraInput" accept="image/*" capture="environment" multiple style="display:none" onchange="addPhotos(event)" />
-        <input type="file" id="galleryInput" accept="image/*,application/pdf" multiple style="display:none" onchange="addPhotos(event)" />
-        <input type="file" id="retakeInput" accept="image/*" capture="environment" style="display:none" />
-        
-        <!-- Upload Progress Indicator -->
-        <div class="upload-progress" id="uploadProgress">
-          <span>📤 Compressing...</span>
-          <div class="upload-progress-bar">
-            <div class="upload-progress-fill" id="uploadProgressFill" style="width: 0%"></div>
-          </div>
-        </div>
-        
-        <div class="photo-grid" id="photoGrid"></div>
-        <div id="noPhotosMsg" style="text-align:center;padding:20px;color:var(--muted);font-size:0.85rem;font-weight:700;">
-          📷 Capture/upload at least 1 photo of the equipment (mandatory).
-        </div>
       </div>
 
       <div class="card" id="summaryCard">
@@ -1319,6 +1322,38 @@ function populateSuspectedParts() {
   if (cur) sel.value = cur;
 }
 
+function onSuspectedPartChange() {
+  const val = document.getElementById('fSuspectedPart').value;
+  const notice = document.getElementById('suspectedPartNotice');
+  const reqIndicator = document.getElementById('suspectedPhotoReq');
+  const subStatus = document.getElementById('suspectedPhotoStatus');
+  const noPhotosMsg = document.getElementById('noPhotosMsg');
+
+  if (val) {
+    if (notice) {
+      notice.style.color = '#ef4444';
+      notice.innerHTML = '⚠️ Note: Since you selected a Suspected Part, attaching a photo of it below is mandatory.';
+    }
+    if (reqIndicator) reqIndicator.style.display = 'inline';
+    if (subStatus) {
+      subStatus.textContent = 'Mandatory';
+      subStatus.style.color = '#ef4444';
+    }
+    if (noPhotosMsg) noPhotosMsg.textContent = '📷 Capture/upload at least 1 photo of the suspected part (mandatory).';
+  } else {
+    if (notice) {
+      notice.style.color = 'var(--muted)';
+      notice.innerHTML = 'ℹ️ Note: No Suspected Part selected. Photo upload below is optional.';
+    }
+    if (reqIndicator) reqIndicator.style.display = 'none';
+    if (subStatus) {
+      subStatus.textContent = 'Optional';
+      subStatus.style.color = 'var(--muted)';
+    }
+    if (noPhotosMsg) noPhotosMsg.textContent = '📷 Photo upload is optional (no suspected part selected).';
+  }
+}
+
 function onEquipmentChange() {
   const equipName = document.getElementById('fEquipment').value;
   const natSel = document.getElementById('fNature');
@@ -1697,6 +1732,10 @@ function validateStep(step) {
     if (!date)      { showToast('⚠️ Select Complaint Date', 'warn'); return false; }
     if (!serial)    { showToast('⚠️ Enter or scan Serial Number', 'warn'); return false; }
     if (!serialPhoto) { showToast('⚠️ Please attach Serial Number Photo', 'warn'); return false; }
+    if (suspectedPart && photos.filter(Boolean).length === 0) {
+      showToast('⚠️ Photo is mandatory when a Suspected Part is selected. Please capture/upload a photo of the part!', 'warn');
+      return false;
+    }
 
     // Check if serial is unique in the current group
     if (complaintGroup && complaintGroup.submitted) {
@@ -2085,9 +2124,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
 /* ─────────────── SUBMIT ─────────────── */
 async function submitForm() {
+  const suspectedPart = document.getElementById('fSuspectedPart').value;
   const activePhotos = photos.filter(Boolean);
-  if (activePhotos.length === 0) {
-    showToast('⚠️ Photo is mandatory. Please capture/upload a photo!', 'warn');
+  if (suspectedPart && activePhotos.length === 0) {
+    showToast('⚠️ Photo is mandatory when a Suspected Part is selected. Please capture/upload a photo of the part!', 'warn');
     return;
   }
 
@@ -2296,6 +2336,7 @@ function handleNextItem() {
   }, 50);
   document.getElementById('fDate').value   = complaintGroup.date;
   document.getElementById('fSuspectedPart').value = complaintGroup.medium;
+  onSuspectedPartChange();
   document.getElementById('fDesc').value   = complaintGroup.desc;
   document.getElementById('fSerial').value = '';
 
@@ -2313,10 +2354,6 @@ function handleNextItem() {
   document.getElementById('serialPhotoGrid').innerHTML = '';
   document.getElementById('noSerialPhotoMsg').style.display = 'block';
   updatePhotoCount();
-
-  // Update photo step subtitle
-  document.getElementById('photoStepSub').textContent =
-    `Item ${complaintGroup.current} of ${complaintGroup.total} — ${complaintGroup.equipment}`;
 
   // Update complaint card subtitle
   document.getElementById('complaintCardSub').textContent =
@@ -2374,11 +2411,11 @@ function resetAll() {
   document.getElementById('serialPhotoGrid').innerHTML = '';
   document.getElementById('noSerialPhotoMsg').style.display = 'block';
   document.getElementById('fSuspectedPart').value = '';
+  onSuspectedPartChange();
   document.getElementById('fDesc').value   = '';
   document.getElementById('photoGrid').innerHTML = '';
   document.getElementById('noPhotosMsg').style.display = '';
   document.getElementById('qtyProgressBanner').style.display = 'none';
-  document.getElementById('photoStepSub').textContent    = 'Take photos of the faulty equipment';
   document.getElementById('complaintCardSub').textContent = 'Fill all required fields';
   updatePhotoCount();
   gotoStep(1);
@@ -2610,7 +2647,6 @@ function cancelComplaintGroup() {
     document.getElementById('noSerialPhotoMsg').style.display = 'block';
     updatePhotoCount();
     
-    document.getElementById('photoStepSub').textContent    = 'Take photos of the faulty equipment';
     document.getElementById('complaintCardSub').textContent = 'Fill all required fields';
     showToast('Group registration cancelled', 'info');
   }
