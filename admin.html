@@ -1235,13 +1235,26 @@ tr:hover td { background: #f8fafc; }
             <input type="number" step="any" id="editLongitude" />
           </div>
         </div>
-        <div class="field">
-          <label for="editPhotoUrl">Photo URL</label>
-          <input type="text" id="editPhotoUrl" oninput="updateEditPhotoPreview()" placeholder="Paste Google Drive photo URL" />
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div class="field">
+            <label for="editPhotoUrl">Photo URL</label>
+            <input type="text" id="editPhotoUrl" oninput="updateEditPhotoPreview()" placeholder="Paste Google Drive photo URL" />
+          </div>
+          <div class="field">
+            <label for="editSerialPhotoUrl">Serial Photo URL</label>
+            <input type="text" id="editSerialPhotoUrl" oninput="updateEditSerialPhotoPreview()" placeholder="Paste Google Drive serial photo URL" />
+          </div>
         </div>
-        <div id="editPhotoPreviewContainer" style="margin-top: 8px; text-align: center; border: 1px dashed var(--border); border-radius: 8px; padding: 10px; background: #f8fafc; min-height: 100px; display: flex; align-items: center; justify-content: center;">
-          <img id="editPhotoPreviewImg" src="" style="max-height: 120px; max-width: 100%; border-radius: 6px; display: none;" />
-          <span id="editPhotoPreviewPlaceholder" style="color: var(--muted); font-size: 0.8rem;">No Photo Selected</span>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px;">
+          <div id="editPhotoPreviewContainer" style="text-align: center; border: 1px dashed var(--border); border-radius: 8px; padding: 10px; background: #f8fafc; min-height: 100px; display: flex; align-items: center; justify-content: center;">
+            <img id="editPhotoPreviewImg" src="" style="max-height: 120px; max-width: 100%; border-radius: 6px; display: none;" />
+            <span id="editPhotoPreviewPlaceholder" style="color: var(--muted); font-size: 0.8rem;">No Photo Selected</span>
+          </div>
+          <div id="editSerialPhotoPreviewContainer" style="text-align: center; border: 1px dashed var(--border); border-radius: 8px; padding: 10px; background: #f8fafc; min-height: 100px; display: flex; align-items: center; justify-content: center;">
+            <img id="editSerialPhotoPreviewImg" src="" style="max-height: 120px; max-width: 100%; border-radius: 6px; display: none;" />
+            <span id="editSerialPhotoPreviewPlaceholder" style="color: var(--muted); font-size: 0.8rem;">No Serial Photo</span>
+          </div>
         </div>
       </div>
 
@@ -3075,7 +3088,15 @@ function renderComplaintsTable() {
           <span style="font-size:0.72rem; color:var(--muted);">${esc(c.natureOfComplaint)}</span>
           ${c.description ? `<br><span style="font-size:0.7rem; color:#6b7280; font-style:italic;">💬 ${esc(c.description)}</span>` : ''}
         </td>
-        <td><code>${esc(c.serialNumber || 'N/A')}</code></td>
+        <td>
+          <code>${esc(c.serialNumber || 'N/A')}</code>
+          ${(() => {
+            const serialPhotoSrc = c.serialPhotoUrl || c.serialPhoto || '';
+            return serialPhotoSrc 
+              ? `<div style="margin-top: 4px;"><img src="${serialPhotoSrc}" style="width:50px; height:50px; object-fit:cover; border-radius:6px; border:1px solid var(--border); cursor:pointer;" onclick="viewAdminSerialPhoto('${serialPhotoSrc}')" title="Click to view Serial Photo" /></div>`
+              : '';
+          })()}
+        </td>
         <td>
           ${(() => {
             const photoSrc = getComplaintPhoto(c);
@@ -3272,6 +3293,34 @@ function getComplaintPhoto(c) {
   return null;
 }
 
+function viewAdminSerialPhoto(src) {
+  const modal = document.getElementById('adminPhotoModal');
+  const img = document.getElementById('adminPhotoImg');
+  const downloadBtn = document.getElementById('adminPhotoDownload');
+  
+  img.src = src;
+  
+  let fileId = '';
+  if (src && src.startsWith('http')) {
+    if (src.includes('lh3.googleusercontent.com/d/')) {
+      fileId = src.split('lh3.googleusercontent.com/d/')[1];
+      if (fileId && fileId.includes('?')) fileId = fileId.split('?')[0];
+    } else if (src.includes('drive.google.com/file/d/')) {
+      fileId = src.split('drive.google.com/file/d/')[1];
+      if (fileId && fileId.includes('/')) fileId = fileId.split('/')[0];
+    }
+  }
+  
+  if (fileId) {
+    downloadBtn.style.display = 'block';
+    downloadBtn.onclick = () => window.open(`https://docs.google.com/uc?export=download&id=${fileId}`, '_blank');
+  } else {
+    downloadBtn.style.display = 'none';
+  }
+  
+  modal.classList.add('show');
+}
+
 function viewAdminPhoto(index) {
   const c = complaintsList[index];
   const src = getComplaintPhoto(c);
@@ -3364,6 +3413,9 @@ function shareComplaintReport(origIndex) {
   const c = complaintsList[origIndex];
   if (!c) return;
   
+  const serialPhotoSrc = c.serialPhotoUrl || c.serialPhoto || '';
+  const photoSrc = getComplaintPhoto(c);
+
   const txt = [
     `📋 SCHOOL COMPLAINT REPORT`,
     `Case ID: ${c.caseId || 'N/A'}`,
@@ -3373,14 +3425,16 @@ function shareComplaintReport(origIndex) {
     `Equipment: ${c.equipment || '—'}`,
     `Nature: ${c.natureOfComplaint || '—'}`,
     `Serial: ${c.serialNumber || 'N/A'}`,
+    serialPhotoSrc ? `Serial Photo: ${serialPhotoSrc}` : '',
     `Quantity: ${c.quantity || 1}`,
     `Date: ${c.complaintDate || '—'}`,
     `Suspected Part: ${c.suspectedPart || c.medium || 'None'}`,
     `Description: ${c.description || 'None'}`,
+    photoSrc ? `Faulty Photo: ${photoSrc}` : '',
     `Status: ${c.status || 'Open'}`,
     `By: ${c.complainantName || '—'} (${c.complainantPhone || '—'})`,
     `Logged: ${c.submittedAt ? new Date(c.submittedAt).toLocaleString() : '—'}`,
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 
   if (navigator.share) {
     navigator.share({ title: 'Complaint Report', text: txt }).catch(() => {});
@@ -3540,8 +3594,10 @@ function openEditComplaint(origIndex) {
   document.getElementById('editLatitude').value = c.latitude || '';
   document.getElementById('editLongitude').value = c.longitude || '';
   document.getElementById('editPhotoUrl').value = getComplaintPhoto(c) || '';
+  document.getElementById('editSerialPhotoUrl').value = c.serialPhotoUrl || c.serialPhoto || '';
   
   updateEditPhotoPreview();
+  updateEditSerialPhotoPreview();
   
   document.getElementById('editComplaintModal').classList.add('show');
 }
@@ -3568,6 +3624,22 @@ function updateEditPhotoPreview() {
   const url = document.getElementById('editPhotoUrl').value.trim();
   const img = document.getElementById('editPhotoPreviewImg');
   const placeholder = document.getElementById('editPhotoPreviewPlaceholder');
+  
+  if (url) {
+    img.src = url;
+    img.style.display = 'block';
+    placeholder.style.display = 'none';
+  } else {
+    img.src = '';
+    img.style.display = 'none';
+    placeholder.style.display = 'block';
+  }
+}
+
+function updateEditSerialPhotoPreview() {
+  const url = document.getElementById('editSerialPhotoUrl').value.trim();
+  const img = document.getElementById('editSerialPhotoPreviewImg');
+  const placeholder = document.getElementById('editSerialPhotoPreviewPlaceholder');
   
   if (url) {
     img.src = url;
@@ -3668,6 +3740,12 @@ function saveComplaintEdit() {
     c.photoUrl = newPhotoUrl;
     c.photos = newPhotoUrl ? [newPhotoUrl] : [];
     c.photoCount = newPhotoUrl ? 1 : 0;
+  }
+  
+  const newSerialPhotoUrl = document.getElementById('editSerialPhotoUrl').value.trim();
+  if (newSerialPhotoUrl !== (c.serialPhotoUrl || c.serialPhoto || '')) {
+    c.serialPhotoUrl = newSerialPhotoUrl;
+    c.serialPhoto = newSerialPhotoUrl;
   }
   
   renderDashboard();

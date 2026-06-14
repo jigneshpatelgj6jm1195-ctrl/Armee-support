@@ -60,6 +60,9 @@ const HEADERS = [
   'View Photo',
   'Photo URL',
   'Duplicate Status',
+  'Serial Photo Preview',
+  'View Serial Photo',
+  'Serial Photo URL',
   'Archived'
 ];
 
@@ -430,7 +433,7 @@ function getComplaintsList(ss) {
     var rowFormulas = formulas[i];
     
     // Parse using index-based layout for 100% correctness
-    var archivedVal = String(row[31] || '').trim();
+    var archivedVal = String(row[34] || '').trim();
     if (archivedVal === 'YES') {
       continue;
     }
@@ -468,6 +471,9 @@ function getComplaintsList(ss) {
       viewPhoto: row[28] || '',
       photoUrl: row[29] || '',
       duplicateStatus: String(row[30] || 'NO'),
+      serialPhotoPreview: row[31] || '',
+      viewSerialPhoto: row[32] || '',
+      serialPhotoUrl: row[33] || '',
       archived: archivedVal
     };
 
@@ -480,6 +486,18 @@ function getComplaintsList(ss) {
       if (!obj.photoUrl && rowFormulas && rowFormulas[27]) {
         var match = rowFormulas[27].match(/=IMAGE\("([^"]+)"/i);
         if (match) obj.photoUrl = match[1];
+      }
+    }
+
+    // If serialPhotoUrl is empty, try extracting from formulas
+    if (!obj.serialPhotoUrl) {
+      if (rowFormulas && rowFormulas[32]) {
+        var match = rowFormulas[32].match(/=HYPERLINK\("([^"]+)"/i);
+        if (match) obj.serialPhotoUrl = match[1];
+      }
+      if (!obj.serialPhotoUrl && rowFormulas && rowFormulas[31]) {
+        var match = rowFormulas[31].match(/=IMAGE\("([^"]+)"/i);
+        if (match) obj.serialPhotoUrl = match[1];
       }
     }
     
@@ -607,12 +625,12 @@ function handleSubmitComplaint(ss, data) {
   var photoFileName = '';
   var photosArray = data.photos || [];
 
-  if (photosArray.length > 0) {
-    var folder = getPhotoFolder(data.project, data.submittedAt);
-    var timestamp = new Date().getTime();
-    var dise = data.dise || 'UNKNOWN';
-    var serial = String(data.serialNumber || 'NA').replace(/[^a-zA-Z0-9]/g, '');
+  var folder = getPhotoFolder(data.project, data.submittedAt);
+  var timestamp = new Date().getTime();
+  var dise = data.dise || 'UNKNOWN';
+  var serial = String(data.serialNumber || 'NA').replace(/[^a-zA-Z0-9]/g, '');
 
+  if (photosArray.length > 0) {
     for (var i = 0; i < photosArray.length; i++) {
       var fname = dise + '_' + serial + '_' + timestamp + (photosArray.length > 1 ? '_' + (i+1) : '') + '.jpg';
       var result = uploadPhotoToDrive(photosArray[i], fname, folder);
@@ -625,9 +643,23 @@ function handleSubmitComplaint(ss, data) {
     }
   }
 
+  // Handle Serial Number Photo upload
+  var serialPhotoViewUrl = '';
+  var serialPhotoOpenUrl = '';
+  var serialPhotoFileName = '';
+  if (data.serialPhoto) {
+    var sfname = dise + '_' + serial + '_' + timestamp + '_serial.jpg';
+    var sresult = uploadPhotoToDrive(data.serialPhoto, sfname, folder);
+    if (sresult) {
+      serialPhotoViewUrl = sresult.viewUrl;
+      serialPhotoOpenUrl = sresult.openUrl;
+      serialPhotoFileName = sresult.name;
+    }
+  }
+
   const caseId = 'CASE-' + Date.now();
 
-  // Optimized: write formulas directly in the initial array to prevent separate setFormula calls
+  // Updated row with 35 columns matching HEADERS
   var row = [
     srNo,
     data.submittedAt || '',
@@ -660,7 +692,10 @@ function handleSubmitComplaint(ss, data) {
     photoOpenUrl ? '=HYPERLINK("' + photoOpenUrl + '","' + '🔗 View Photo' + '")' : '',
     photoViewUrl || '',
     data.duplicateStatus || 'NO',
-    ''
+    serialPhotoViewUrl ? '=IMAGE("' + serialPhotoViewUrl + '")' : '',
+    serialPhotoOpenUrl ? '=HYPERLINK("' + serialPhotoOpenUrl + '","' + '🔗 View Serial Photo' + '")' : '',
+    serialPhotoViewUrl || '',
+    '' // Archived
   ];
 
   sheet.appendRow(row);

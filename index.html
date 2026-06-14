@@ -752,6 +752,33 @@ textarea { resize: none; min-height: 80px; }
           </div>
         </div>
 
+        <div class="field mt-12" id="serialPhotoField">
+          <label style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Serial Number Photo <span class="req">*</span></span>
+            <span style="font-size:0.75rem; font-weight:normal; color:var(--muted);">For verification</span>
+          </label>
+          <div style="display:flex; gap:8px; margin-bottom:8px;">
+            <button type="button" class="btn-cam" onclick="document.getElementById('serialCameraInput').click()" style="flex:1; justify-content:center; padding:11px; margin:0; font-size:0.82rem;">📷 Camera</button>
+            <button type="button" class="btn-gal" onclick="document.getElementById('serialGalleryInput').click()" style="flex:1; justify-content:center; padding:11px; margin:0; font-size:0.82rem;">🖼️ Gallery</button>
+          </div>
+          <input type="file" id="serialCameraInput" accept="image/*" capture="environment" style="display:none" onchange="addSerialPhoto(event)" />
+          <input type="file" id="serialGalleryInput" accept="image/*" style="display:none" onchange="addSerialPhoto(event)" />
+          <input type="file" id="serialRetakeInput" accept="image/*" capture="environment" style="display:none" onchange="addSerialPhoto(event)" />
+          
+          <!-- Upload Progress Indicator for Serial Photo -->
+          <div class="upload-progress" id="serialUploadProgress">
+            <span>📤 Compressing...</span>
+            <div class="upload-progress-bar">
+              <div class="upload-progress-fill" id="serialUploadProgressFill" style="width: 0%"></div>
+            </div>
+          </div>
+          
+          <div class="photo-grid" id="serialPhotoGrid"></div>
+          <div id="noSerialPhotoMsg" style="text-align:center;padding:12px;color:var(--muted);font-size:0.8rem;font-weight:700;border:1px dashed rgba(0,0,0,0.1);border-radius:10px;background:#fafafa;">
+            📷 Attach 1 photo of the serial number sticker/plate.
+          </div>
+        </div>
+
         <div class="field">
           <label for="fSuspectedPart" style="color: #ef4444; font-weight: 600;">Suspected Part <span style="font-size: 0.82rem; font-weight: normal; color: #ef4444;">(if having a part issue)</span></label>
           <select id="fSuspectedPart">
@@ -980,7 +1007,7 @@ textarea { resize: none; min-height: 80px; }
 <script>
 // URL Cache-Busting Utility to clear Service Worker caches
 (function() {
-  const CURRENT_VERSION = 'v29';
+  const CURRENT_VERSION = 'v30';
   const urlParams = new URLSearchParams(window.location.search);
   const forceClear = urlParams.has('clear') || urlParams.has('update') || urlParams.has('v');
   const localVersion = localStorage.getItem('armee_app_version');
@@ -1035,6 +1062,7 @@ let currentStep = 1;
 let totalSteps  = 4;
 let foundRecord = null;
 let photos      = [];
+let serialPhoto = null;
 let offlineQueue = JSON.parse(localStorage.getItem('offlineQueue') || '[]');
 let lastComplaint = null;
 let editFieldKey  = ''; // 'principal' | 'contact'
@@ -1668,6 +1696,7 @@ function validateStep(step) {
     if (qty < 1)    { showToast('⚠️ Enter valid Quantity', 'warn'); return false; }
     if (!date)      { showToast('⚠️ Select Complaint Date', 'warn'); return false; }
     if (!serial)    { showToast('⚠️ Enter or scan Serial Number', 'warn'); return false; }
+    if (!serialPhoto) { showToast('⚠️ Please attach Serial Number Photo', 'warn'); return false; }
 
     // Check if serial is unique in the current group
     if (complaintGroup && complaintGroup.submitted) {
@@ -1912,6 +1941,87 @@ function updatePhotoCount() {
   document.getElementById('photoCountBadge').textContent = photos.filter(Boolean).length;
 }
 
+// ── SERIAL PHOTO HELPERS ──
+async function addSerialPhoto(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  const progress = document.getElementById('serialUploadProgress');
+  const fill = document.getElementById('serialUploadProgressFill');
+  
+  if (progress && fill) {
+    progress.classList.add('show');
+    fill.style.width = '15%';
+  }
+  
+  renderSerialPlaceholder();
+  
+  try {
+    if (fill) fill.style.width = '50%';
+    const base64Data = await compressPhoto(file);
+    serialPhoto = base64Data;
+    updateSerialPhotoThumb(base64Data);
+    if (fill) fill.style.width = '90%';
+  } catch (err) {
+    console.error(err);
+    showToast('Error processing serial photo', 'error');
+    removeSerialPhoto();
+  }
+  
+  if (fill) fill.style.width = '100%';
+  setTimeout(() => {
+    if (progress) progress.classList.remove('show');
+  }, 500);
+
+  event.target.value = '';
+}
+
+function renderSerialPlaceholder() {
+  const grid = document.getElementById('serialPhotoGrid');
+  grid.innerHTML = '';
+  document.getElementById('noSerialPhotoMsg').style.display = 'none';
+  const div = document.createElement('div');
+  div.className = 'photo-thumb placeholder';
+  div.style.width = '80px';
+  div.style.height = '80px';
+  div.innerHTML = `<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f1f5fd;font-size:0.7rem;color:var(--muted);">
+    <span style="font-size:1.2rem;animation:spin 1s linear infinite;">⏳</span>
+    <span>Processing…</span>
+  </div>`;
+  grid.appendChild(div);
+}
+
+function updateSerialPhotoThumb(base64Data) {
+  const grid = document.getElementById('serialPhotoGrid');
+  grid.innerHTML = '';
+  
+  const div = document.createElement('div');
+  div.className = 'photo-thumb';
+  div.style.width = '100px';
+  div.style.height = '100px';
+  
+  div.innerHTML = `
+    <img src="${base64Data}" alt="Serial Photo" onclick="viewFullscreen('${base64Data}')" style="width:100%;height:100%;object-fit:cover;border-radius:8px;" />
+    <button class="del-btn" onclick="removeSerialPhoto()" style="top:-6px;right:-6px;width:20px;height:20px;font-size:0.7rem;">✕</button>
+    <div class="photo-actions" style="font-size:0.7rem;padding:2px;">
+      <button onclick="viewFullscreen('${base64Data}')" style="padding:2px 4px;">🔍 View</button>
+      <button onclick="triggerSerialRetake()" style="padding:2px 4px;">🔄 Retake</button>
+    </div>
+  `;
+  grid.appendChild(div);
+  document.getElementById('noSerialPhotoMsg').style.display = 'none';
+}
+
+function removeSerialPhoto() {
+  serialPhoto = null;
+  document.getElementById('serialPhotoGrid').innerHTML = '';
+  document.getElementById('noSerialPhotoMsg').style.display = 'block';
+}
+
+function triggerSerialRetake() {
+  document.getElementById('serialRetakeInput').click();
+}
+
 let retakeIdx = null;
 function triggerRetake(idx) {
   retakeIdx = idx;
@@ -2068,8 +2178,8 @@ async function proceedWithSubmission() {
     suspectedPart:     document.getElementById('fSuspectedPart').value,
     medium:            document.getElementById('fSuspectedPart').value,
     description:       document.getElementById('fDesc').value,
-    photoCount:        activePhotos.length,
     photos:            activePhotos,
+    serialPhoto:       serialPhoto,
     latitude:          gpsLocation.latitude,
     longitude:         gpsLocation.longitude,
     duplicateStatus:   pendingDuplicateStatus
@@ -2196,9 +2306,12 @@ function handleNextItem() {
 
   // Reset photos & gps location
   photos = [];
+  serialPhoto = null;
   gpsLocation = null;
   document.getElementById('photoGrid').innerHTML = '';
   document.getElementById('noPhotosMsg').style.display = '';
+  document.getElementById('serialPhotoGrid').innerHTML = '';
+  document.getElementById('noSerialPhotoMsg').style.display = 'block';
   updatePhotoCount();
 
   // Update photo step subtitle
@@ -2257,6 +2370,9 @@ function resetAll() {
   qtyInp.value = '1'; qtyInp.readOnly = false;
   document.getElementById('fDate').value   = todayDate();
   document.getElementById('fSerial').value = '';
+  serialPhoto = null;
+  document.getElementById('serialPhotoGrid').innerHTML = '';
+  document.getElementById('noSerialPhotoMsg').style.display = 'block';
   document.getElementById('fSuspectedPart').value = '';
   document.getElementById('fDesc').value   = '';
   document.getElementById('photoGrid').innerHTML = '';
@@ -2487,8 +2603,11 @@ function cancelComplaintGroup() {
     
     // Reset photos
     photos = [];
+    serialPhoto = null;
     document.getElementById('photoGrid').innerHTML = '';
     document.getElementById('noPhotosMsg').style.display = '';
+    document.getElementById('serialPhotoGrid').innerHTML = '';
+    document.getElementById('noSerialPhotoMsg').style.display = 'block';
     updatePhotoCount();
     
     document.getElementById('photoStepSub').textContent    = 'Take photos of the faulty equipment';
