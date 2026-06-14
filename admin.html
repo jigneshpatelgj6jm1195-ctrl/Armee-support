@@ -2914,7 +2914,10 @@ function getFilteredComplaints() {
       const dise = String(c.dise || '').toLowerCase();
       const serial = String(c.serialNumber || '').toLowerCase();
       const caseId = String(c.caseId || '').toLowerCase();
-      if (!school.includes(query) && !dise.includes(query) && !serial.includes(query) && !caseId.includes(query)) {
+      const desc = String(c.description || '').toLowerCase();
+      const nature = String(c.natureOfComplaint || '').toLowerCase();
+      const equip = String(c.equipment || '').toLowerCase();
+      if (!school.includes(query) && !dise.includes(query) && !serial.includes(query) && !caseId.includes(query) && !desc.includes(query) && !nature.includes(query) && !equip.includes(query)) {
         return false;
       }
     }
@@ -3070,6 +3073,7 @@ function renderComplaintsTable() {
         <td>
           <b>${esc(c.equipment)}</b><br>
           <span style="font-size:0.72rem; color:var(--muted);">${esc(c.natureOfComplaint)}</span>
+          ${c.description ? `<br><span style="font-size:0.7rem; color:#6b7280; font-style:italic;">💬 ${esc(c.description)}</span>` : ''}
         </td>
         <td><code>${esc(c.serialNumber || 'N/A')}</code></td>
         <td>
@@ -3353,6 +3357,35 @@ function submitAdminDeleteLogin() {
     showToast('🔓 Admin delete actions unlocked successfully!', 'success');
   } else {
     showToast('❌ Invalid admin credentials!', 'danger');
+  }
+}
+
+function shareComplaintReport(origIndex) {
+  const c = complaintsList[origIndex];
+  if (!c) return;
+  
+  const txt = [
+    `📋 SCHOOL COMPLAINT REPORT`,
+    `Case ID: ${c.caseId || 'N/A'}`,
+    `School: ${c.school || '—'}`,
+    `DISE: ${c.dise || '—'}`,
+    `District: ${c.district || '—'} | Block: ${c.taluka || '—'}`,
+    `Equipment: ${c.equipment || '—'}`,
+    `Nature: ${c.natureOfComplaint || '—'}`,
+    `Serial: ${c.serialNumber || 'N/A'}`,
+    `Quantity: ${c.quantity || 1}`,
+    `Date: ${c.complaintDate || '—'}`,
+    `Suspected Part: ${c.suspectedPart || c.medium || 'None'}`,
+    `Description: ${c.description || 'None'}`,
+    `Status: ${c.status || 'Open'}`,
+    `By: ${c.complainantName || '—'} (${c.complainantPhone || '—'})`,
+    `Logged: ${c.submittedAt ? new Date(c.submittedAt).toLocaleString() : '—'}`,
+  ].join('\n');
+
+  if (navigator.share) {
+    navigator.share({ title: 'Complaint Report', text: txt }).catch(() => {});
+  } else {
+    navigator.clipboard?.writeText(txt).then(() => showToast('📋 Report copied to clipboard!', 'success'));
   }
 }
 

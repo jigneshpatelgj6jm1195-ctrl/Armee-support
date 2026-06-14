@@ -754,7 +754,7 @@ textarea { resize: none; min-height: 80px; }
         </div>
 
         <div class="field">
-          <label for="fSuspectedPart">Suspected Part (Optional)</label>
+          <label for="fSuspectedPart" style="color: #ef4444; font-weight: 600;">Suspected Part <span style="font-size: 0.82rem; font-weight: normal; color: #ef4444;">(if having a part issue)</span></label>
           <select id="fSuspectedPart">
             <option value="">— Select Suspected Part —</option>
           </select>
@@ -2227,6 +2227,8 @@ function shareComplaint() {
     `Nature: ${lastComplaint.natureOfComplaint}`,
     `Serial: ${lastComplaint.serialNumber || 'N/A'}`,
     `Date: ${lastComplaint.complaintDate}`,
+    `Suspected Part: ${lastComplaint.suspectedPart || lastComplaint.medium || 'None'}`,
+    `Description: ${lastComplaint.description || 'None'}`,
     `By: ${lastComplaint.complainantName} (${lastComplaint.complainantPhone})`,
     `Logged: ${new Date(lastComplaint.submittedAt).toLocaleString()}`,
     grp,

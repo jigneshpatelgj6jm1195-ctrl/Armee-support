@@ -1,10 +1,10 @@
 [
   {
     "submittedAt": "2026-06-04T06:41:59.566Z",
-    "complainantName": "Jignesh Patel",
+    "complainantName": "Jignesh Patel Test",
     "complainantPhone": "9327189050",
     "complainantRole": "Field Engineer",
-    "project": "GK",
+    "project": "",
     "dise": "24091500227",
     "schoolCode": "GNK-RMC-20120",
     "district": "RMC",
@@ -17,14 +17,20 @@
     "equipment": "Laptop",
     "natureOfComplaint": "Battery Issue",
     "serialNumber": "1222222",
-    "quantity": 2,
+    "quantity": 3,
     "itemNumber": 2,
     "groupId": "GRP-20260604-9546",
-    "complaintDate": "2026-06-04",
+    "complaintDate": "04/06/2026",
     "medium": "Phone Call",
     "description": "Nopwer power",
-    "photoCount": 1,
-    "status": "In Progress"
+    "photoCount": 0,
+    "status": "In Progress",
+    "suspectedPart": "Phone Call",
+    "duplicateStatus": "NO",
+    "latitude": "",
+    "longitude": "",
+    "photoUrl": "",
+    "photos": []
   },
   {
     "submittedAt": "2026-06-04T11:08:12.470Z",

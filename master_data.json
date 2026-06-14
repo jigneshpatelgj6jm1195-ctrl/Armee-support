@@ -2,7 +2,7 @@
   "equipment": [
     {
       "id": "EQ01",
-      "name": "Desktop Computer",
+      "name": "Desktop",
       "status": "active",
       "complaints": [
         {
@@ -116,29 +116,9 @@
     },
     {
       "id": "EQ03",
-      "name": "Projector",
+      "name": "TFT",
       "status": "active",
       "complaints": [
-        {
-          "id": "NC021",
-          "name": "No Display / Projection",
-          "status": "active"
-        },
-        {
-          "id": "NC022",
-          "name": "Lamp / Bulb Issue",
-          "status": "active"
-        },
-        {
-          "id": "NC023",
-          "name": "Remote Not Working",
-          "status": "active"
-        },
-        {
-          "id": "NC024",
-          "name": "Not Starting",
-          "status": "active"
-        },
         {
           "id": "NC025",
           "name": "Physical Damage",
@@ -148,12 +128,42 @@
           "id": "NC026",
           "name": "Other",
           "status": "active"
+        },
+        {
+          "id": "NC484237",
+          "name": "No Display",
+          "status": "active"
+        },
+        {
+          "id": "NC495696",
+          "name": "Vertical Line",
+          "status": "active"
+        },
+        {
+          "id": "NC508913",
+          "name": "Adapter Issue",
+          "status": "active"
+        },
+        {
+          "id": "NC516011",
+          "name": "No Power",
+          "status": "active"
+        },
+        {
+          "id": "NC562122",
+          "name": "Flickering",
+          "status": "active"
+        },
+        {
+          "id": "NC570965",
+          "name": "White Display",
+          "status": "active"
         }
       ]
     },
     {
       "id": "EQ04",
-      "name": "Interactive Smartboard",
+      "name": "IFP",
       "status": "active",
       "complaints": [
         {
@@ -191,7 +201,7 @@
     {
       "id": "EQ05",
       "name": "Printer",
-      "status": "active",
+      "status": "inactive",
       "complaints": [
         {
           "id": "NC033",
@@ -228,7 +238,7 @@
     {
       "id": "EQ06",
       "name": "Scanner",
-      "status": "active",
+      "status": "inactive",
       "complaints": [
         {
           "id": "NC039",
@@ -260,7 +270,7 @@
     {
       "id": "EQ07",
       "name": "UPS / Power Backup",
-      "status": "active",
+      "status": "inactive",
       "complaints": [
         {
           "id": "NC044",
@@ -297,7 +307,7 @@
     {
       "id": "EQ08",
       "name": "Networking / Switch / Router",
-      "status": "active",
+      "status": "inactive",
       "complaints": [
         {
           "id": "NC050",
@@ -329,7 +339,7 @@
     {
       "id": "EQ09",
       "name": "Webcam",
-      "status": "active",
+      "status": "inactive",
       "complaints": [
         {
           "id": "NC055",
@@ -361,7 +371,7 @@
     {
       "id": "EQ10",
       "name": "Speaker / Audio System",
-      "status": "active",
+      "status": "inactive",
       "complaints": [
         {
           "id": "NC060",
@@ -393,7 +403,7 @@
     {
       "id": "EQ11",
       "name": "Tablet",
-      "status": "active",
+      "status": "inactive",
       "complaints": [
         {
           "id": "NC065",
@@ -435,7 +445,7 @@
     {
       "id": "EQ12",
       "name": "Server",
-      "status": "active",
+      "status": "inactive",
       "complaints": [
         {
           "id": "NC072",
@@ -472,7 +482,7 @@
     {
       "id": "EQ13",
       "name": "Other",
-      "status": "active",
+      "status": "inactive",
       "complaints": [
         {
           "id": "NC078",
@@ -507,93 +517,471 @@
       ]
     }
   ],
-  "projects": [
-    { "id": "PRJ01", "name": "GK", "fullName": "Gyan Kunj", "status": "active" },
-    { "id": "PRJ02", "name": "ICT", "fullName": "ICT Lab", "status": "active" }
+  "users": [
+    {
+      "id": "ACC54694",
+      "name": "Samir Patel",
+      "email": "samir@armee.in",
+      "phone": "7567505664",
+      "password": "armee123",
+      "role": "district_admin",
+      "assignedDistricts": [
+        "ANAND",
+        "BHARUCH",
+        "CHHOTAUDEPUR",
+        "DAHOD",
+        "DOHAD",
+        "KHEDA",
+        "MAHISAGAR",
+        "NARMADA",
+        "PANCH MAHALS",
+        "VADODARA",
+        "VMC"
+      ],
+      "status": "active"
+    }
   ],
-  "projectEquipmentMap": [
-    { "projectId": "PRJ01", "equipmentId": "EQ01" },
-    { "projectId": "PRJ01", "equipmentId": "EQ02" },
-    { "projectId": "PRJ01", "equipmentId": "EQ03" },
-    { "projectId": "PRJ01", "equipmentId": "EQ04" },
-    { "projectId": "PRJ01", "equipmentId": "EQ05" },
-    { "projectId": "PRJ01", "equipmentId": "EQ06" },
-    { "projectId": "PRJ01", "equipmentId": "EQ07" },
-    { "projectId": "PRJ01", "equipmentId": "EQ08" },
-    { "projectId": "PRJ01", "equipmentId": "EQ09" },
-    { "projectId": "PRJ01", "equipmentId": "EQ10" },
-    { "projectId": "PRJ01", "equipmentId": "EQ11" },
-    { "projectId": "PRJ01", "equipmentId": "EQ12" },
-    { "projectId": "PRJ01", "equipmentId": "EQ13" },
-    { "projectId": "PRJ02", "equipmentId": "EQ01" },
-    { "projectId": "PRJ02", "equipmentId": "EQ02" },
-    { "projectId": "PRJ02", "equipmentId": "EQ03" },
-    { "projectId": "PRJ02", "equipmentId": "EQ04" },
-    { "projectId": "PRJ02", "equipmentId": "EQ05" },
-    { "projectId": "PRJ02", "equipmentId": "EQ06" },
-    { "projectId": "PRJ02", "equipmentId": "EQ07" },
-    { "projectId": "PRJ02", "equipmentId": "EQ08" },
-    { "projectId": "PRJ02", "equipmentId": "EQ09" },
-    { "projectId": "PRJ02", "equipmentId": "EQ10" },
-    { "projectId": "PRJ02", "equipmentId": "EQ11" },
-    { "projectId": "PRJ02", "equipmentId": "EQ12" },
-    { "projectId": "PRJ02", "equipmentId": "EQ13" }
+  "_v": "1781350248074",
+  "accessUsers": [
+    {
+      "id": "ACC54694",
+      "name": "Samir Patel",
+      "email": "samir@armee.in",
+      "phone": "7567505664",
+      "password": "armee123",
+      "role": "district_admin",
+      "assignedDistricts": [
+        "ANAND",
+        "BHARUCH",
+        "CHHOTAUDEPUR",
+        "DAHOD",
+        "DOHAD",
+        "KHEDA",
+        "MAHISAGAR",
+        "NARMADA",
+        "PANCH MAHALS",
+        "VADODARA",
+        "VMC"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "ACC73415",
+      "name": "Ajij Ranchadiya",
+      "email": "ajij@armee.in",
+      "phone": "9537200787",
+      "password": "armee123",
+      "role": "district_admin",
+      "assignedDistricts": [
+        "ARAVALLI",
+        "BANASKANTHA",
+        "MAHESANA",
+        "PATAN",
+        "SABAR KANTHA"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "ACC53161",
+      "name": "Rajesh Karangyiya",
+      "email": "junagadh@armee.in",
+      "phone": "9974418028",
+      "password": "armee123",
+      "role": "district_admin",
+      "assignedDistricts": [
+        "GIR SOMNATH",
+        "JUNAGADH",
+        "PORBANDAR"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "ACC22432",
+      "name": "Dharmendra Varia",
+      "email": "panchmahal@armee.in",
+      "phone": "9979694330",
+      "password": "armee123",
+      "role": "district_admin",
+      "assignedDistricts": [
+        "DAHOD",
+        "MAHISAGAR",
+        "PANCH MAHALS"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "ACC44057",
+      "name": "Vimal Rana",
+      "email": "surat.coor@armeeinfotech.com",
+      "phone": "9510977177",
+      "password": "armee123",
+      "role": "district_admin",
+      "assignedDistricts": [
+        "NAVSARI",
+        "SMC",
+        "SURAT",
+        "TAPI",
+        "THE DANGS",
+        "VALSAD"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "ACC97756",
+      "name": "Puja Dharu",
+      "email": "ahmedabad@armee.in",
+      "phone": "9510977101",
+      "password": "armee123",
+      "role": "district_admin",
+      "assignedDistricts": [
+        "AHMEDABAD",
+        "AMC",
+        "GANDHINAGAR"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "ACC12902",
+      "name": "Sagar Parmar",
+      "email": "bhavnagar@armeeinfotech.com",
+      "phone": "8511301453",
+      "password": "armee123",
+      "role": "district_admin",
+      "assignedDistricts": [
+        "AMRELI",
+        "BHAVNAGAR",
+        "BOTAD"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "ACC14085",
+      "name": "Dharmendra Sanklecha",
+      "email": "rajkot@armee.in",
+      "phone": "",
+      "password": "armee123",
+      "role": "district_admin",
+      "assignedDistricts": [
+        "DEVBHOOMI DWARKA",
+        "JAMNAGAR",
+        "KACHCHH",
+        "MORBI",
+        "RAJKOT",
+        "RMC",
+        "SURENDRANAGAR"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "ACC28915",
+      "name": "Anita Patel",
+      "email": "support@armee.in",
+      "phone": "9510977129",
+      "password": "armee123",
+      "role": "district_admin",
+      "assignedDistricts": [
+        "BHARUCH",
+        "CHHOTAUDEPUR",
+        "NARMADA",
+        "VADODARA",
+        "VMC"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "ACC25433",
+      "name": "Javed Vohra",
+      "email": "anand@armee.in",
+      "phone": "9510977127",
+      "password": "armee123",
+      "role": "viewer",
+      "assignedDistricts": [
+        "ANAND",
+        "KHEDA",
+        "MAHISAGAR"
+      ],
+      "status": "active"
+    }
   ],
   "suspectedParts": [
-    { "id": "SP01", "name": "Motherboard", "status": "active" },
-    { "id": "SP02", "name": "RAM", "status": "active" },
-    { "id": "SP03", "name": "SSD", "status": "active" },
-    { "id": "SP04", "name": "HDD", "status": "active" },
-    { "id": "SP05", "name": "Adaptor", "status": "active" },
-    { "id": "SP06", "name": "Battery", "status": "active" },
-    { "id": "SP07", "name": "Display Panel", "status": "active" },
-    { "id": "SP08", "name": "Keyboard", "status": "active" },
-    { "id": "SP09", "name": "Touchpad", "status": "active" },
-    { "id": "SP10", "name": "TFT", "status": "active" },
-    { "id": "SP11", "name": "Power Supply", "status": "active" },
-    { "id": "SP12", "name": "LAN Card", "status": "active" },
-    { "id": "SP13", "name": "WiFi Module", "status": "active" }
+    {
+      "id": "SP11525",
+      "name": "MBD",
+      "status": "active"
+    },
+    {
+      "id": "SP21259",
+      "name": "TFT",
+      "status": "active"
+    },
+    {
+      "id": "SP78562",
+      "name": "RAM",
+      "status": "active"
+    },
+    {
+      "id": "SP81423",
+      "name": "SSD",
+      "status": "active"
+    },
+    {
+      "id": "SP95416",
+      "name": "LCD SCREEN",
+      "status": "active"
+    },
+    {
+      "id": "SP20172",
+      "name": "SMPS",
+      "status": "active"
+    },
+    {
+      "id": "SP27934",
+      "name": "IFP PANEL",
+      "status": "active"
+    },
+    {
+      "id": "SP99454",
+      "name": "KEYBOARD",
+      "status": "active"
+    },
+    {
+      "id": "SP07866",
+      "name": "MOUSE",
+      "status": "active"
+    },
+    {
+      "id": "SP09729",
+      "name": "ADAPTER",
+      "status": "active"
+    },
+    {
+      "id": "SP11256",
+      "name": "WiFi Card",
+      "status": "active"
+    },
+    {
+      "id": "SP88435",
+      "name": "BATTERY",
+      "status": "active"
+    }
+  ],
+  "projects": [
+    {
+      "id": "PRJ15069",
+      "name": "ICT",
+      "fullName": "ICT",
+      "status": "active"
+    },
+    {
+      "id": "PRJ33173",
+      "name": "GK",
+      "fullName": "GK",
+      "status": "active"
+    }
+  ],
+  "projectEquipmentMap": [
+    {
+      "projectId": "PRJ15069",
+      "equipmentId": "EQ01"
+    },
+    {
+      "projectId": "PRJ15069",
+      "equipmentId": "EQ03"
+    },
+    {
+      "projectId": "PRJ33173",
+      "equipmentId": "EQ02"
+    },
+    {
+      "projectId": "PRJ33173",
+      "equipmentId": "EQ04"
+    }
   ],
   "districts": [
-    { "id": "D01", "name": "AHMEDABAD", "status": "active" },
-    { "id": "D02", "name": "AMC", "status": "active" },
-    { "id": "D03", "name": "AMRELI", "status": "active" },
-    { "id": "D04", "name": "ANAND", "status": "active" },
-    { "id": "D05", "name": "ARAVALLI", "status": "active" },
-    { "id": "D06", "name": "BANASKANTHA", "status": "active" },
-    { "id": "D07", "name": "BHARUCH", "status": "active" },
-    { "id": "D08", "name": "BHAVNAGAR", "status": "active" },
-    { "id": "D09", "name": "BOTAD", "status": "active" },
-    { "id": "D10", "name": "CHHOTAUDEPUR", "status": "active" },
-    { "id": "D11", "name": "DAHOD", "status": "active" },
-    { "id": "D12", "name": "DEVBHOOMI DWARKA", "status": "active" },
-    { "id": "D13", "name": "GANDHINAGAR", "status": "active" },
-    { "id": "D14", "name": "GIR SOMNATH", "status": "active" },
-    { "id": "D15", "name": "JAMNAGAR", "status": "active" },
-    { "id": "D16", "name": "JUNAGADH", "status": "active" },
-    { "id": "D17", "name": "KACHCHH", "status": "active" },
-    { "id": "D18", "name": "KHEDA", "status": "active" },
-    { "id": "D19", "name": "MAHESANA", "status": "active" },
-    { "id": "D20", "name": "MAHISAGAR", "status": "active" },
-    { "id": "D21", "name": "MORBI", "status": "active" },
-    { "id": "D22", "name": "NARMADA", "status": "active" },
-    { "id": "D23", "name": "NAVSARI", "status": "active" },
-    { "id": "D24", "name": "PANCH MAHALS", "status": "active" },
-    { "id": "D25", "name": "PATAN", "status": "active" },
-    { "id": "D26", "name": "PORBANDAR", "status": "active" },
-    { "id": "D27", "name": "RAJKOT", "status": "active" },
-    { "id": "D28", "name": "RMC", "status": "active" },
-    { "id": "D29", "name": "SABAR KANTHA", "status": "active" },
-    { "id": "D30", "name": "SMC", "status": "active" },
-    { "id": "D31", "name": "SURAT", "status": "active" },
-    { "id": "D32", "name": "SURENDRANAGAR", "status": "active" },
-    { "id": "D33", "name": "TAPI", "status": "active" },
-    { "id": "D34", "name": "THE DANGS", "status": "active" },
-    { "id": "D35", "name": "VADODARA", "status": "active" },
-    { "id": "D36", "name": "VALSAD", "status": "active" },
-    { "id": "D37", "name": "VMC", "status": "active" }
-  ],
-  "users": [],
-  "accessUsers": [],
-  "_v": "1780815539926"
+    {
+      "id": "D1",
+      "name": "AHMEDABAD",
+      "status": "active"
+    },
+    {
+      "id": "D2",
+      "name": "AMC",
+      "status": "active"
+    },
+    {
+      "id": "D3",
+      "name": "AMRELI",
+      "status": "active"
+    },
+    {
+      "id": "D4",
+      "name": "ANAND",
+      "status": "active"
+    },
+    {
+      "id": "D5",
+      "name": "ARAVALLI",
+      "status": "active"
+    },
+    {
+      "id": "D6",
+      "name": "BANASKANTHA",
+      "status": "active"
+    },
+    {
+      "id": "D7",
+      "name": "BHARUCH",
+      "status": "active"
+    },
+    {
+      "id": "D8",
+      "name": "BHAVNAGAR",
+      "status": "active"
+    },
+    {
+      "id": "D9",
+      "name": "BOTAD",
+      "status": "active"
+    },
+    {
+      "id": "D10",
+      "name": "CHHOTAUDEPUR",
+      "status": "active"
+    },
+    {
+      "id": "D11",
+      "name": "DAHOD",
+      "status": "active"
+    },
+    {
+      "id": "D12",
+      "name": "DEVBHOOMI DWARKA",
+      "status": "active"
+    },
+    {
+      "id": "D13",
+      "name": "GANDHINAGAR",
+      "status": "active"
+    },
+    {
+      "id": "D14",
+      "name": "GIR SOMNATH",
+      "status": "active"
+    },
+    {
+      "id": "D15",
+      "name": "JAMNAGAR",
+      "status": "active"
+    },
+    {
+      "id": "D16",
+      "name": "JUNAGADH",
+      "status": "active"
+    },
+    {
+      "id": "D17",
+      "name": "KACHCHH",
+      "status": "active"
+    },
+    {
+      "id": "D18",
+      "name": "KHEDA",
+      "status": "active"
+    },
+    {
+      "id": "D19",
+      "name": "MAHESANA",
+      "status": "active"
+    },
+    {
+      "id": "D20",
+      "name": "MAHISAGAR",
+      "status": "active"
+    },
+    {
+      "id": "D21",
+      "name": "MORBI",
+      "status": "active"
+    },
+    {
+      "id": "D22",
+      "name": "NARMADA",
+      "status": "active"
+    },
+    {
+      "id": "D23",
+      "name": "NAVSARI",
+      "status": "active"
+    },
+    {
+      "id": "D24",
+      "name": "PANCH MAHALS",
+      "status": "active"
+    },
+    {
+      "id": "D25",
+      "name": "PATAN",
+      "status": "active"
+    },
+    {
+      "id": "D26",
+      "name": "PORBANDAR",
+      "status": "active"
+    },
+    {
+      "id": "D27",
+      "name": "RAJKOT",
+      "status": "active"
+    },
+    {
+      "id": "D28",
+      "name": "RMC",
+      "status": "active"
+    },
+    {
+      "id": "D29",
+      "name": "SABAR KANTHA",
+      "status": "active"
+    },
+    {
+      "id": "D30",
+      "name": "SMC",
+      "status": "active"
+    },
+    {
+      "id": "D31",
+      "name": "SURAT",
+      "status": "active"
+    },
+    {
+      "id": "D32",
+      "name": "SURENDRANAGAR",
+      "status": "active"
+    },
+    {
+      "id": "D33",
+      "name": "TAPI",
+      "status": "active"
+    },
+    {
+      "id": "D34",
+      "name": "THE DANGS",
+      "status": "active"
+    },
+    {
+      "id": "D35",
+      "name": "VADODARA",
+      "status": "active"
+    },
+    {
+      "id": "D36",
+      "name": "VALSAD",
+      "status": "active"
+    },
+    {
+      "id": "D37",
+      "name": "VMC",
+      "status": "active"
+    }
+  ]
 }
