@@ -529,6 +529,22 @@ tr:hover td { background: #f8fafc; }
           </div>
         </div>
       </div>
+
+      <!-- New Row: All Districts and Hour-wise Ticket Logging -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 20px;">
+        <div class="chart-card">
+          <h4 style="font-size:0.8rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin-bottom:10px;">📍 All Districts Distribution</h4>
+          <div style="position: relative; height: 180px; width: 100%;">
+            <canvas id="chartAllDistricts"></canvas>
+          </div>
+        </div>
+        <div class="chart-card">
+          <h4 style="font-size:0.8rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin-bottom:10px;">⏰ Hour-wise Ticket Logging</h4>
+          <div style="position: relative; height: 180px; width: 100%;">
+            <canvas id="chartTimeLogging"></canvas>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Recent Alerts Card -->
@@ -1868,6 +1884,8 @@ function renderDashboard() {
   // Draw Charts
   drawTrendChart(complaints);
   drawDistrictChart(complaints);
+  drawAllDistrictsChart(complaints);
+  drawTimeLoggingChart(complaints);
   drawProjectChart(complaints);
   drawEquipChart(complaints);
   drawPartChart(complaints);
@@ -1956,6 +1974,83 @@ function drawDistrictChart(data) {
       scales: {
         x: { ticks: { stepSize: 1, font: { size: 9 } } },
         y: { grid: { display: false }, ticks: { font: { size: 9 } } }
+      }
+    }
+  });
+}
+
+function drawAllDistrictsChart(data) {
+  const counts = {};
+  data.forEach(c => {
+    if (!c.district) return;
+    const key = String(c.district).toUpperCase().trim();
+    counts[key] = (counts[key] || 0) + 1;
+  });
+
+  const sorted = Object.entries(counts).sort((a,b) => b[1] - a[1]);
+  const labels = sorted.map(x => x[0]);
+  const values = sorted.map(x => x[1]);
+
+  renderChart('chartAllDistricts', {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Complaints',
+        data: values,
+        backgroundColor: '#6366f1',
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 8 }, maxRotation: 45, minRotation: 45 } },
+        y: { ticks: { stepSize: 1, font: { size: 9 } } }
+      }
+    }
+  });
+}
+
+function drawTimeLoggingChart(data) {
+  const counts = Array(24).fill(0);
+  data.forEach(c => {
+    if (!c.submittedAt) return;
+    const d = new Date(c.submittedAt);
+    if (isNaN(d.getTime())) return;
+    const hour = d.getHours();
+    counts[hour]++;
+  });
+
+  const labels = Array.from({ length: 24 }, (_, i) => {
+    const period = i >= 12 ? 'PM' : 'AM';
+    const hour12 = i % 12 === 0 ? 12 : i % 12;
+    return `${hour12} ${period}`;
+  });
+
+  renderChart('chartTimeLogging', {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Tickets Logged',
+        data: counts,
+        borderColor: '#8b5cf6',
+        backgroundColor: 'rgba(139, 92, 246, 0.1)',
+        borderWidth: 2,
+        fill: true,
+        tension: 0.3
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 9 } } },
+        y: { ticks: { stepSize: 1, font: { size: 9 } } }
       }
     }
   });
