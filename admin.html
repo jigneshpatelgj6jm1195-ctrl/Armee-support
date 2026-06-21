@@ -558,6 +558,19 @@ tr:hover td { background: #f8fafc; }
             <canvas id="chartTimeLogging"></canvas>
           </div>
         </div>
+        <div class="chart-card">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+            <h4 style="font-size:0.8rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin:0;">👥 Role-wise Distribution</h4>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <input type="date" id="roleFromDate" style="padding:4px 8px; font-size:0.75rem; border:1px solid var(--border); border-radius:6px;" onchange="updateRoleChartFiltered()" />
+              <span style="font-size:0.7rem; color:var(--muted);">to</span>
+              <input type="date" id="roleToDate" style="padding:4px 8px; font-size:0.75rem; border:1px solid var(--border); border-radius:6px;" onchange="updateRoleChartFiltered()" />
+            </div>
+          </div>
+          <div style="position: relative; height: 180px; width: 100%;">
+            <canvas id="chartRole"></canvas>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1905,6 +1918,7 @@ function renderDashboard() {
   drawDistrictChart(complaints);
   drawAllDistrictsChart(complaints);
   drawTimeLoggingChart(complaints);
+  drawRoleChart(complaints);
   drawProjectChart(complaints);
   drawEquipChart(complaints);
   drawPartChart(complaints);
@@ -2112,6 +2126,59 @@ function updateTimeLoggingChartFiltered() {
       scales: {
         x: { grid: { display: false }, ticks: { font: { size: 9 } } },
         y: { ticks: { stepSize: 1, font: { size: 9 } } }
+      }
+    }
+  });
+}
+
+let localRoleData = [];
+function drawRoleChart(data) {
+  localRoleData = data;
+  updateRoleChartFiltered();
+}
+
+function updateRoleChartFiltered() {
+  const fromVal = document.getElementById('roleFromDate').value;
+  const toVal = document.getElementById('roleToDate').value;
+
+  let filtered = localRoleData;
+  if (fromVal || toVal) {
+    filtered = filtered.filter(c => {
+      const d = parseDateString(c.submittedAt || c.complaintDate);
+      if (!d) return true;
+      const localDStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      if (fromVal && localDStr < fromVal) return false;
+      if (toVal && localDStr > toVal) return false;
+      return true;
+    });
+  }
+
+  const counts = { 'engineer': 0, 'teacher': 0 };
+  filtered.forEach(c => {
+    let r = String(c.complainantRole || 'engineer').toLowerCase().trim();
+    if (r !== 'engineer' && r !== 'teacher') {
+      r = 'engineer';
+    }
+    counts[r]++;
+  });
+
+  const labels = ['Engineer', 'Teacher'];
+  const values = [counts['engineer'], counts['teacher']];
+
+  renderChart('chartRole', {
+    type: 'doughnut',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: values,
+        backgroundColor: ['#3b82f6', '#ec4899']
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { boxWidth: 10, font: { size: 9 } } }
       }
     }
   });
