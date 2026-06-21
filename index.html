@@ -536,11 +536,8 @@ textarea { resize: none; min-height: 80px; }
         <label for="setupRole">Your Role</label>
         <select id="setupRole">
           <option value="">— Select Role —</option>
-          <option>Field Engineer</option>
-          <option>Supervisor</option>
-          <option>Coordinator</option>
-          <option>Technician</option>
-          <option>Other</option>
+          <option value="engineer">engineer</option>
+          <option value="teacher">teacher</option>
         </select>
       </div>
       <button class="btn-setup-start" onclick="saveUser()">Continue →</button>
@@ -779,7 +776,7 @@ textarea { resize: none; min-height: 80px; }
           </div>
         </div>
 
-        <div class="field">
+        <div class="field" id="suspectedPartDropdownField">
           <label for="fSuspectedPart" style="color: #ef4444; font-weight: 600;">Suspected Part <span style="font-size: 0.82rem; font-weight: normal; color: #ef4444;">(if having a part issue)</span></label>
           <select id="fSuspectedPart" onchange="onSuspectedPartChange()">
             <option value="">— Select Suspected Part —</option>
@@ -900,11 +897,8 @@ textarea { resize: none; min-height: 80px; }
         <label for="editRole">Role</label>
         <select id="editRole">
           <option value="">— Select Role —</option>
-          <option>Field Engineer</option>
-          <option>Supervisor</option>
-          <option>Coordinator</option>
-          <option>Technician</option>
-          <option>Other</option>
+          <option value="engineer">engineer</option>
+          <option value="teacher">teacher</option>
         </select>
       </div>
       <button class="btn-submit-final" style="width:100%;margin-top:8px;" onclick="updateUser()">Save Changes</button>
@@ -1482,6 +1476,27 @@ function startApp(user) {
   document.getElementById('userChipName').textContent = user.name.split(' ')[0];
   loadRecentLookups();
   updateStepUI();
+  applyRoleVisibility(user);
+}
+
+function applyRoleVisibility(user) {
+  if (!user) return;
+  const role = (user.role || '').toLowerCase().trim();
+  const dropdownField = document.getElementById('suspectedPartDropdownField');
+  const photoField = document.getElementById('suspectedPartPhotoField');
+  
+  if (role === 'teacher') {
+    if (dropdownField) dropdownField.style.display = 'none';
+    if (photoField) photoField.style.display = 'none';
+    const fSus = document.getElementById('fSuspectedPart');
+    if (fSus) {
+      fSus.value = '';
+      onSuspectedPartChange();
+    }
+  } else {
+    if (dropdownField) dropdownField.style.display = 'block';
+    if (photoField) photoField.style.display = 'block';
+  }
 }
 function showSetupScreen() {
   document.getElementById('loadingScreen').style.display = 'none';
@@ -1513,6 +1528,7 @@ function updateUser() {
   localStorage.setItem('complainant', JSON.stringify({ name, phone, role }));
   document.getElementById('userChipName').textContent = name.split(' ')[0];
   document.getElementById('userSheetOverlay').classList.remove('show');
+  applyRoleVisibility({ name, phone, role });
   showToast('Profile updated!', 'success');
 }
 

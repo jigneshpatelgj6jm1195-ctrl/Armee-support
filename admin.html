@@ -1889,7 +1889,12 @@ function renderDashboard() {
         <td>${esc(c.dise || '—')}</td>
         <td>${esc(c.equipment || '—')}</td>
         <td>${esc(c.natureOfComplaint || '—')}</td>
-        <td>${esc(c.complainantName || '—')}</td>
+        <td>
+          ${esc(c.complainantName || '—')} 
+          <span style="font-size:0.65rem; padding:1px 4px; background:#e0f2fe; color:#0369a1; border-radius:4px; font-weight:600; text-transform:capitalize; display:inline-block;">
+            ${esc(c.complainantRole || 'engineer')}
+          </span>
+        </td>
         <td><span class="badge badge-${getBadgeClass(c.status)}">${c.status || 'Open'}</span></td>
       </tr>
     `).join('');
@@ -3290,7 +3295,14 @@ function renderComplaintsTable() {
         <td>
           ${c.latitude ? `<a href="https://maps.google.com/?q=${c.latitude},${c.longitude}" target="_blank" style="color:var(--primary); font-weight:700; text-decoration:none;">📍 Maps (${c.latitude.toFixed(4)}, ${c.longitude.toFixed(4)})</a>` : '❌ No GPS'}
         </td>
-        <td>${esc(c.complainantName)}<br><span style="font-size:0.72rem; color:var(--muted);">${esc(c.complainantPhone)}</span></td>
+        <td>
+          ${esc(c.complainantName)} 
+          <span style="font-size:0.65rem; padding:2px 6px; background:#e0f2fe; color:#0369a1; border-radius:4px; font-weight:600; text-transform:capitalize; display:inline-block; margin-top:2px;">
+            ${esc(c.complainantRole || 'engineer')}
+          </span>
+          <br>
+          <span style="font-size:0.72rem; color:var(--muted);">${esc(c.complainantPhone)}</span>
+        </td>
         <td>
           <select onchange="updateComplaintStatus(${origIndex}, this.value)" style="padding:4px 8px; font-size:0.75rem; border-radius:6px; font-weight:700;">
             <option value="Open" ${c.status === 'Open' || !c.status ? 'selected' : ''}>Open</option>
