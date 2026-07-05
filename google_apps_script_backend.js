@@ -2188,12 +2188,27 @@ function getDepartmentComplaintsList(ss) {
     var hit = resolveBranchId(s, [res.owningDistrictAdmin, row[0]]);
     var br = hit ? s.branchById[hit.branchId] : null;
     out.push({
-      ticketId: ticketId, district: row[0], school: row[8], schoolId: row[7],
-      assetType: row[11], deviceType: row[12], issueType: row[13],
+      ticketId: ticketId, district: row[0], block: row[2], school: row[8], schoolId: row[7],
+      assetType: row[11], deviceType: row[12], issueType: row[13], issueDetails: row[14],
       contactName: row[16], phoneNumber: row[17], ticketStatus: row[19],
       createdDate: row[21], businessDays: countBusinessDaysExcludingSundays(row[21], now),
       internalStatus: res.internalStatus, closureType: res.closureType,
-      branchId: hit ? hit.branchId : '', branchName: br ? br.name : 'Unmapped'
+      branchId: hit ? hit.branchId : '', branchName: br ? br.name : 'Unmapped',
+      
+      // Resolution details
+      otpValue: res.otpValue || '',
+      resolvedBy: res.resolvedBy || '',
+      technicianName: res.technicianName || '',
+      diagnosisNotes: res.diagnosisNotes || '',
+      resolvedAt: res.resolvedAt || '',
+      equipment: res.equipment || '',
+      natureOfComplaint: res.natureOfComplaint || '',
+      quantity: res.quantity || '',
+      resolutionDate: res.resolutionDate || '',
+      serialNumber: res.serialNumber || '',
+      serialPhotoUrl: res.serialPhotoUrl || '',
+      suspectedPart: res.suspectedPart || '',
+      suspectedPartPhotoUrl: res.suspectedPartPhotoUrl || ''
     });
   }
   return out;
