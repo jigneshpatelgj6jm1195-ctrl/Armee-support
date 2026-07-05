@@ -1,0 +1,19 @@
+{
+  "name": "armee-ict-scraper",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Scrapes open tickets from ssgujarat.org ICT Support and pushes them to the Armee complaint system",
+  "main": "run.js",
+  "scripts": {
+    "start": "node run.js",
+    "test-captcha": "node run.js --test-captcha",
+    "push-file": "node run.js --file"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "jimp": "^0.22.12",
+    "playwright": "^1.49.0",
+    "tesseract.js": "^5.1.1",
+    "xlsx": "^0.18.5"
+  }
+}

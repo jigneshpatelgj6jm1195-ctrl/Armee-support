@@ -239,6 +239,7 @@ tr:hover td { background: #f8fafc; }
 .badge-active, .badge-open, .badge-resolved { background: #d1fae5; color: #065f46; }
 .badge-inactive, .badge-closed { background: #fee2e2; color: #7f1d1d; }
 .badge-pending, .badge-inprogress { background: #fef3c7; color: #78350f; }
+.badge-partreq { background: #ede9fe; color: #5b21b6; }
 
 /* ═══════════════ CHARTS ═══════════════ */
 .chart-container { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
@@ -359,6 +360,8 @@ tr:hover td { background: #f8fafc; }
   <button class="tab-btn" id="btn-tab-users" onclick="switchTab('users')">👤 User Master</button>
   <button class="tab-btn" id="btn-tab-access" onclick="switchTab('access')">🔒 Access Control</button>
   <button class="tab-btn" id="btn-tab-complaints" onclick="switchTab('complaints')">📋 Complaints &amp; Reports</button>
+  <button class="tab-btn" id="btn-tab-dept" onclick="switchTab('dept')">🏛️ Dept Complaints</button>
+  <button class="tab-btn" id="btn-tab-branch" onclick="switchTab('branch')">🏢 Branch Management</button>
   <button class="tab-btn" id="btn-tab-archive" onclick="switchTab('archive')">📦 Archive Manager</button>
 </div>
 
@@ -790,6 +793,7 @@ tr:hover td { background: #f8fafc; }
             <option value="">All Statuses</option>
             <option value="open">Open</option>
             <option value="in progress">In Progress</option>
+            <option value="part request">Part Request</option>
             <option value="resolved">Resolved</option>
             <option value="closed">Closed</option>
           </select>
@@ -924,6 +928,156 @@ tr:hover td { background: #f8fafc; }
               <td colspan="8" style="text-align:center; color:var(--muted);">No access users configured.</td>
             </tr>
           </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= TAB: DEPARTMENT COMPLAINTS ================= -->
+  <div class="tab-content" id="tab-dept">
+
+    <!-- Pendency panel -->
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-title">📊 Department Complaint Pendency</div>
+      <p style="color:var(--muted);font-size:0.78rem;margin:6px 0 14px;">Click any figure to see those tickets below.</p>
+      <div id="deptPendencyBoxes" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;">
+        <div style="grid-column:1/-1;text-align:center;color:var(--muted);">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Branch aging panel -->
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-title">🏢 Branch-wise Pending &amp; Aging (business days, Sundays excluded)</div>
+      <p style="color:var(--muted);font-size:0.78rem;margin:6px 0 14px;">
+        Department and Advance complaints grouped by branch. Click a row for that branch's department tickets, oldest first.
+      </p>
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th rowspan="2">Branch</th><th rowspan="2">Manager</th>
+              <th colspan="3" style="text-align:center;background:#eff6ff;">Department</th>
+              <th colspan="3" style="text-align:center;background:#fdf4ff;">Advance</th>
+              <th rowspan="2">Total open</th>
+            </tr>
+            <tr>
+              <th style="background:#eff6ff;">0–2</th><th style="background:#eff6ff;">3–5</th><th style="background:#eff6ff;">6+</th>
+              <th style="background:#fdf4ff;">0–2</th><th style="background:#fdf4ff;">3–5</th><th style="background:#fdf4ff;">6+</th>
+            </tr>
+          </thead>
+          <tbody id="branchAgingBody"><tr><td colspan="9" style="text-align:center;color:var(--muted);">Loading…</td></tr></tbody>
+        </table>
+      </div>
+      <div style="margin-top:14px;">
+        <div style="font-weight:700;font-size:0.8rem;margin-bottom:6px;color:var(--muted);">District Office totals</div>
+        <div id="officeSummary" style="display:flex;flex-wrap:wrap;gap:8px;font-size:0.75rem;"></div>
+      </div>
+    </div>
+
+    <!-- Drill-down ticket list -->
+    <div class="card" style="margin-bottom:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+        <div class="card-title" style="margin-bottom:0;">🎫 Department Tickets <span id="deptDrillLabel" style="font-size:0.75rem;color:var(--primary);font-weight:600;"></span></div>
+        <button class="btn btn-ghost btn-sm" id="deptDrillClear" style="display:none;" onclick="clearDeptDrill()">✖ Clear filter</button>
+      </div>
+      <div class="table-responsive" style="margin-top:12px;">
+        <table>
+          <thead><tr><th>Ticket</th><th>School</th><th>District</th><th>Branch</th><th>Issue</th><th>Age (BD)</th><th>Status</th></tr></thead>
+          <tbody id="deptListBody"><tr><td colspan="7" style="text-align:center;color:var(--muted);">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🏛️ Department Complaints — Bulk Upload (ssgujarat.org export)</div>
+      <p style="color:var(--muted);font-size:0.82rem;margin-bottom:16px;">
+        Upload the "Export To Excel" file downloaded from the ICT Support System (ssgujarat.org).
+        Only rows with Ticket Status <b>Pending</b> or <b>InProgress</b> are imported. Already-imported
+        tickets (same Ticket ID) are updated, not duplicated. Use this to backfill history or as a
+        fallback when the automatic scraper misses a run.
+      </p>
+
+      <div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap;">
+        <div>
+          <label>Excel file (.xlsx)</label>
+          <input type="file" id="deptFile" accept=".xlsx,.xls" style="display:block;padding:8px;border:2px dashed var(--border);border-radius:8px;background:white;" onchange="handleDeptFileSelect()" />
+        </div>
+        <div>
+          <label>Import key</label>
+          <input type="password" id="deptImportKey" placeholder="Paste the IMPORT_KEY" style="width:220px;" autocomplete="off" />
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;padding-bottom:8px;">
+          <input type="checkbox" id="deptSendEmails" style="width:16px;height:16px;" />
+          <label for="deptSendEmails" style="margin:0;font-size:0.8rem;">Email branch admins about new tickets</label>
+        </div>
+        <button class="btn btn-primary" id="deptUploadBtn" onclick="runDeptUpload()" disabled>⬆️ Upload to System</button>
+      </div>
+
+      <div id="deptPreview" style="display:none;background:#f8faff;border:1.5px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:14px;font-size:0.82rem;"></div>
+      <div id="deptResult" style="display:none;border-radius:12px;padding:14px 16px;font-size:0.82rem;font-weight:600;"></div>
+    </div>
+  </div>
+
+  <!-- ================= TAB: BRANCH MANAGEMENT ================= -->
+  <div class="tab-content" id="tab-branch">
+    <div class="card" style="margin-bottom:20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <div class="card-title" style="margin-bottom:0;">🏛️ District Offices</div>
+        <button class="btn btn-primary" onclick="openDoModal()">➕ Add District Office</button>
+      </div>
+      <p style="color:var(--muted);font-size:0.78rem;margin:8px 0 14px;">
+        A district office can hold several branches. Deleting is always a soft delete (Status becomes
+        Inactive) and is blocked while any active branch still belongs to the office.
+      </p>
+      <div class="table-responsive">
+        <table>
+          <thead><tr><th>ID</th><th>Name</th><th>Code</th><th>Region</th><th>Contact</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="doTableBody"><tr><td colspan="7" style="text-align:center;color:var(--muted);">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <div class="card-title" style="margin-bottom:0;">🏢 Branches</div>
+        <button class="btn btn-primary" onclick="openBrModal()">➕ Add Branch</button>
+      </div>
+      <p style="color:var(--muted);font-size:0.78rem;margin:8px 0 14px;">
+        Dashboards group complaints by branch. Deleting is blocked while complaints or alias mappings
+        still point at the branch — the message tells you exactly how many.
+      </p>
+      <div class="table-responsive">
+        <table>
+          <thead><tr><th>ID</th><th>Branch</th><th>Code</th><th>District Office</th><th>Manager</th><th>Manager Contact</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="brTableBody"><tr><td colspan="8" style="text-align:center;color:var(--muted);">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-title">❓ Unmapped Values</div>
+      <p style="color:var(--muted);font-size:0.78rem;margin:8px 0 14px;">
+        District or manager text found in complaints that doesn't resolve to any branch yet.
+        Pick the right branch and click Map — all matching complaints (past and future) regroup instantly.
+      </p>
+      <div class="table-responsive">
+        <table>
+          <thead><tr><th>Text found in data</th><th>Type</th><th>Open complaints</th><th>Map to branch</th><th></th></tr></thead>
+          <tbody id="unmappedTableBody"><tr><td colspan="5" style="text-align:center;color:var(--muted);">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🔗 Existing Mappings</div>
+      <p style="color:var(--muted);font-size:0.78rem;margin:8px 0 14px;">
+        Every text → branch link currently in force. Change the branch and click Save to re-map, or
+        delete a link to send its text back to the Unmapped queue.
+      </p>
+      <div class="table-responsive">
+        <table>
+          <thead><tr><th>Alias text</th><th>Mapped to branch</th><th>Mapped by</th><th>Date</th><th>Actions</th></tr></thead>
+          <tbody id="aliasTableBody"><tr><td colspan="5" style="text-align:center;color:var(--muted);">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -1254,6 +1408,7 @@ tr:hover td { background: #f8fafc; }
           <select id="editStatus">
             <option value="Open">Open</option>
             <option value="In Progress">In Progress</option>
+            <option value="Part Request">Part Request</option>
             <option value="Resolved">Resolved</option>
             <option value="Closed">Closed</option>
           </select>
@@ -1313,6 +1468,78 @@ tr:hover td { background: #f8fafc; }
 </div>
 
 <!-- SECURE ADMIN LOGIN MODAL -->
+<!-- DISTRICT OFFICE ADD/EDIT MODAL -->
+<div class="modal-bg" id="doEditModal">
+  <div class="modal">
+    <h3 id="doModalTitle">➕ Add District Office</h3>
+    <input type="hidden" id="doEditId" />
+    <div class="field">
+      <label for="doName">Office Name *</label>
+      <input type="text" id="doName" placeholder="e.g. Ahmedabad" />
+    </div>
+    <div class="field">
+      <label for="doCode">Office Code * (unique, e.g. AHM)</label>
+      <input type="text" id="doCode" placeholder="e.g. AHM" maxlength="10" style="text-transform:uppercase;" />
+    </div>
+    <div class="field">
+      <label for="doRegion">Region</label>
+      <input type="text" id="doRegion" placeholder="optional" />
+    </div>
+    <div class="field">
+      <label for="doContactPerson">Contact Person</label>
+      <input type="text" id="doContactPerson" placeholder="optional" />
+    </div>
+    <div class="field">
+      <label for="doContactNumber">Contact Number</label>
+      <input type="tel" id="doContactNumber" placeholder="optional" maxlength="10" />
+    </div>
+    <div class="field">
+      <label for="doStatus">Status</label>
+      <select id="doStatus"><option value="Active">Active</option><option value="Inactive">Inactive</option></select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('doEditModal')">Cancel</button>
+      <button class="btn btn-primary" id="doSaveBtn" onclick="saveDoModal()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- BRANCH ADD/EDIT MODAL -->
+<div class="modal-bg" id="brEditModal">
+  <div class="modal">
+    <h3 id="brModalTitle">➕ Add Branch</h3>
+    <input type="hidden" id="brEditId" />
+    <div class="field">
+      <label for="brName">Branch Name *</label>
+      <input type="text" id="brName" placeholder="e.g. Baroda" />
+    </div>
+    <div class="field">
+      <label for="brCode">Branch Code * (unique, e.g. VAD-01)</label>
+      <input type="text" id="brCode" placeholder="e.g. VAD-01" maxlength="12" style="text-transform:uppercase;" />
+    </div>
+    <div class="field">
+      <label for="brOffice">District Office *</label>
+      <select id="brOffice"></select>
+    </div>
+    <div class="field">
+      <label for="brManagerName">Branch Manager Name</label>
+      <input type="text" id="brManagerName" placeholder="e.g. Samir Patel" />
+    </div>
+    <div class="field">
+      <label for="brManagerContact">Branch Manager Contact</label>
+      <input type="tel" id="brManagerContact" placeholder="optional" maxlength="10" />
+    </div>
+    <div class="field">
+      <label for="brStatus">Status</label>
+      <select id="brStatus"><option value="Active">Active</option><option value="Inactive">Inactive</option></select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('brEditModal')">Cancel</button>
+      <button class="btn btn-primary" id="brSaveBtn" onclick="saveBrModal()">Save</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="adminLoginModal">
   <div class="modal" style="max-width:400px;">
     <div style="text-align:center; margin-bottom: 20px;">
@@ -1712,6 +1939,8 @@ function renderNavigationMenu() {
     'parts': document.getElementById('btn-tab-parts'),
     'users': document.getElementById('btn-tab-users'),
     'access': document.getElementById('btn-tab-access'),
+    'dept': document.getElementById('btn-tab-dept'),
+    'branch': document.getElementById('btn-tab-branch'),
     'archive': document.getElementById('btn-tab-archive'),
   };
   
@@ -1739,6 +1968,8 @@ function applyUrlModule() {
       'usermaster': 'users',
       'accesscontrol': 'access',
       'complaints': 'complaints',
+      'department': 'dept',
+      'branchmanagement': 'branch',
       'archive': 'archive'
     };
     const targetTab = moduleMap[moduleParam.toLowerCase()];
@@ -1781,6 +2012,8 @@ function switchTab(tabId) {
     'users': 'usermaster',
     'access': 'accesscontrol',
     'complaints': 'complaints',
+    'dept': 'department',
+    'branch': 'branchmanagement',
     'archive': 'archive'
   };
   const url = new URL(window.location);
@@ -1792,6 +2025,10 @@ function switchTab(tabId) {
     renderDashboard();
   } else if (tabId === 'complaints') {
     renderComplaintsTable();
+  } else if (tabId === 'branch') {
+    loadBranchMgmt();
+  } else if (tabId === 'dept') {
+    loadDeptDashboard();
   }
 }
 
@@ -1930,6 +2167,7 @@ function renderDashboard() {
 function getBadgeClass(status) {
   const s = String(status || 'open').toLowerCase().trim();
   if (s === 'resolved' || s === 'closed') return 'resolved';
+  if (s === 'part request' || s === 'partrequest') return 'partreq';
   if (s === 'in progress' || s === 'pending' || s === 'inprogress') return 'pending';
   return 'open';
 }
@@ -3374,6 +3612,7 @@ function renderComplaintsTable() {
           <select onchange="updateComplaintStatus(${origIndex}, this.value)" style="padding:4px 8px; font-size:0.75rem; border-radius:6px; font-weight:700;">
             <option value="Open" ${c.status === 'Open' || !c.status ? 'selected' : ''}>Open</option>
             <option value="In Progress" ${c.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
+            <option value="Part Request" ${c.status === 'Part Request' ? 'selected' : ''}>Part Request</option>
             <option value="Resolved" ${c.status === 'Resolved' ? 'selected' : ''}>Resolved</option>
             <option value="Closed" ${c.status === 'Closed' ? 'selected' : ''}>Closed</option>
           </select>
@@ -4021,6 +4260,555 @@ function saveComplaintEdit() {
 document.addEventListener('click', e => {
   if (e.target.classList.contains('modal-bg')) e.target.classList.remove('show');
 });
+
+/* ─────────────── DEPARTMENT COMPLAINTS BULK UPLOAD ─────────────── */
+// Columns expected in the ssgujarat.org "Export To Excel" file, in order.
+const DEPT_EXPORT_COLUMNS = [
+  'District','BlockId','Block','ClusterId','Cluster','VillageId','Village',
+  'SchoolId','School','TicketId','Agency','Asset_Type','Device_Type','Issue_Type',
+  'Issue_Details','Issue_Photo','Contact_Name','Phone_Number','Time_Preference_Call',
+  'Ticket_Status','CreatedBy','CreatedDate','UpdatedBy','UpdatedDate',
+  'Diagnosis_Notes_Agency','Schedule_Visit_Date','Technician_Name','Technician_Number',
+  'Issue_Resolved_By','TotalDaysOfTicket'
+];
+const DEPT_IMPORT_KEY_LS = 'armee_dept_import_key';
+const DEPT_UPLOAD_CHUNK = 150;
+let deptParsedRows = null;
+
+function deptNormStatus(s) {
+  return String(s || '').trim().toLowerCase().replace(/[\s-]/g, '');
+}
+
+function handleDeptFileSelect() {
+  const fileInput = document.getElementById('deptFile');
+  const preview = document.getElementById('deptPreview');
+  const result = document.getElementById('deptResult');
+  const btn = document.getElementById('deptUploadBtn');
+  deptParsedRows = null;
+  btn.disabled = true;
+  result.style.display = 'none';
+
+  const file = fileInput.files && fileInput.files[0];
+  if (!file) { preview.style.display = 'none'; return; }
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { raw: false, defval: '' });
+
+      if (!rows.length) throw new Error('The file has no data rows.');
+      const missing = ['TicketId', 'Ticket_Status', 'District', 'SchoolId'].filter(c => !(c in rows[0]));
+      if (missing.length) throw new Error('This does not look like the ssgujarat.org export — missing columns: ' + missing.join(', '));
+
+      let pending = 0, inProgress = 0, skipped = 0;
+      const openRows = [];
+      for (const r of rows) {
+        const norm = deptNormStatus(r.Ticket_Status);
+        if (norm === 'pending') { pending++; }
+        else if (norm === 'inprogress') { inProgress++; }
+        else { skipped++; continue; }
+        const clean = {};
+        for (const col of DEPT_EXPORT_COLUMNS) clean[col] = r[col] !== undefined ? String(r[col]) : '';
+        openRows.push(clean);
+      }
+      deptParsedRows = openRows;
+
+      preview.style.display = 'block';
+      preview.innerHTML =
+        `<b>📄 ${file.name}</b><br>` +
+        `Total rows: <b>${rows.length}</b> &nbsp;|&nbsp; ` +
+        `To import — Pending: <b style="color:#dc2626;">${pending}</b>, ` +
+        `InProgress: <b style="color:#7c3aed;">${inProgress}</b> &nbsp;|&nbsp; ` +
+        `Skipped (Completed/other): <b>${skipped}</b><br>` +
+        `<span style="color:var(--muted);">Review the numbers, then click "Upload to System".</span>`;
+      btn.disabled = openRows.length === 0;
+      if (!openRows.length) showToast('⚠️ No Pending/InProgress rows found in this file.', 'warn');
+    } catch (err) {
+      preview.style.display = 'none';
+      showToast('❌ Could not read file: ' + err.message, 'danger');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+async function runDeptUpload() {
+  const btn = document.getElementById('deptUploadBtn');
+  const result = document.getElementById('deptResult');
+  const keyField = document.getElementById('deptImportKey');
+  const sendEmails = document.getElementById('deptSendEmails').checked;
+
+  const importKey = keyField.value.trim() || localStorage.getItem(DEPT_IMPORT_KEY_LS) || '';
+  if (!importKey) { showToast('⚠️ Paste the import key first (ask your administrator).', 'warn'); keyField.focus(); return; }
+  if (!deptParsedRows || !deptParsedRows.length) { showToast('⚠️ Select an export file first.', 'warn'); return; }
+  if (!confirm(`Import ${deptParsedRows.length} open ticket(s) into the system?` + (sendEmails ? '\n\nBranch admins WILL receive notification emails.' : '\n\nNo notification emails will be sent.'))) return;
+
+  btn.disabled = true;
+  let inserted = 0, updated = 0;
+  result.style.display = 'block';
+  result.style.background = '#eff6ff'; result.style.color = '#1e40af'; result.style.border = '1.5px solid #bfdbfe';
+
+  try {
+    for (let i = 0; i < deptParsedRows.length; i += DEPT_UPLOAD_CHUNK) {
+      const chunk = deptParsedRows.slice(i, i + DEPT_UPLOAD_CHUNK);
+      result.textContent = `⏳ Uploading ${Math.min(i + chunk.length, deptParsedRows.length)} / ${deptParsedRows.length}…`;
+      const res = await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          action: 'import_department_complaints',
+          importKey: importKey,
+          importSource: 'MANUAL_UPLOAD',
+          sendEmails: sendEmails,
+          rows: chunk
+        }),
+      });
+      const out = await res.json();
+      if (out.status !== 'ok') throw new Error(out.message || 'Server rejected the upload');
+      inserted += out.inserted; updated += out.updated;
+    }
+    localStorage.setItem(DEPT_IMPORT_KEY_LS, importKey);
+    result.style.background = '#f0fdf4'; result.style.color = '#166534'; result.style.border = '1.5px solid #bbf7d0';
+    result.textContent = `✅ Done! New tickets added: ${inserted}, existing tickets updated: ${updated}.`;
+    showToast('✅ Department complaints imported successfully!', 'success');
+  } catch (err) {
+    result.style.background = '#fef2f2'; result.style.color = '#b91c1c'; result.style.border = '1.5px solid #fecaca';
+    result.textContent = `❌ Upload failed: ${err.message}. Rows already uploaded were saved (${inserted} new / ${updated} updated) — re-uploading the same file is safe, duplicates are prevented by Ticket ID.`;
+    showToast('❌ Upload failed: ' + err.message, 'danger');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Pre-fill the saved import key when the page loads
+document.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem(DEPT_IMPORT_KEY_LS);
+  const field = document.getElementById('deptImportKey');
+  if (saved && field) field.value = saved;
+});
+
+/* ─────────────── DEPARTMENT DASHBOARD (pendency + branch aging) ─────────────── */
+let deptDash = null, deptList = [], deptDrillFilter = null;
+
+async function loadDeptDashboard() {
+  try {
+    const [dash, list] = await Promise.all([
+      fetch(GOOGLE_SCRIPT_URL + '?action=get_department_dashboard&t=' + Date.now()).then(r => r.json()),
+      fetch(GOOGLE_SCRIPT_URL + '?action=get_department_complaints_list&t=' + Date.now()).then(r => r.json()),
+    ]);
+    deptDash = dash; deptList = Array.isArray(list) ? list : [];
+    renderDeptPendency(); renderBranchAging(); renderDeptList();
+  } catch (e) {
+    showToast('❌ Could not load department dashboard: ' + e.message, 'danger');
+  }
+}
+
+function deptStatBox(label, value, color, bg, filterKey) {
+  return '<div onclick="deptDrill(\'status\',\'' + filterKey + '\')" style="cursor:pointer;background:' + bg +
+    ';border-radius:12px;padding:14px 10px;text-align:center;border:1.5px solid transparent;" ' +
+    'onmouseover="this.style.borderColor=\'' + color + '\'" onmouseout="this.style.borderColor=\'transparent\'">' +
+    '<div style="font-size:1.5rem;font-weight:800;color:' + color + ';">' + value + '</div>' +
+    '<div style="font-size:0.7rem;font-weight:700;color:' + color + ';opacity:0.8;text-transform:uppercase;">' + label + '</div></div>';
+}
+
+function renderDeptPendency() {
+  const p = deptDash.pendency;
+  document.getElementById('deptPendencyBoxes').innerHTML =
+    deptStatBox('Total', p.total, '#0e7490', '#ecfeff', 'total') +
+    deptStatBox('Pending', p.pending, '#b91c1c', '#fef2f2', 'Pending') +
+    deptStatBox('In Progress', p.inProgress, '#a16207', '#fefce8', 'InProgress') +
+    deptStatBox('Part Request', p.partRequest, '#6d28d9', '#f5f3ff', 'PartRequest') +
+    deptStatBox('Pending OTP', p.pendingOtp, '#c2410c', '#fff7ed', 'PendingOTP') +
+    deptStatBox('Closed + OTP', p.closedWithOTP, '#15803d', '#f0fdf4', 'ClosedWithOTP') +
+    deptStatBox('Closed − OTP', p.closedWithoutOTP, '#334155', '#f8fafc', 'ClosedWithoutOTP');
+}
+
+function renderBranchAging() {
+  const body = document.getElementById('branchAgingBody');
+  const branches = (deptDash.branches || []).filter(b => b.status === 'Active');
+  branches.sort((a, b) => {
+    const tot = x => Object.values(x.department).reduce((s, v) => s + v, 0) + Object.values(x.advance).reduce((s, v) => s + v, 0);
+    return tot(b) - tot(a);
+  });
+
+  const cell = (v, warn) => '<td style="text-align:center;' + (v > 0 && warn ? 'color:#b91c1c;font-weight:700;' : v === 0 ? 'color:#cbd5e1;' : '') + '">' + v + '</td>';
+  let totals = { d1: 0, d2: 0, d3: 0, a1: 0, a2: 0, a3: 0 };
+
+  body.innerHTML = branches.map(b => {
+    const d = b.department, a = b.advance;
+    totals.d1 += d['0-2']; totals.d2 += d['3-5']; totals.d3 += d['6+'];
+    totals.a1 += a['0-2']; totals.a2 += a['3-5']; totals.a3 += a['6+'];
+    const total = d['0-2'] + d['3-5'] + d['6+'] + a['0-2'] + a['3-5'] + a['6+'];
+    return '<tr onclick="deptDrill(\'branch\',\'' + esc(b.branchId) + '\')" style="cursor:pointer;">' +
+      '<td><b>' + esc(b.branchName) + '</b><br><span style="font-size:0.7rem;color:var(--muted);">' + esc(b.districtOfficeName) + ' · ' + esc(b.branchId) + '</span></td>' +
+      '<td>' + esc(b.managerName || '—') + '</td>' +
+      cell(d['0-2'], false) + cell(d['3-5'], false) + cell(d['6+'], true) +
+      cell(a['0-2'], false) + cell(a['3-5'], false) + cell(a['6+'], true) +
+      '<td style="text-align:center;font-weight:800;">' + total + '</td></tr>';
+  }).join('') +
+  (function() {
+    const u = deptDash.unmapped;
+    const uTotal = Object.values(u.department).reduce((s, v) => s + v, 0) + Object.values(u.advance).reduce((s, v) => s + v, 0);
+    if (!uTotal) return '';
+    return '<tr onclick="deptDrill(\'branch\',\'UNMAPPED\')" style="cursor:pointer;background:#fff7ed;">' +
+      '<td colspan="2"><b>⚠️ Unmapped</b> <span style="font-size:0.7rem;color:var(--muted);">(fix in Branch Management)</span></td>' +
+      cell(u.department['0-2'], false) + cell(u.department['3-5'], false) + cell(u.department['6+'], true) +
+      cell(u.advance['0-2'], false) + cell(u.advance['3-5'], false) + cell(u.advance['6+'], true) +
+      '<td style="text-align:center;font-weight:800;">' + uTotal + '</td></tr>';
+  })() +
+  '<tr style="background:#f8faff;font-weight:800;"><td colspan="2">TOTAL</td>' +
+  cell(totals.d1, false) + cell(totals.d2, false) + cell(totals.d3, true) +
+  cell(totals.a1, false) + cell(totals.a2, false) + cell(totals.a3, true) +
+  '<td style="text-align:center;">' + (totals.d1 + totals.d2 + totals.d3 + totals.a1 + totals.a2 + totals.a3) + '</td></tr>';
+
+  document.getElementById('officeSummary').innerHTML = (deptDash.districtOffices || [])
+    .map(o => {
+      const t = Object.values(o.department).reduce((s, v) => s + v, 0) + Object.values(o.advance).reduce((s, v) => s + v, 0);
+      return t ? '<span style="background:#f0f4ff;border:1px solid var(--border);border-radius:10px;padding:4px 10px;">' +
+        '<b>' + esc(o.name) + '</b>: ' + t + '</span>' : '';
+    }).join('');
+}
+
+function deptStatusBadge(t) {
+  const map = {
+    'Pending': ['#fef2f2', '#b91c1c', 'Pending'],
+    'InProgress': ['#fefce8', '#a16207', 'In Progress'],
+    'PartRequest': ['#f5f3ff', '#6d28d9', 'Part Request'],
+    'PendingOTP': ['#fff7ed', '#c2410c', 'Pending OTP'],
+    'Closed': ['#f0fdf4', '#15803d', 'Closed'],
+  };
+  const m = map[t] || map['Pending'];
+  return '<span style="background:' + m[0] + ';color:' + m[1] + ';padding:2px 10px;border-radius:10px;font-size:0.7rem;font-weight:700;">' + m[2] + '</span>';
+}
+
+function deptDrill(type, val) {
+  deptDrillFilter = { type: type, val: val };
+  renderDeptList();
+  document.getElementById('deptListBody').closest('.card').scrollIntoView({ behavior: 'smooth' });
+}
+
+function clearDeptDrill() { deptDrillFilter = null; renderDeptList(); }
+
+function renderDeptList() {
+  const body = document.getElementById('deptListBody');
+  const label = document.getElementById('deptDrillLabel');
+  const clearBtn = document.getElementById('deptDrillClear');
+  let rows = deptList.slice();
+  let labelText = '— all tickets';
+
+  if (deptDrillFilter) {
+    const f = deptDrillFilter;
+    if (f.type === 'status') {
+      if (f.val === 'total') { labelText = '— all tickets'; }
+      else if (f.val === 'ClosedWithOTP') { rows = rows.filter(r => r.internalStatus === 'Closed' && r.closureType === 'ClosedWithOTP'); labelText = '— Closed with OTP'; }
+      else if (f.val === 'ClosedWithoutOTP') { rows = rows.filter(r => r.internalStatus === 'Closed' && r.closureType !== 'ClosedWithOTP'); labelText = '— Closed without OTP'; }
+      else { rows = rows.filter(r => r.internalStatus === f.val); labelText = '— ' + f.val; }
+    } else if (f.type === 'branch') {
+      if (f.val === 'UNMAPPED') { rows = rows.filter(r => !r.branchId); labelText = '— Unmapped'; }
+      else {
+        rows = rows.filter(r => r.branchId === f.val);
+        const b = (deptDash.branches || []).find(x => x.branchId === f.val);
+        labelText = '— ' + (b ? b.branchName : f.val) + ' branch (open, oldest first)';
+        rows = rows.filter(r => r.internalStatus !== 'Closed');
+      }
+    }
+  }
+
+  rows.sort((a, b) => b.businessDays - a.businessDays);
+  label.textContent = labelText + ' · ' + rows.length + ' ticket(s)';
+  clearBtn.style.display = deptDrillFilter ? '' : 'none';
+
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);">No tickets match.</td></tr>';
+    return;
+  }
+  body.innerHTML = rows.slice(0, 300).map(r =>
+    '<tr><td><b>' + esc(r.ticketId) + '</b></td>' +
+    '<td>' + esc(r.school) + '<br><span style="font-size:0.7rem;color:var(--muted);">' + esc(r.schoolId) + '</span></td>' +
+    '<td>' + esc(r.district) + '</td>' +
+    '<td>' + esc(r.branchName) + '</td>' +
+    '<td>' + esc(r.deviceType) + ' — ' + esc(r.issueType) + '</td>' +
+    '<td style="text-align:center;' + (r.businessDays > 5 ? 'color:#b91c1c;font-weight:700;' : '') + '">' + r.businessDays + '</td>' +
+    '<td>' + deptStatusBadge(r.internalStatus) +
+      (r.internalStatus === 'PendingOTP'
+        ? ' <button class="btn btn-primary btn-sm" title="Enter the OTP collected from the school to close this ticket" onclick="finalizePendingOtp(\'' + esc(r.ticketId) + '\')">📩 Enter OTP</button>'
+        : '') +
+    '</td></tr>'
+  ).join('') + (rows.length > 300 ? '<tr><td colspan="7" style="text-align:center;color:var(--muted);">…and ' + (rows.length - 300) + ' more (use a narrower filter)</td></tr>' : '');
+}
+
+/** Finalize a ticket the engineer closed on site without OTP. */
+async function finalizePendingOtp(ticketId) {
+  const otp = (prompt('Ticket ' + ticketId + ' was closed on site without OTP.\n\nEnter the OTP collected from the school to finalize the closure:') || '').trim();
+  if (!otp) return;
+  try {
+    const res = await fetch(GOOGLE_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'resolve_department_complaint',
+        ticketId: ticketId,
+        resolutionAction: 'finalize_otp',
+        otp: otp,
+        resolvedBy: (currentUser && currentUser.name) || 'admin',
+      }),
+    });
+    const out = await res.json();
+    if (out.status !== 'ok') throw new Error(out.message || 'Server rejected the update');
+    showToast('✅ Ticket ' + ticketId + ' closed with OTP.', 'success');
+    loadDeptDashboard();
+  } catch (e) {
+    showToast('❌ ' + e.message, 'danger');
+  }
+}
+
+/* ─────────────── BRANCH MANAGEMENT ─────────────── */
+let bmOffices = [], bmBranches = [], bmAliases = [], bmUnmapped = [];
+
+function branchMgmtKey() {
+  let key = localStorage.getItem(DEPT_IMPORT_KEY_LS) || '';
+  if (!key) {
+    key = (prompt('Enter the IMPORT_KEY (same secret used for Dept Complaints upload):') || '').trim();
+    if (key) localStorage.setItem(DEPT_IMPORT_KEY_LS, key);
+  }
+  return key;
+}
+
+async function branchMgmtPost(payload) {
+  const key = branchMgmtKey();
+  if (!key) { showToast('⚠️ Import key is required for changes.', 'warn'); return null; }
+  try {
+    const res = await fetch(GOOGLE_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(Object.assign({ importKey: key }, payload)),
+    });
+    const out = await res.json();
+    if (out.status === 'blocked') {
+      alert('⛔ Blocked:\n\n' + out.message + (out.branches ? '\n\n• ' + out.branches.join('\n• ') : ''));
+      return null;
+    }
+    if (out.status !== 'ok') {
+      showToast('❌ ' + (out.message || 'Request failed'), 'danger');
+      return null;
+    }
+    return out;
+  } catch (e) {
+    showToast('❌ Network error: ' + e.message, 'danger');
+    return null;
+  }
+}
+
+async function loadBranchMgmt() {
+  try {
+    const [offices, branches, aliases, unmapped] = await Promise.all([
+      fetch(GOOGLE_SCRIPT_URL + '?action=get_district_offices&t=' + Date.now()).then(r => r.json()),
+      fetch(GOOGLE_SCRIPT_URL + '?action=get_branches&t=' + Date.now()).then(r => r.json()),
+      fetch(GOOGLE_SCRIPT_URL + '?action=get_alias_mappings&t=' + Date.now()).then(r => r.json()),
+      fetch(GOOGLE_SCRIPT_URL + '?action=get_unmapped_aliases&t=' + Date.now()).then(r => r.json()),
+    ]);
+    bmOffices = offices; bmBranches = branches; bmAliases = aliases; bmUnmapped = unmapped;
+    renderDoTable(); renderBrTable(); renderUnmappedTable(); renderAliasTable();
+  } catch (e) {
+    showToast('❌ Could not load branch data: ' + e.message, 'danger');
+  }
+}
+
+function bmStatusBadge(status) {
+  const ok = status === 'Active';
+  return '<span style="padding:2px 10px;border-radius:10px;font-size:0.72rem;font-weight:700;' +
+         (ok ? 'background:#dcfce7;color:#166534;' : 'background:#f1f5f9;color:#64748b;') + '">' +
+         esc(status) + '</span>';
+}
+
+function renderDoTable() {
+  const body = document.getElementById('doTableBody');
+  if (!bmOffices.length) { body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);">No district offices yet.</td></tr>'; return; }
+  body.innerHTML = bmOffices.map(o =>
+    '<tr' + (o.status !== 'Active' ? ' style="opacity:0.55;"' : '') + '>' +
+    '<td>' + esc(o.id) + '</td><td><b>' + esc(o.name) + '</b></td><td>' + esc(o.code) + '</td>' +
+    '<td>' + esc(o.region || '—') + '</td>' +
+    '<td>' + esc(o.contactPerson || '—') + (o.contactNumber ? '<br><span style="color:var(--muted);font-size:0.75rem;">' + esc(o.contactNumber) + '</span>' : '') + '</td>' +
+    '<td>' + bmStatusBadge(o.status) + '</td>' +
+    '<td style="white-space:nowrap;">' +
+      '<button class="btn btn-ghost btn-sm" title="Edit" onclick="openDoModal(\'' + esc(o.id) + '\')">✏️</button> ' +
+      '<button class="btn btn-ghost btn-sm" title="Delete (soft)" onclick="deleteDo(\'' + esc(o.id) + '\')">🗑️</button>' +
+    '</td></tr>'
+  ).join('');
+}
+
+function renderBrTable() {
+  const body = document.getElementById('brTableBody');
+  if (!bmBranches.length) { body.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);">No branches yet.</td></tr>'; return; }
+  body.innerHTML = bmBranches.map(b =>
+    '<tr' + (b.status !== 'Active' ? ' style="opacity:0.55;"' : '') + '>' +
+    '<td>' + esc(b.id) + '</td><td><b>' + esc(b.name) + '</b></td><td>' + esc(b.code) + '</td>' +
+    '<td>' + esc(b.districtOfficeName || b.districtOfficeId) + '</td>' +
+    '<td>' + esc(b.managerName || '—') + '</td><td>' + esc(b.managerContact || '—') + '</td>' +
+    '<td>' + bmStatusBadge(b.status) + '</td>' +
+    '<td style="white-space:nowrap;">' +
+      '<button class="btn btn-ghost btn-sm" title="Edit" onclick="openBrModal(\'' + esc(b.id) + '\')">✏️</button> ' +
+      '<button class="btn btn-ghost btn-sm" title="Delete (soft)" onclick="deleteBr(\'' + esc(b.id) + '\')">🗑️</button>' +
+    '</td></tr>'
+  ).join('');
+}
+
+function bmBranchOptions(selectedId) {
+  return bmBranches.filter(b => b.status === 'Active').map(b =>
+    '<option value="' + esc(b.id) + '"' + (b.id === selectedId ? ' selected' : '') + '>' +
+    esc(b.name) + ' (' + esc(b.id) + ')</option>'
+  ).join('');
+}
+
+function renderUnmappedTable() {
+  const body = document.getElementById('unmappedTableBody');
+  if (!bmUnmapped.length) {
+    body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#166534;font-weight:600;">🎉 Nothing to map — every complaint resolves to a branch.</td></tr>';
+    return;
+  }
+  body.innerHTML = bmUnmapped.map((u, i) =>
+    '<tr><td><b>' + esc(u.alias) + '</b></td>' +
+    '<td>' + (u.source === 'manager' ? '👤 Manager' : '📍 District') + '</td>' +
+    '<td>' + u.count + '</td>' +
+    '<td><select id="unmapSel' + i + '"><option value="">— select branch —</option>' + bmBranchOptions('') + '</select></td>' +
+    '<td><button class="btn btn-primary btn-sm" onclick="mapUnmappedRow(' + i + ')">Map</button></td></tr>'
+  ).join('');
+}
+
+function renderAliasTable() {
+  const body = document.getElementById('aliasTableBody');
+  if (!bmAliases.length) { body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);">No mappings yet.</td></tr>'; return; }
+  body.innerHTML = bmAliases.map((a, i) =>
+    '<tr><td><b>' + esc(a.aliasText) + '</b></td>' +
+    '<td><select id="aliasSel' + i + '">' + bmBranchOptions(a.branchId) + '</select></td>' +
+    '<td>' + esc(a.mappedBy || '—') + '</td>' +
+    '<td>' + esc(String(a.mappedDate || '').substring(0, 10)) + '</td>' +
+    '<td style="white-space:nowrap;">' +
+      '<button class="btn btn-ghost btn-sm" title="Save re-map" onclick="saveAliasRow(' + i + ')">💾</button> ' +
+      '<button class="btn btn-ghost btn-sm" title="Delete mapping" onclick="deleteAliasRow(' + i + ')">🗑️</button>' +
+    '</td></tr>'
+  ).join('');
+}
+
+/* ── District Office actions ── */
+function openDoModal(id) {
+  const o = id ? bmOffices.find(x => x.id === id) : null;
+  document.getElementById('doModalTitle').textContent = o ? '✏️ Edit District Office' : '➕ Add District Office';
+  document.getElementById('doEditId').value = o ? o.id : '';
+  document.getElementById('doName').value = o ? o.name : '';
+  document.getElementById('doCode').value = o ? o.code : '';
+  document.getElementById('doRegion').value = o ? o.region : '';
+  document.getElementById('doContactPerson').value = o ? o.contactPerson : '';
+  document.getElementById('doContactNumber').value = o ? o.contactNumber : '';
+  document.getElementById('doStatus').value = o ? o.status : 'Active';
+  document.getElementById('doEditModal').classList.add('show');
+}
+
+async function saveDoModal() {
+  const id = document.getElementById('doEditId').value;
+  const payload = {
+    action: id ? 'update_district_office' : 'create_district_office',
+    id: id || undefined,
+    name: document.getElementById('doName').value.trim(),
+    code: document.getElementById('doCode').value.trim().toUpperCase(),
+    region: document.getElementById('doRegion').value.trim(),
+    contactPerson: document.getElementById('doContactPerson').value.trim(),
+    contactNumber: document.getElementById('doContactNumber').value.trim(),
+    status: document.getElementById('doStatus').value,
+  };
+  if (!payload.name || !payload.code) { showToast('⚠️ Name and Code are required.', 'warn'); return; }
+  const btn = document.getElementById('doSaveBtn');
+  btn.disabled = true; btn.textContent = '⏳ Saving…';
+  const out = await branchMgmtPost(payload);
+  btn.disabled = false; btn.textContent = 'Save';
+  if (out) {
+    closeModal('doEditModal');
+    showToast('✅ District office saved.', 'success');
+    await loadBranchMgmt();
+  }
+}
+
+async function deleteDo(id) {
+  const o = bmOffices.find(x => x.id === id);
+  if (!o) return;
+  if (!confirm('Delete district office "' + o.name + '" (' + id + ')?\n\nThis is a soft delete: it becomes Inactive and disappears from dropdowns, but history is kept.')) return;
+  const out = await branchMgmtPost({ action: 'delete_district_office', id: id });
+  if (out) { showToast('✅ District office set to Inactive.', 'success'); await loadBranchMgmt(); }
+}
+
+/* ── Branch actions ── */
+function openBrModal(id) {
+  const b = id ? bmBranches.find(x => x.id === id) : null;
+  document.getElementById('brModalTitle').textContent = b ? '✏️ Edit Branch' : '➕ Add Branch';
+  document.getElementById('brEditId').value = b ? b.id : '';
+  document.getElementById('brName').value = b ? b.name : '';
+  document.getElementById('brCode').value = b ? b.code : '';
+  document.getElementById('brManagerName').value = b ? b.managerName : '';
+  document.getElementById('brManagerContact').value = b ? b.managerContact : '';
+  document.getElementById('brStatus').value = b ? b.status : 'Active';
+  document.getElementById('brOffice').innerHTML = bmOffices.filter(o => o.status === 'Active').map(o =>
+    '<option value="' + esc(o.id) + '"' + (b && b.districtOfficeId === o.id ? ' selected' : '') + '>' +
+    esc(o.name) + ' (' + esc(o.id) + ')</option>'
+  ).join('');
+  document.getElementById('brEditModal').classList.add('show');
+}
+
+async function saveBrModal() {
+  const id = document.getElementById('brEditId').value;
+  const payload = {
+    action: id ? 'update_branch' : 'create_branch',
+    id: id || undefined,
+    name: document.getElementById('brName').value.trim(),
+    code: document.getElementById('brCode').value.trim().toUpperCase(),
+    districtOfficeId: document.getElementById('brOffice').value,
+    managerName: document.getElementById('brManagerName').value.trim(),
+    managerContact: document.getElementById('brManagerContact').value.trim(),
+    status: document.getElementById('brStatus').value,
+  };
+  if (!payload.name || !payload.code || !payload.districtOfficeId) { showToast('⚠️ Name, Code and District Office are required.', 'warn'); return; }
+  const btn = document.getElementById('brSaveBtn');
+  btn.disabled = true; btn.textContent = '⏳ Saving…';
+  const out = await branchMgmtPost(payload);
+  btn.disabled = false; btn.textContent = 'Save';
+  if (out) {
+    closeModal('brEditModal');
+    showToast('✅ Branch saved.', 'success');
+    await loadBranchMgmt();
+  }
+}
+
+async function deleteBr(id) {
+  const b = bmBranches.find(x => x.id === id);
+  if (!b) return;
+  if (!confirm('Delete branch "' + b.name + '" (' + id + ')?\n\nThis is a soft delete: it becomes Inactive. It will be blocked if complaints or mappings still reference it.')) return;
+  const out = await branchMgmtPost({ action: 'delete_branch', id: id });
+  if (out) { showToast('✅ Branch set to Inactive.', 'success'); await loadBranchMgmt(); }
+}
+
+/* ── Alias actions ── */
+async function mapUnmappedRow(i) {
+  const u = bmUnmapped[i];
+  const branchId = document.getElementById('unmapSel' + i).value;
+  if (!branchId) { showToast('⚠️ Select a branch first.', 'warn'); return; }
+  const out = await branchMgmtPost({ action: 'map_alias', aliasText: u.alias, branchId: branchId, mappedBy: (currentUser && currentUser.name) || 'admin' });
+  if (out) { showToast('✅ "' + u.alias + '" mapped.', 'success'); await loadBranchMgmt(); }
+}
+
+async function saveAliasRow(i) {
+  const a = bmAliases[i];
+  const branchId = document.getElementById('aliasSel' + i).value;
+  if (!branchId || branchId === a.branchId) { showToast('ℹ️ Pick a different branch to re-map.', 'info'); return; }
+  const out = await branchMgmtPost({ action: 'map_alias', aliasText: a.aliasText, branchId: branchId, mappedBy: (currentUser && currentUser.name) || 'admin' });
+  if (out) { showToast('✅ "' + a.aliasText + '" re-mapped.', 'success'); await loadBranchMgmt(); }
+}
+
+async function deleteAliasRow(i) {
+  const a = bmAliases[i];
+  if (!confirm('Delete the mapping "' + a.aliasText + '" → ' + (a.branchName || a.branchId) + '?\n\nIts complaints will show as Unmapped until re-mapped.')) return;
+  const out = await branchMgmtPost({ action: 'delete_alias_mapping', aliasText: a.aliasText });
+  if (out) { showToast('✅ Mapping deleted.', 'success'); await loadBranchMgmt(); }
+}
 </script>
 </body>
 </html>

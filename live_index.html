@@ -1,0 +1,2932 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Complaint Form" />
+  <meta name="theme-color" content="#1a56db" />
+  <title>School Complaint Form</title>
+  <link rel="icon" type="image/png" href="armee_logo_square.png" />
+  <link rel="apple-touch-icon" href="armee_logo_square.png" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="html5-qrcode.min.js"></script>
+
+<style>
+/* ═══════════════ RESET & BASE ═══════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+:root {
+  --primary:       #1a56db;
+  --primary-dark:  #1240ab;
+  --primary-light: #dbeafe;
+  --accent:        #06b6d4;
+  --success:       #10b981;
+  --warning:       #f59e0b;
+  --danger:        #ef4444;
+  --bg:            #f0f4ff;
+  --card:          #ffffff;
+  --border:        #e2e8f0;
+  --text:          #1e293b;
+  --muted:         #64748b;
+  --label:         #374151;
+  --safe-top:      env(safe-area-inset-top, 0px);
+  --safe-bottom:   env(safe-area-inset-bottom, 0px);
+  --grad:          linear-gradient(135deg, #1a56db, #06b6d4);
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ═══════════════ APP SHELL ═══════════════ */
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  max-width: 480px;
+  margin: 0 auto;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* ═══════════════ TOP APP BAR ═══════════════ */
+.app-bar {
+  background: var(--grad);
+  color: white;
+  padding: calc(12px + var(--safe-top)) 16px 12px;
+  flex-shrink: 0;
+  position: relative;
+  box-shadow: 0 2px 16px rgba(26,86,219,0.35);
+  z-index: 10;
+}
+.app-bar-top { display: flex; align-items: center; gap: 10px; }
+.app-bar-icon { font-size: 22px; }
+.app-bar-title { font-size: 1rem; font-weight: 700; line-height: 1.2; flex: 1; }
+.app-bar-sub { font-size: 0.72rem; opacity: 0.82; }
+.app-bar-user {
+  background: rgba(255,255,255,0.2);
+  border: 1px solid rgba(255,255,255,0.3);
+  border-radius: 20px;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  display: flex; align-items: center; gap: 5px;
+}
+
+/* ═══════════════ PROGRESS STEPS ═══════════════ */
+.progress-bar { padding: 10px 16px 0; display: flex; align-items: center; }
+.step-pill {
+  flex: 1; height: 4px;
+  background: rgba(255,255,255,0.25);
+  border-radius: 2px; margin: 0 2px;
+  transition: background 0.3s;
+}
+.step-pill.done   { background: rgba(255,255,255,0.9); }
+.step-pill.active { background: white; }
+.step-labels { display: flex; justify-content: space-between; padding: 6px 14px 0; }
+.step-label {
+  font-size: 0.65rem; opacity: 0.7; font-weight: 500;
+  flex: 1; text-align: center; transition: opacity 0.3s;
+}
+.step-label.active { opacity: 1; font-weight: 700; }
+
+/* ═══════════════ SCROLL AREA ═══════════════ */
+.scroll-area {
+  flex: 1; overflow-y: auto; overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px 14px 100px;
+  scroll-behavior: smooth;
+}
+.scroll-area::-webkit-scrollbar { display: none; }
+
+/* ═══════════════ STEP PAGES ═══════════════ */
+.step-page { display: none; animation: slideIn 0.28s ease; }
+.step-page.active { display: block; }
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ═══════════════ CARDS ═══════════════ */
+.card {
+  background: var(--card); border-radius: 16px;
+  padding: 18px 16px; margin-bottom: 14px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+  border: 1px solid var(--border);
+}
+.card-header {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 16px; padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.card-icon {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: var(--primary-light);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; flex-shrink: 0;
+}
+.card-title { font-size: 0.9rem; font-weight: 700; color: var(--primary); }
+.card-sub   { font-size: 0.72rem; color: var(--muted); margin-top: 1px; }
+
+/* HERO LOOKUP CARD */
+.lookup-hero {
+  background: var(--grad); border-radius: 20px;
+  padding: 22px 18px; color: white; margin-bottom: 14px;
+  box-shadow: 0 8px 24px rgba(26,86,219,0.3);
+  position: relative; overflow: hidden;
+}
+.lookup-hero::after {
+  content: '🔍'; position: absolute;
+  right: 16px; top: 50%; transform: translateY(-50%);
+  font-size: 60px; opacity: 0.12;
+}
+.lookup-hero h2 { font-size: 1rem; font-weight: 700; margin-bottom: 4px; }
+.lookup-hero p  { font-size: 0.78rem; opacity: 0.85; margin-bottom: 18px; }
+
+/* ═══════════════ FORM FIELDS ═══════════════ */
+.field { margin-bottom: 14px; }
+.field:last-child { margin-bottom: 0; }
+
+label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 0.78rem; font-weight: 600;
+  color: var(--label); margin-bottom: 6px;
+}
+label .req { color: var(--danger); }
+label .auto-tag {
+  background: var(--success); color: white;
+  font-size: 0.62rem; padding: 1px 6px;
+  border-radius: 8px; font-weight: 700; margin-left: auto;
+}
+
+input[type=text], input[type=tel], input[type=date],
+input[type=number], select, textarea {
+  width: 100%; padding: 13px 14px;
+  border: 2px solid var(--border); border-radius: 12px;
+  font-family: inherit; font-size: 16px; color: var(--text);
+  background: #f8faff; outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+  -webkit-appearance: none; appearance: none;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--primary); background: white;
+  box-shadow: 0 0 0 3px rgba(26,86,219,0.12);
+}
+input[readonly] { background: #eef5ff !important; border-color: #b8d3fc !important; color: #1e40af; font-weight: 600; }
+select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 14px center; padding-right: 40px; cursor: pointer;
+}
+textarea { resize: none; min-height: 80px; }
+
+.lookup-hero input, .lookup-hero select {
+  background: rgba(255,255,255,0.95);
+  border: 2px solid rgba(255,255,255,0.3); font-size: 15px;
+}
+.lookup-hero input:focus, .lookup-hero select:focus { background: white; border-color: white; }
+.lookup-hero label { color: rgba(255,255,255,0.9); }
+
+/* ═══════════════ LOOKUP STATUS ═══════════════ */
+.status-banner {
+  border-radius: 10px; padding: 10px 14px;
+  font-size: 0.82rem; font-weight: 600; margin-top: 12px;
+  display: none; align-items: center; gap: 8px;
+}
+.status-banner.success {
+  display: flex; background: rgba(16,185,129,0.2);
+  border: 1px solid rgba(16,185,129,0.35); color: #d1fae5;
+}
+.status-banner.error {
+  display: flex; background: rgba(239,68,68,0.2);
+  border: 1px solid rgba(239,68,68,0.35); color: #fee2e2;
+}
+
+/* ═══════════════ SCHOOL INFO CHIPS ═══════════════ */
+.info-chip-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px; }
+.info-chip {
+  background: var(--primary-light); border-radius: 10px;
+  padding: 10px 12px; border: 1px solid #bfdbfe;
+}
+.info-chip-label {
+  font-size: 0.65rem; color: var(--primary); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px;
+}
+.info-chip-value { font-size: 0.82rem; font-weight: 600; color: #1e40af; word-break: break-word; }
+.info-chip.full { grid-column: span 2; }
+
+/* ── Editable chip with edit button ── */
+.info-chip-label-row {
+  display: flex; align-items: center;
+  justify-content: space-between; margin-bottom: 3px;
+}
+.info-chip-label-row .info-chip-label { margin-bottom: 0; }
+.edit-chip-btn {
+  background: rgba(26,86,219,0.1); border: none; cursor: pointer;
+  font-size: 12px; padding: 3px 7px; border-radius: 6px;
+  line-height: 1; color: var(--primary); font-weight: 700;
+  transition: background 0.2s; flex-shrink: 0;
+  letter-spacing: 0;
+}
+.edit-chip-btn:active { background: rgba(26,86,219,0.22); }
+
+/* ═══════════════ QTY GROUP PROGRESS BANNER ═══════════════ */
+.qty-progress-banner {
+  background: linear-gradient(135deg, rgba(26,86,219,0.07), rgba(6,182,212,0.07));
+  border: 1.5px solid rgba(26,86,219,0.2);
+  border-radius: 14px; padding: 13px 14px; margin-bottom: 14px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.qty-progress-left { flex: 1; min-width: 0; }
+.qty-progress-label {
+  font-size: 0.65rem; font-weight: 700; color: var(--primary);
+  text-transform: uppercase; letter-spacing: 0.6px;
+}
+.qty-progress-title {
+  font-size: 0.9rem; font-weight: 800; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px;
+}
+.qty-dots { display: flex; gap: 5px; align-items: center; flex-shrink: 0; }
+.qty-dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--border); transition: all 0.35s;
+}
+.qty-dot.done   { background: var(--success); }
+.qty-dot.active { background: var(--primary); transform: scale(1.35); box-shadow: 0 0 0 3px rgba(26,86,219,0.18); }
+
+/* ═══════════════ PHOTO SECTION ═══════════════ */
+.photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.photo-thumb {
+  aspect-ratio: 1; border-radius: 10px; overflow: hidden;
+  position: relative; border: 2px solid var(--border); background: var(--bg);
+}
+.photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; cursor: pointer; }
+.photo-thumb .del-btn {
+  position: absolute; top: 6px; right: 6px;
+  width: 26px; height: 26px;
+  background: rgba(239,68,68,0.95); color: white; border: none;
+  border-radius: 50%; font-size: 14px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; font-weight: 700;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+  z-index: 5;
+}
+.photo-thumb .photo-actions {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  display: flex; gap: 0;
+  background: rgba(0,0,0,0.55); backdrop-filter: blur(4px);
+}
+.photo-thumb .photo-actions button {
+  flex: 1; border: none; background: none; color: white;
+  font-size: 0.65rem; font-weight: 700; padding: 6px 2px;
+  cursor: pointer; display: flex; align-items: center;
+  justify-content: center; gap: 2px; letter-spacing: 0.3px;
+}
+.photo-thumb .photo-actions button:active { background: rgba(255,255,255,0.15); }
+.photo-action-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.btn-cam, .btn-gal {
+  padding: 14px 12px; border-radius: 14px; font-family: inherit;
+  font-size: 0.88rem; font-weight: 700; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  gap: 8px; border: none; transition: all 0.15s;
+}
+.btn-cam { background: var(--grad); color: white; box-shadow: 0 4px 14px rgba(26,86,219,0.35); }
+.btn-gal { background: white; color: var(--primary); border: 2px solid var(--primary); }
+.btn-cam:active { transform: scale(0.97); }
+.btn-gal:active { transform: scale(0.97); background: var(--primary-light); }
+
+/* Fullscreen Photo Viewer */
+.photo-viewer-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: rgba(0,0,0,0.92); backdrop-filter: blur(8px);
+  display: none; flex-direction: column;
+  align-items: center; justify-content: center;
+}
+.photo-viewer-overlay.show { display: flex; }
+.photo-viewer-overlay img {
+  max-width: 92vw; max-height: 80vh; object-fit: contain;
+  border-radius: 8px; box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+}
+.photo-viewer-bar {
+  display: flex; gap: 12px; margin-top: 16px;
+}
+.photo-viewer-bar button {
+  background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25);
+  color: white; border-radius: 12px; padding: 10px 20px;
+  font-family: inherit; font-size: 0.85rem; font-weight: 700;
+  cursor: pointer; backdrop-filter: blur(4px);
+}
+.photo-viewer-bar button:active { background: rgba(255,255,255,0.25); }
+
+/* Upload Progress */
+.upload-progress {
+  background: var(--primary-light); border: 1px solid var(--primary);
+  border-radius: 12px; padding: 12px 16px; margin-bottom: 12px;
+  font-size: 0.82rem; font-weight: 600; color: var(--primary);
+  display: none; align-items: center; gap: 10px;
+}
+.upload-progress.show { display: flex; }
+.upload-progress-bar {
+  flex: 1; height: 6px; background: rgba(26,86,219,0.15);
+  border-radius: 3px; overflow: hidden;
+}
+.upload-progress-fill {
+  height: 100%; background: var(--grad); border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+/* ═══════════════ OFFLINE NOTICE ═══════════════ */
+.queue-notice {
+  background: #fef3c7; border: 1px solid #fcd34d; border-radius: 10px;
+  padding: 10px 14px; font-size: 0.8rem; font-weight: 600; color: #78350f;
+  display: flex; align-items: center; gap: 8px; margin-bottom: 14px;
+}
+.queue-notice.hidden { display: none; }
+
+/* ═══════════════ BOTTOM BAR ═══════════════ */
+.bottom-bar {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  background: white; border-top: 1px solid var(--border);
+  padding: 12px 16px calc(12px + var(--safe-bottom));
+  display: flex; gap: 10px; z-index: 10;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.08);
+}
+.btn-back {
+  background: var(--bg); color: var(--muted);
+  border: 2px solid var(--border); border-radius: 14px;
+  padding: 14px 20px; font-family: inherit; font-size: 0.9rem;
+  font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;
+}
+.btn-next {
+  flex: 1; background: var(--grad); color: white; border: none;
+  border-radius: 14px; padding: 14px 20px; font-family: inherit;
+  font-size: 0.95rem; font-weight: 700; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  box-shadow: 0 4px 16px rgba(26,86,219,0.35); transition: all 0.15s;
+}
+.btn-next:active { transform: scale(0.98); }
+.btn-submit-final {
+  flex: 1; background: linear-gradient(135deg, #10b981, #059669); color: white;
+  border: none; border-radius: 14px; padding: 14px 20px;
+  font-family: inherit; font-size: 0.95rem; font-weight: 700; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  box-shadow: 0 4px 16px rgba(16,185,129,0.4); transition: all 0.15s;
+}
+.btn-submit-final:active { transform: scale(0.98); }
+.btn-submit-final:disabled { opacity: 0.65; }
+
+/* ═══════════════ OVERLAYS & SHEETS ═══════════════ */
+.overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(15,23,42,0.7); z-index: 200;
+  align-items: flex-end; justify-content: center;
+  backdrop-filter: blur(4px);
+}
+.overlay.show { display: flex; }
+.sheet {
+  background: white; border-radius: 24px 24px 0 0;
+  width: 100%; max-width: 480px;
+  padding: 0 0 calc(24px + var(--safe-bottom));
+  animation: sheetUp 0.3s cubic-bezier(0.34, 1.2, 0.64, 1);
+  max-height: 85vh; overflow-y: auto;
+}
+@keyframes sheetUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.sheet-handle { width: 40px; height: 5px; background: #e2e8f0; border-radius: 3px; margin: 12px auto 0; }
+.sheet-title { font-size: 1rem; font-weight: 800; padding: 16px 20px 12px; border-bottom: 1px solid var(--border); }
+.sheet-body { padding: 20px; max-height: 72vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+/* ═══════════════ SUCCESS SHEET ═══════════════ */
+.success-sheet {
+  background: white; border-radius: 24px 24px 0 0;
+  width: 100%; max-width: 480px;
+  padding: 32px 24px calc(40px + var(--safe-bottom));
+  text-align: center; animation: sheetUp 0.35s cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+.success-icon {
+  width: 72px; height: 72px;
+  background: linear-gradient(135deg, #10b981, #059669);
+  border-radius: 50%; font-size: 34px;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 16px;
+}
+.success-sheet h3 { font-size: 1.3rem; font-weight: 800; margin-bottom: 8px; }
+.success-sheet p  { color: var(--muted); font-size: 0.88rem; line-height: 1.6; white-space: pre-line; }
+.success-actions { margin-top: 24px; display: flex; flex-direction: column; gap: 10px; }
+.btn-success-new {
+  background: var(--grad); color: white; border: none;
+  border-radius: 14px; padding: 15px; font-family: inherit;
+  font-size: 0.95rem; font-weight: 700; cursor: pointer; width: 100%;
+}
+.btn-success-new.outline { background: white; color: var(--primary); border: 2px solid var(--primary); }
+.btn-success-new.green   { background: linear-gradient(135deg, #10b981, #059669); }
+
+/* ═══════════════ SETUP SCREEN ═══════════════ */
+#setupScreen {
+  position: fixed; inset: 0; background: white; z-index: 500;
+  display: flex; flex-direction: column; align-items: center;
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding: 32px 24px; text-align: center;
+}
+#setupScreen .setup-icon { font-size: 56px; margin-bottom: 20px; flex-shrink: 0; }
+#setupScreen h2 { font-size: 1.3rem; font-weight: 800; margin-bottom: 8px; flex-shrink: 0; }
+#setupScreen p  { color: var(--muted); font-size: 0.88rem; margin-bottom: 28px; flex-shrink: 0; }
+#setupScreen .setup-form { width: 100%; max-width: 320px; text-align: left; margin-bottom: auto; }
+#setupScreen .setup-form .field { margin-bottom: 16px; }
+.btn-setup-start {
+  width: 100%; background: var(--grad); color: white; border: none;
+  border-radius: 14px; padding: 15px; font-family: inherit;
+  font-size: 1rem; font-weight: 700; cursor: pointer; margin-top: 8px;
+  box-shadow: 0 4px 16px rgba(26,86,219,0.35);
+}
+
+/* ═══════════════ LOADING ═══════════════ */
+#loadingScreen {
+  position: fixed; inset: 0; background: white; z-index: 400;
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 20px; padding: 24px; text-align: center;
+}
+.spinner {
+  width: 48px; height: 48px; border: 4px solid var(--primary-light);
+  border-top-color: var(--primary); border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+#loadingScreen p { color: var(--muted); font-size: 0.9rem; }
+
+/* ═══════════════ TOAST ═══════════════ */
+.toast {
+  position: fixed; bottom: calc(90px + var(--safe-bottom)); left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: #1e293b; color: white; padding: 12px 20px;
+  border-radius: 50px; font-size: 0.85rem; font-weight: 600;
+  z-index: 999; white-space: nowrap; opacity: 0;
+  transition: all 0.3s; pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.warn { background: var(--warning); color: #451a03; }
+.toast.success { background: var(--success); }
+
+/* ═══════════════ MISC ═══════════════ */
+.photo-count-badge {
+  display: inline-block; background: var(--primary); color: white;
+  font-size: 0.72rem; font-weight: 700; padding: 2px 8px;
+  border-radius: 10px; margin-left: auto;
+}
+.mt-8  { margin-top: 8px; }
+.mt-12 { margin-top: 12px; }
+
+@media (min-width: 481px) {
+  #app { border-left: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; box-shadow: 0 0 40px rgba(0,0,0,0.12); }
+}
+</style>
+</head>
+<body>
+
+<!-- LOADING SCREEN -->
+<div id="loadingScreen">
+  <div style="font-size:52px;margin-bottom:4px;">🏫</div>
+  <div style="font-size:1.1rem;font-weight:800;color:#1e293b;">School Complaint Form</div>
+  <div class="spinner"></div>
+  <p id="loadingMsg">Loading school records…</p>
+</div>
+
+<!-- USER SETUP SCREEN -->
+<div id="setupScreen" style="display:none; overflow-y:auto; padding: 24px 16px;">
+  <div style="width:100%; max-width:400px; margin:0 auto; display:flex; flex-direction:column; align-items:center;">
+    <img src="armee_logo.png" alt="ArMee Logo" style="height:72px; width:auto; margin-bottom:12px; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.15));" />
+    <h2 style="font-size:1.1rem; font-weight:800; color:var(--primary); margin-bottom:2px; text-align:center;">ArMee Technology Services</h2>
+    <div style="font-size:0.75rem; font-weight:700; color:var(--muted); margin-bottom:16px; text-align:center;">School Complaint Management System</div>
+    
+    <!-- PWA Install Accordion -->
+    <div style="width:100%; background:#f1f5f9; border-radius:12px; border:1px solid var(--border); padding:12px; margin-bottom:16px; text-align:left;">
+      <div style="font-size:0.75rem; font-weight:800; color:var(--text); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
+        📲 PWA Installation Guide
+      </div>
+      <div style="font-size:0.72rem; line-height:1.45; color:var(--muted);">
+        <b>Android Mobile:</b><br>
+        1️⃣ Open link. 2️⃣ Click "Add to Home Screen" / "Install App". 3️⃣ Launch App and login.<br>
+        <b>Windows Laptop:</b><br>
+        1️⃣ Open link. 2️⃣ Click "Install App" in address bar. 3️⃣ Pin to Taskbar.
+      </div>
+    </div>
+
+    <div class="setup-form" style="width:100%;">
+      <div class="field">
+        <label for="setupName">Your Full Name <span class="req">*</span></label>
+        <input type="text" id="setupName" placeholder="e.g. Rajesh Patel" autocomplete="name" />
+      </div>
+      <div class="field">
+        <label for="setupPhone">Your Mobile Number <span class="req">*</span></label>
+        <input type="tel" id="setupPhone" placeholder="10-digit mobile" maxlength="10" inputmode="numeric" />
+      </div>
+      <div class="field">
+        <label for="setupRole">Your Role</label>
+        <select id="setupRole">
+          <option value="">— Select Role —</option>
+          <option value="engineer">engineer</option>
+          <option value="teacher">teacher</option>
+        </select>
+      </div>
+      <button class="btn-setup-start" onclick="saveUser()">Continue →</button>
+    </div>
+  </div>
+</div>
+
+<!-- SEGMENT SELECTION SCREEN (engineers only) -->
+<div id="segmentScreen" style="display:none; overflow-y:auto; padding:24px 16px;">
+  <div style="width:100%; max-width:400px; margin:0 auto; display:flex; flex-direction:column; align-items:center;">
+    <img src="armee_logo.png" alt="ArMee Logo" style="height:72px; width:auto; margin-bottom:12px; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.15));" />
+    <h2 style="font-size:1.1rem; font-weight:800; color:var(--primary); margin-bottom:2px; text-align:center;" id="segGreeting">Welcome!</h2>
+    <div style="font-size:0.75rem; font-weight:700; color:var(--muted); margin-bottom:24px; text-align:center;">What would you like to work on?</div>
+
+    <button onclick="enterAdvance()" style="width:100%; background:white; border:2px solid var(--border); border-radius:16px; padding:18px 16px; margin-bottom:14px; cursor:pointer; text-align:left; display:flex; align-items:center; gap:14px; box-shadow:0 2px 8px rgba(0,0,0,0.05);">
+      <div style="font-size:2rem;">📝</div>
+      <div>
+        <div style="font-size:0.95rem; font-weight:800; color:var(--text);">Advance Complaint</div>
+        <div style="font-size:0.72rem; color:var(--muted); margin-top:2px;">Register a new school equipment complaint (DISE lookup, photos, serial number)</div>
+      </div>
+    </button>
+
+    <button onclick="enterDepartment()" style="width:100%; background:white; border:2px solid var(--border); border-radius:16px; padding:18px 16px; cursor:pointer; text-align:left; display:flex; align-items:center; gap:14px; box-shadow:0 2px 8px rgba(0,0,0,0.05);">
+      <div style="font-size:2rem;">🏛️</div>
+      <div>
+        <div style="font-size:0.95rem; font-weight:800; color:var(--text);">Department Complaint</div>
+        <div style="font-size:0.72rem; color:var(--muted); margin-top:2px;">Resolve government portal tickets on site (OTP closure / part request)</div>
+      </div>
+    </button>
+  </div>
+</div>
+
+<!-- DEPARTMENT COMPLAINT SCREEN -->
+<div id="departmentScreen" style="display:none; overflow-y:auto; padding:16px;">
+  <div style="width:100%; max-width:480px; margin:0 auto;">
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+      <button onclick="backToSegment()" style="background:white; border:1.5px solid var(--border); border-radius:10px; padding:8px 12px; cursor:pointer; font-weight:700;">←</button>
+      <div>
+        <div style="font-size:1rem; font-weight:800; color:var(--primary);">🏛️ Department Complaints</div>
+        <div style="font-size:0.7rem; color:var(--muted);">Government portal tickets for a school</div>
+      </div>
+    </div>
+
+    <div style="background:white; border:1.5px solid var(--border); border-radius:14px; padding:14px; margin-bottom:14px;">
+      <label style="font-size:0.75rem; font-weight:700; display:block; margin-bottom:6px;">School DISE Code</label>
+      <div style="display:flex; gap:8px;">
+        <input type="tel" id="deptDiseInput" placeholder="e.g. 24010102801" inputmode="numeric" maxlength="13"
+               style="flex:1; padding:11px 12px; border:2px solid var(--border); border-radius:10px; font-size:0.9rem; outline:none;"
+               onkeydown="if(event.key==='Enter')searchDeptTickets()" />
+        <button id="deptSearchBtn" onclick="searchDeptTickets()" style="background:var(--primary); color:white; border:none; border-radius:10px; padding:0 18px; font-weight:800; cursor:pointer;">Search</button>
+      </div>
+    </div>
+
+    <div id="deptResults"></div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app" style="display:none;">
+
+  <!-- APP BAR -->
+  <div class="app-bar">
+    <div class="app-bar-top" style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+      <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+        <img src="armee_logo.png" alt="ArMee Logo" style="height: 32px; width: auto; border-radius: 4px; background: white; padding: 2px; flex-shrink: 0;" />
+        <div style="min-width: 0;">
+          <div style="font-size: 0.82rem; font-weight: 800; color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.2px; line-height: 1.2;">ArMee Technology</div>
+          <div style="font-size: 0.62rem; font-weight: 600; opacity: 0.9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.1;">School Complaint Form</div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+        <div class="app-bar-user" id="userChip" onclick="showUserSheet()" style="padding: 4px 8px; font-size: 0.68rem; border-radius: 20px; font-weight: 700; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.25);">
+          👤 <span id="userChipName">Me</span>
+        </div>
+        <button onclick="showHelpSheet()" style="background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.25); border-radius: 20px; color: white; font-size: 0.68rem; font-weight: 700; padding: 4px 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 2px;">❓ Help</button>
+      </div>
+    </div>
+    <div class="progress-bar" id="progressBar">
+      <div class="step-pill" id="pill1"></div>
+      <div class="step-pill" id="pill2"></div>
+      <div class="step-pill" id="pill3"></div>
+      <div class="step-pill" id="pill4"></div>
+    </div>
+    <div class="step-labels">
+      <div class="step-label" id="lbl1">Lookup</div>
+      <div class="step-label" id="lbl2">School</div>
+      <div class="step-label" id="lbl3">Complaint</div>
+      <div class="step-label" id="lbl4">Summary</div>
+    </div>
+  </div>
+
+  <!-- SCROLL AREA -->
+  <div class="scroll-area" id="scrollArea">
+
+    <!-- ── STEP 1: DISE LOOKUP ── -->
+    <div class="step-page active" id="step1">
+      <div class="lookup-hero">
+        <h2>Search Your School</h2>
+        <p>Enter DISE Code to auto-fill all school details instantly.</p>
+        <div class="field" style="margin-bottom:12px;">
+          <label for="lookupProject">Project</label>
+          <select id="lookupProject" onchange="onProjectChange()">
+            <option value="">— All Projects —</option>
+          </select>
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label for="lookupDise">DISE Code <span class="req">*</span></label>
+          <input type="text" id="lookupDise" placeholder="Enter 11-digit DISE code"
+            inputmode="numeric" maxlength="15" autocomplete="off"
+            oninput="onDiseInput(this)" />
+        </div>
+        <div class="status-banner" id="lookupStatus"></div>
+      </div>
+
+      <div class="card" id="recentCard" style="display:none;">
+        <div class="card-header">
+          <div class="card-icon">🕐</div>
+          <div>
+            <div class="card-title">Recent Schools</div>
+            <div class="card-sub">Tap to quickly re-select</div>
+          </div>
+        </div>
+        <div id="recentList"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon">💡</div>
+          <div><div class="card-title">How to Use</div></div>
+        </div>
+        <div style="font-size:0.82rem;color:var(--muted);line-height:1.7;">
+          1️⃣ Select your <b>Project</b> (GK or ICT)<br>
+          2️⃣ Type the school's <b>DISE Code</b><br>
+          3️⃣ All school info fills <b>automatically</b><br>
+          4️⃣ Fill complaint details &amp; photos<br>
+          5️⃣ Submit — works <b>offline too!</b>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── STEP 2: SCHOOL INFO ── -->
+    <div class="step-page" id="step2">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon">🏫</div>
+          <div>
+            <div class="card-title" id="s2SchoolName">School Name</div>
+            <div class="card-sub" id="s2SchoolCode">School Code</div>
+          </div>
+        </div>
+        <div class="info-chip-grid">
+          <div class="info-chip">
+            <div class="info-chip-label">Project</div>
+            <div class="info-chip-value" id="s2Project">—</div>
+          </div>
+          <div class="info-chip">
+            <div class="info-chip-label">DISE Code</div>
+            <div class="info-chip-value" id="s2Dise">—</div>
+          </div>
+          <div class="info-chip">
+            <div class="info-chip-label">District</div>
+            <div class="info-chip-value" id="s2District">—</div>
+          </div>
+          <div class="info-chip">
+            <div class="info-chip-label">Taluka / Block</div>
+            <div class="info-chip-value" id="s2Taluka">—</div>
+          </div>
+
+          <!-- ✏️ EDITABLE: Principal -->
+          <div class="info-chip">
+            <div class="info-chip-label-row">
+              <div class="info-chip-label">Principal</div>
+              <button class="edit-chip-btn" onclick="openEditField('principal')" title="Edit Principal Name">✏️ Edit</button>
+            </div>
+            <div class="info-chip-value" id="s2Principal">—</div>
+          </div>
+
+          <!-- ✏️ EDITABLE: Contact -->
+          <div class="info-chip">
+            <div class="info-chip-label-row">
+              <div class="info-chip-label">Contact</div>
+              <button class="edit-chip-btn" onclick="openEditField('contact')" title="Edit Contact Number">✏️ Edit</button>
+            </div>
+            <div class="info-chip-value" id="s2Contact">—</div>
+          </div>
+
+          <div class="info-chip">
+            <div class="info-chip-label">Pin Code</div>
+            <div class="info-chip-value" id="s2Pincode">—</div>
+          </div>
+          <div class="info-chip full">
+            <div class="info-chip-label">Address</div>
+            <div class="info-chip-value" id="s2Address">—</div>
+          </div>
+        </div>
+        <button style="margin-top:12px;background:none;border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-family:inherit;font-size:0.8rem;color:var(--muted);cursor:pointer;width:100%;display:flex;align-items:center;justify-content:center;gap:6px;" onclick="gotoStep(1)">
+          ✏️ Change School
+        </button>
+      </div>
+    </div>
+
+    <!-- ── STEP 3: COMPLAINT DETAILS ── -->
+    <div class="step-page" id="step3">
+
+      <!-- Qty Group Progress Banner (shows when group active) -->
+      <div class="qty-progress-banner" id="qtyProgressBanner" style="display:none;">
+        <div class="qty-progress-left">
+          <div class="qty-progress-label" id="qtyProgressLabel">Complaint Group</div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <div class="qty-progress-title" id="qtyProgressTitle">Item 1 of 1</div>
+            <button type="button" onclick="cancelComplaintGroup()" style="background:rgba(239,68,68,0.1); border:none; color:var(--danger); font-size:0.68rem; font-weight:700; padding:2px 6px; border-radius:4px; cursor:pointer;">✕ Cancel Group</button>
+          </div>
+        </div>
+        <div class="qty-dots" id="qtyDots"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon">🛠️</div>
+          <div>
+            <div class="card-title">Complaint Details</div>
+            <div class="card-sub" id="complaintCardSub">Fill all required fields</div>
+          </div>
+        </div>
+
+        <!-- Equipment — dynamically populated from master_data.json -->
+        <div class="field">
+          <label for="fEquipment">Equipment <span class="req">*</span></label>
+          <select id="fEquipment" onchange="onEquipmentChange()">
+            <option value="">— Select Equipment —</option>
+          </select>
+        </div>
+
+        <!-- Nature of Complaint — dynamically loaded based on equipment -->
+        <div class="field">
+          <label for="fNature">Nature of Complaint <span class="req">*</span></label>
+          <select id="fNature">
+            <option value="">— Select Equipment First —</option>
+          </select>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="field" style="margin-bottom:0;">
+            <label for="fQty">Quantity <span class="req">*</span></label>
+            <input type="number" id="fQty" min="1" max="99" value="1" inputmode="numeric"
+              placeholder="1" title="Enter qty &gt; 1 to register multiple items" />
+          </div>
+          <div class="field" style="margin-bottom:0;">
+            <label for="fDate">Date <span class="req">*</span></label>
+            <input type="date" id="fDate" />
+          </div>
+        </div>
+
+        <div class="field mt-12">
+          <label for="fSerial">Serial Number <span class="req">*</span></label>
+          <div style="display:flex; gap:4px; align-items: center;">
+            <input type="text" id="fSerial" placeholder="e.g. SN20240001" autocapitalize="characters" style="flex:1; margin-bottom:0;" />
+            <button type="button" class="btn-cam" style="flex-shrink:0; width:auto; padding:0 14px; height:46px; margin:0; border-radius:12px; font-size:0.82rem; border:none;" onclick="startScanner()">📷 Scan</button>
+          </div>
+        </div>
+
+        <div class="field mt-12" id="serialPhotoField">
+          <label style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Serial Number Photo <span class="req">*</span></span>
+            <span style="font-size:0.75rem; font-weight:normal; color:var(--muted);">For verification</span>
+          </label>
+          <div style="display:flex; gap:8px; margin-bottom:8px;">
+            <button type="button" class="btn-cam" onclick="document.getElementById('serialCameraInput').click()" style="flex:1; justify-content:center; padding:11px; margin:0; font-size:0.82rem;">📷 Camera</button>
+            <button type="button" class="btn-gal" onclick="document.getElementById('serialGalleryInput').click()" style="flex:1; justify-content:center; padding:11px; margin:0; font-size:0.82rem;">🖼️ Gallery</button>
+          </div>
+          <input type="file" id="serialCameraInput" accept="image/*" capture="environment" style="display:none" onchange="addSerialPhoto(event)" />
+          <input type="file" id="serialGalleryInput" accept="image/*" style="display:none" onchange="addSerialPhoto(event)" />
+          <input type="file" id="serialRetakeInput" accept="image/*" capture="environment" style="display:none" onchange="addSerialPhoto(event)" />
+          
+          <!-- Upload Progress Indicator for Serial Photo -->
+          <div class="upload-progress" id="serialUploadProgress">
+            <span>📤 Compressing...</span>
+            <div class="upload-progress-bar">
+              <div class="upload-progress-fill" id="serialUploadProgressFill" style="width: 0%"></div>
+            </div>
+          </div>
+          
+          <div class="photo-grid" id="serialPhotoGrid"></div>
+          <div id="noSerialPhotoMsg" style="text-align:center;padding:12px;color:var(--muted);font-size:0.8rem;font-weight:700;border:1px dashed rgba(0,0,0,0.1);border-radius:10px;background:#fafafa;">
+            📷 Attach 1 photo of the serial number sticker/plate.
+          </div>
+        </div>
+
+        <div class="field" id="suspectedPartDropdownField">
+          <label for="fSuspectedPart" style="color: #ef4444; font-weight: 600;">Suspected Part <span style="font-size: 0.82rem; font-weight: normal; color: #ef4444;">(if having a part issue)</span></label>
+          <select id="fSuspectedPart" onchange="onSuspectedPartChange()">
+            <option value="">— Select Suspected Part —</option>
+          </select>
+          <div id="suspectedPartNotice" style="margin-top:6px; font-size:0.78rem; font-weight:700; color:var(--muted); line-height:1.4;">
+            ℹ️ Note: No Suspected Part selected. Photo upload below is optional.
+          </div>
+        </div>
+
+        <!-- Suspected Part Photo Field -->
+        <div class="field mt-12" id="suspectedPartPhotoField">
+          <label style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Suspected Part Photo <span class="req" id="suspectedPhotoReq" style="display:none;">*</span></span>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="photo-count-badge" id="photoCountBadge" style="margin-left:0;">0</span>
+              <span style="font-size:0.75rem; font-weight:normal; color:var(--muted);" id="suspectedPhotoStatus">Optional</span>
+            </div>
+          </label>
+          <div style="display:flex; gap:8px; margin-bottom:8px;">
+            <button type="button" class="btn-cam" onclick="document.getElementById('cameraInput').click()" style="flex:1; justify-content:center; padding:11px; margin:0; font-size:0.82rem;">📷 Camera</button>
+            <button type="button" class="btn-gal" onclick="document.getElementById('galleryInput').click()" style="flex:1; justify-content:center; padding:11px; margin:0; font-size:0.82rem;">🖼️ Gallery</button>
+          </div>
+          <input type="file" id="cameraInput" accept="image/*" capture="environment" multiple style="display:none" onchange="addPhotos(event)" />
+          <input type="file" id="galleryInput" accept="image/*,application/pdf" multiple style="display:none" onchange="addPhotos(event)" />
+          <input type="file" id="retakeInput" accept="image/*" capture="environment" style="display:none" />
+          
+          <!-- Upload Progress Indicator -->
+          <div class="upload-progress" id="uploadProgress">
+            <span>📤 Compressing...</span>
+            <div class="upload-progress-bar">
+              <div class="upload-progress-fill" id="uploadProgressFill" style="width: 0%"></div>
+            </div>
+          </div>
+          
+          <div class="photo-grid" id="photoGrid"></div>
+          <div id="noPhotosMsg" style="text-align:center;padding:12px;color:var(--muted);font-size:0.8rem;font-weight:700;border:1px dashed rgba(0,0,0,0.1);border-radius:10px;background:#fafafa;">
+            📷 Photo upload is optional (no suspected part selected).
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="fDesc">Description (Optional)</label>
+          <textarea id="fDesc" placeholder="Describe the issue in detail…" rows="3"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── STEP 4: SUMMARY ── -->
+    <div class="step-page" id="step4">
+      <div id="offlineNotice" class="queue-notice hidden">
+        📶 You are <b>offline</b>. Submission will be queued and sent automatically when online.
+      </div>
+
+      <div class="card" id="summaryCard">
+        <div class="card-header">
+          <div class="card-icon">📋</div>
+          <div>
+            <div class="card-title">Complaint Summary</div>
+            <div class="card-sub">Review before submitting</div>
+          </div>
+        </div>
+        <div id="summaryContent" style="font-size:0.82rem;line-height:2;color:var(--text);"></div>
+      </div>
+    </div>
+
+    <!-- FOOTER -->
+    <div style="text-align:center; padding:24px 12px 12px; font-size:0.75rem; color:var(--muted); font-weight:700; border-top:1px solid rgba(0,0,0,0.05); margin-top:20px;">
+      Powered By ArMee Technology Services Pvt. Ltd.
+    </div>
+
+  </div><!-- end scroll-area -->
+
+  <!-- BOTTOM BAR -->
+  <div class="bottom-bar" id="bottomBar">
+    <button class="btn-back" id="btnBack" onclick="goBack()" style="display:none;">← Back</button>
+    <button class="btn-next" id="btnNext" onclick="goNext()">Next <span style="font-size:18px;">→</span></button>
+    <button class="btn-submit-final" id="btnSubmit" onclick="submitForm()" style="display:none;">✅ Submit Complaint</button>
+  </div>
+
+</div><!-- end #app -->
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<!-- SUCCESS OVERLAY -->
+<div class="overlay" id="successOverlay">
+  <div class="success-sheet" style="padding-top: 24px;">
+    <img src="armee_logo.png" alt="ArMee Logo" style="height:50px; width:auto; margin-bottom:12px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));" />
+    <div class="success-icon" id="successIcon" style="margin-bottom:12px;">✓</div>
+    <h3 id="successTitle">Complaint Submitted!</h3>
+    <p id="successMsg">Your complaint has been recorded successfully.</p>
+    <div class="success-actions">
+      <!-- Next item in group (shown mid-group) -->
+      <button class="btn-success-new green" id="successNextBtn" onclick="handleNextItem()" style="display:none;">Next Item →</button>
+      <!-- New complaint (shown after final submission) -->
+      <button class="btn-success-new" id="successNewBtn" onclick="newComplaint()" style="display:none;">➕ Register Another Complaint</button>
+      <!-- Share (always shown) -->
+      <button class="btn-success-new outline" onclick="shareComplaint()">📤 Share Summary</button>
+    </div>
+  </div>
+</div>
+
+<!-- USER PROFILE SHEET -->
+<div class="overlay" id="userSheetOverlay" onclick="closeUserSheet(event)">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">👤 Your Profile</div>
+    <div class="sheet-body">
+      <div class="field">
+        <label for="editName">Full Name</label>
+        <input type="text" id="editName" />
+      </div>
+      <div class="field">
+        <label for="editPhone">Mobile Number</label>
+        <input type="tel" id="editPhone" inputmode="numeric" maxlength="10" />
+      </div>
+      <div class="field">
+        <label for="editRole">Role</label>
+        <select id="editRole">
+          <option value="">— Select Role —</option>
+          <option value="engineer">engineer</option>
+          <option value="teacher">teacher</option>
+        </select>
+      </div>
+      <button class="btn-submit-final" style="width:100%;margin-top:8px;" onclick="updateUser()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- ✏️ EDIT PRINCIPAL / CONTACT SHEET -->
+<div class="overlay" id="editFieldOverlay" onclick="closeEditFieldSheet(event)">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title" id="editFieldTitle">✏️ Edit Principal</div>
+    <div class="sheet-body">
+      <div id="editFieldCurrentBox" style="background:#f0f4ff;border-radius:10px;padding:10px 12px;margin-bottom:14px;border:1px solid var(--border);">
+        <div style="font-size:0.65rem;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">Current Value</div>
+        <div style="font-size:0.9rem;font-weight:600;color:var(--text);" id="editFieldCurrentVal">—</div>
+      </div>
+      <div class="field">
+        <label id="editFieldLabel">New Value</label>
+        <input type="text" id="editFieldInput" autocomplete="off" />
+      </div>
+      <button class="btn-submit-final" style="width:100%;margin-top:4px;" onclick="saveEditField()">💾 Save Changes</button>
+      <div style="font-size:0.72rem;color:var(--muted);text-align:center;margin-top:10px;line-height:1.5;">
+        ✅ Changes are saved locally &amp; synced to the database<br>
+        📋 All edits are logged in the audit trail
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 📷 BARCODE SCANNER SHEET -->
+<div class="overlay" id="scannerOverlay" onclick="closeScannerOverlay(event)">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title" style="display:flex; justify-content:space-between; align-items:center;">
+      <span>📷 Scan Barcode / QR Code</span>
+    </div>
+    <div class="sheet-body">
+      <div class="field">
+        <label for="scannerCameraSelect">Select Camera</label>
+        <select id="scannerCameraSelect" style="margin-bottom: 14px;"></select>
+      </div>
+      <div id="reader" style="width:100%; max-width:380px; margin:0 auto 16px; border-radius:12px; overflow:hidden; border:2px solid var(--primary); background:#000;"></div>
+      <button class="btn-back" style="width:100%; justify-content:center; padding:12px;" onclick="stopScanner()">✕ Cancel Scan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ❓ ENGINEER HELP MANUAL OVERLAY -->
+<div class="overlay" id="helpSheetOverlay" onclick="closeHelpSheet(event)">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title" style="display:flex; justify-content:space-between; align-items:center;">
+      <span style="display:flex; align-items:center; gap:8px;">
+        <img src="armee_logo.png" alt="ArMee Logo" style="height:24px; width:auto; border-radius:3px; background:white; padding:1px;" />
+        <span>Engineer Quick Guide</span>
+      </span>
+      <button onclick="document.getElementById('helpSheetOverlay').classList.remove('show')" style="background:none; border:none; color:var(--danger); font-weight:700; cursor:pointer; font-size:1rem;">✕ Close</button>
+    </div>
+    <div class="sheet-body" style="padding: 16px; font-size: 0.82rem; line-height: 1.6; color: var(--text); max-height: 70vh; overflow-y: auto;">
+      <div style="background:#f0f4ff; border-radius:12px; border:1px solid #bfdbfe; padding:12px; margin-bottom:16px;">
+        <div style="font-weight:800; color:var(--primary); font-size:0.85rem; margin-bottom:4px;">ArMee Technology Services Pvt. Ltd.</div>
+        <div style="font-size:0.75rem; color:var(--muted); font-weight:600;">School Complaint Management Manual</div>
+      </div>
+      
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        <div><b>Step 1: Select Project</b><br>Select GK (Gyan Kunj) or ICT Project.</div>
+        <div><b>Step 2: Enter DISE Code</b><br>Type the school's 11-digit DISE Code. School details will auto-load.</div>
+        <div><b>Step 3: Verify School Info</b><br>Verify the Principal Name and Contact Number. Click <b>✏️ Edit</b> if updates are needed.</div>
+        <div><b>Step 4: Select Details</b><br>Choose the Equipment and Nature of Complaint from the dropdown lists.</div>
+        <div><b>Step 5: Enter Quantity</b><br>Specify the quantity. If Qty &gt; 1, the app automatically guides you through each item sequentially.</div>
+        <div><b>Step 6: Serial Number &amp; Scan</b><br>For each item, type the Serial Number or tap <b>📷 Scan</b> to scan the barcode.</div>
+        <div><b>Step 7: Capture Photo (Mandatory 📸)</b><br>Camera/Gallery photo is mandatory for each complaint item. Submission is blocked without a photo.</div>
+        <div><b>Step 8: GPS Location (Mandatory 📡)</b><br>Allow location permissions. GPS coordinates will be captured automatically during submission.</div>
+        <div><b>Step 9: Submit Complaint</b><br>Tap <b>Submit</b>. The system generates a Case ID (Ticket Number) and logs it.</div>
+        <div><b>Step 10: Completion</b><br>Select to register another, share a text summary via WhatsApp/Email, or exit.</div>
+      </div>
+    </div>
+<!-- 🖼️ FULLSCREEN PHOTO VIEWER OVERLAY -->
+<div class="photo-viewer-overlay" id="photoViewerOverlay" onclick="closePhotoViewer(event)">
+  <img id="photoViewerImg" src="" alt="Fullscreen Preview" />
+  <div class="photo-viewer-bar">
+    <button onclick="closePhotoViewerDirect()">✕ Close</button>
+  </div>
+</div>
+
+
+
+<!-- Duplicate Warning Overlay -->
+<div class="overlay" id="duplicateWarningOverlay">
+  <div class="success-sheet" style="padding: 24px; max-width: 400px; margin: 0 auto;">
+    <div class="success-icon" style="background:linear-gradient(135deg,#f59e0b,#d97706);font-size:32px;margin-bottom:12px;">⚠️</div>
+    <h3 style="color:#d97706;margin-bottom:8px;">Duplicate Serial Number!</h3>
+    <p id="duplicateWarningMsg" style="font-size:0.85rem;color:var(--text);margin-bottom:20px;text-align:left;line-height:1.5;"></p>
+    <div style="display:flex;gap:8px;">
+      <button type="button" class="btn-success-new outline" onclick="cancelDuplicateSubmit()" style="margin:0;padding:12px;">❌ Cancel</button>
+      <button type="button" class="btn-success-new" onclick="confirmDuplicateSubmit()" style="margin:0;padding:12px;background:linear-gradient(135deg,#f59e0b,#d97706);">⚠️ Submit Anyway</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ SCRIPTS (Vercel Build Trigger) ═══════════════════════ -->
+<script>
+// URL Cache-Busting Utility to clear Service Worker caches
+(function() {
+  const CURRENT_VERSION = 'v30';
+  const urlParams = new URLSearchParams(window.location.search);
+  const forceClear = urlParams.has('clear') || urlParams.has('update') || urlParams.has('v');
+  const localVersion = localStorage.getItem('armee_app_version');
+  
+  if (forceClear || (localVersion && localVersion !== CURRENT_VERSION)) {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(registrations) {
+        for (let registration of registrations) {
+          registration.unregister();
+        }
+      });
+      caches.keys().then(function(names) {
+        for (let name of names) caches.delete(name);
+      });
+      localStorage.setItem('armee_app_version', CURRENT_VERSION);
+      if (window.location.search) {
+        window.location.href = window.location.pathname;
+      } else {
+        window.location.reload();
+      }
+    }
+  } else {
+    localStorage.setItem('armee_app_version', CURRENT_VERSION);
+  }
+})();
+
+'use strict';
+
+/* ─────────────── CONFIG ─────────────── */
+const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx3I2A-QxKg1bI3EBt1H3sAKPm0_2EKUfQrxqtYT0DBZsaobOaOqaIki4V0p0QIE7AFHA/exec';
+
+/* ─────────────── STATE ─────────────── */
+let SCHOOL_DB  = {};
+let MASTER_DB  = { equipment: [] };
+
+function isLocal() {
+  const hn = window.location.hostname;
+  if (!hn) return true; // file:// protocol
+  if (hn === 'localhost' || hn === '127.0.0.1' || hn === '[::1]') return true;
+  if (hn.endsWith('.local') || hn.endsWith('.lan')) return true;
+  if (hn.startsWith('192.168.') || hn.startsWith('10.')) return true;
+  if (hn.startsWith('172.')) {
+    const parts = hn.split('.');
+    if (parts.length >= 2) {
+      const b = parseInt(parts[1], 10);
+      return b >= 16 && b <= 31;
+    }
+  }
+  return false;
+}
+let currentStep = 1;
+let totalSteps  = 4;
+let foundRecord = null;
+let photos      = [];
+let serialPhoto = null;
+let offlineQueue = JSON.parse(localStorage.getItem('offlineQueue') || '[]');
+let lastComplaint = null;
+let editFieldKey  = ''; // 'principal' | 'contact'
+let html5QrCode   = null;
+let gpsLocation   = null;
+
+// Complaint group state (for qty > 1)
+let complaintGroup = null;
+/*  complaintGroup shape when active:
+    {
+      total:     3,         // total qty entered
+      current:   1,         // which item we're on (1-based)
+      groupId:   'GRP-...',
+      equipment: '...',
+      nature:    '...',
+      date:      '...',
+      medium:    '...',
+      desc:      '...',
+      submitted: []         // array of submitted complaint objects
+    }
+*/
+
+/* ─────────────── INIT ─────────────── */
+document.addEventListener('DOMContentLoaded', async () => {
+  registerSW();
+  await loadSchoolData();
+  await loadMasterData();
+  startMasterDataPolling(); // cross-device real-time sync
+
+  const user = getUser();
+  if (!user) { showSetupScreen(); } else { showSegmentScreen(user); }
+
+  document.getElementById('lookupDise').addEventListener('keydown', e => {
+    if (e.key === 'Enter') triggerLookup();
+  });
+
+  document.getElementById('fDate').value = todayDate();
+
+  window.addEventListener('online',  updateNetworkStatus);
+  window.addEventListener('offline', updateNetworkStatus);
+  updateNetworkStatus();
+
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', e => {
+      if (e.data?.type === 'RETRY_QUEUE') retryQueue();
+    });
+  }
+
+  // ── Real-time sync from admin panel ──────────────────────────────
+  // When admin saves to localStorage in another tab, this tab gets the
+  // 'storage' event instantly and refreshes dropdowns without a reload.
+  window.addEventListener('storage', e => {
+    if (e.key === 'armeeAdmin_masterData' && e.newValue) {
+      try {
+        const data = JSON.parse(e.newValue);
+        if (data && data.equipment && data.equipment.length > 0) {
+          MASTER_DB = data;
+          populateEquipmentDropdown();
+          // Show a subtle notification
+          showToast('🔄 Equipment list updated by admin');
+        }
+      } catch (_) {}
+    }
+  });
+});
+
+function registerSW() {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(console.warn);
+  }
+}
+
+/* ─────────────── DATA LOADING ─────────────── */
+async function loadSchoolData() {
+  try {
+    document.getElementById('loadingMsg').textContent = 'Loading school database…';
+    const res = await fetch('./school_data.json');
+    if (!res.ok) throw new Error('Fetch failed');
+    SCHOOL_DB = await res.json();
+    const total = Object.values(SCHOOL_DB).reduce((s, v) => s + (Array.isArray(v) ? v.length : 1), 0);
+    document.getElementById('loadingMsg').textContent = `Loaded ${total.toLocaleString()} school records ✓`;
+    await delay(200);
+
+    // Apply live online updates if available
+    const isLocalhost = isLocal();
+    if (GOOGLE_SCRIPT_URL && !isLocalhost && navigator.onLine) {
+      document.getElementById('loadingMsg').textContent = 'Syncing school updates…';
+      const resUpdates = await fetch(GOOGLE_SCRIPT_URL + '?action=get_school_updates');
+      if (resUpdates.ok) {
+        const updates = await resUpdates.json();
+        if (Array.isArray(updates)) {
+          updates.forEach(update => {
+            const entries = SCHOOL_DB[update.dise];
+            const list = Array.isArray(entries) ? entries : (entries ? [entries] : []);
+            list.forEach(r => { if (r.dise === update.dise) r[update.field] = update.newValue; });
+          });
+        }
+      }
+    }
+    await delay(200);
+  } catch (e) {
+    document.getElementById('loadingMsg').textContent = '⚠️ Could not load school data. Open via OPEN FORM.bat';
+    await delay(2500);
+  }
+}
+
+async function loadMasterData() {
+  const isLocalhost = isLocal();
+
+  // 1. Try Google Apps Script (live, cross-device)
+  if (!isLocalhost && GOOGLE_SCRIPT_URL && navigator.onLine) {
+    try {
+      const res = await fetch(GOOGLE_SCRIPT_URL + '?action=get_master&t=' + Date.now());
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.equipment && data.equipment.length > 0) {
+          applyMasterData(data);
+          return;
+        }
+      }
+    } catch (_) {}
+  }
+
+  // 2. Try localStorage (saved by admin panel — same device, instant)
+  try {
+    const cached = localStorage.getItem('armeeAdmin_masterData');
+    if (cached) {
+      const data = JSON.parse(cached);
+      if (data && data.equipment && data.equipment.length > 0) {
+        applyMasterData(data);
+        return;
+      }
+    }
+  } catch (_) {}
+
+  // 3. Fall back to static JSON file
+  try {
+    const res = await fetch('./master_data.json?' + Date.now());
+    if (!res.ok) throw new Error('No master');
+    applyMasterData(await res.json());
+  } catch (e) {
+    applyMasterData(getBuiltInMasterData());
+  }
+}
+
+// Fingerprint of last-known master data (to detect changes without full compare)
+let _masterFingerprint = '';
+
+function applyMasterData(data) {
+  MASTER_DB = data;
+  // Store a fingerprint: use _v timestamp if present, else stringify active equipment names
+  const fp = data._v || JSON.stringify((data.equipment || []).map(e => e.name + e.status));
+  _masterFingerprint = fp;
+  populateProjectDropdown();
+  populateEquipmentDropdown();
+  populateSuspectedParts();
+}
+
+// ── Cross-device real-time polling ───────────────────────────────────────────
+// Polls Google Apps Script every 15 s. Fetches ONLY a lightweight version
+// timestamp first; only pulls full data when the version actually changed.
+let _pollTimer = null;
+
+function startMasterDataPolling() {
+  if (isLocal() || !GOOGLE_SCRIPT_URL) return; // not needed locally
+  if (_pollTimer) clearInterval(_pollTimer);
+
+  _pollTimer = setInterval(async () => {
+    if (!navigator.onLine) return;
+    try {
+      // Fetch just the version (very fast — Google Apps Script returns a tiny JSON)
+      const res = await fetch(GOOGLE_SCRIPT_URL + '?action=get_master_version&t=' + Date.now());
+      if (!res.ok) return;
+      const versionData = await res.json();
+      const serverVersion = versionData.v || versionData._v || '';
+      if (!serverVersion || serverVersion === _masterFingerprint) return;
+
+      // Version changed — fetch the full master data
+      const full = await fetch(GOOGLE_SCRIPT_URL + '?action=get_master&t=' + Date.now());
+      if (!full.ok) return;
+      const data = await full.json();
+      if (!data || !data.equipment || data.equipment.length === 0) return;
+
+      applyMasterData(data);
+      showToast('🔄 Equipment list updated by admin');
+    } catch (_) {}
+  }, 300000); // every 5 minutes
+}
+
+
+function populateProjectDropdown() {
+  const sel = document.getElementById('lookupProject');
+  if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— All Projects —</option>';
+  const projects = (MASTER_DB.projects || []).filter(p => p.status === 'active');
+  projects.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.name;
+    opt.textContent = p.name + (p.fullName ? ' (' + p.fullName + ')' : '');
+    sel.appendChild(opt);
+  });
+  if (cur) sel.value = cur;
+}
+
+function onProjectChange() {
+  const dise = document.getElementById('lookupDise').value.trim();
+  if (dise.length >= 11) {
+    triggerLookup();
+  }
+}
+
+function populateEquipmentDropdown() {
+  const sel = document.getElementById('fEquipment');
+  if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— Select Equipment —</option>';
+  
+  let eqList = (MASTER_DB.equipment || []).filter(e => e.status === 'active');
+  const selectedProject = foundRecord ? foundRecord.project : '';
+  
+  if (selectedProject && MASTER_DB.projectEquipmentMap && MASTER_DB.projectEquipmentMap.length > 0) {
+    const projectObj = (MASTER_DB.projects || []).find(p => p.name === selectedProject);
+    if (projectObj) {
+      const allowedEqIds = MASTER_DB.projectEquipmentMap
+        .filter(m => m.projectId === projectObj.id)
+        .map(m => m.equipmentId);
+      eqList = eqList.filter(eq => allowedEqIds.indexOf(eq.id) !== -1);
+    }
+  }
+  
+  eqList.forEach(eq => {
+    const opt = document.createElement('option');
+    opt.value = eq.name;
+    opt.textContent = eq.name;
+    sel.appendChild(opt);
+  });
+  if (cur) { sel.value = cur; onEquipmentChange(); }
+}
+
+function populateSuspectedParts() {
+  const sel = document.getElementById('fSuspectedPart');
+  if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— Select Suspected Part —</option>';
+  const parts = (MASTER_DB.suspectedParts || []).filter(p => p.status === 'active');
+  parts.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.name;
+    opt.textContent = p.name;
+    sel.appendChild(opt);
+  });
+  if (cur) sel.value = cur;
+}
+
+function onSuspectedPartChange() {
+  const val = document.getElementById('fSuspectedPart').value;
+  const notice = document.getElementById('suspectedPartNotice');
+  const reqIndicator = document.getElementById('suspectedPhotoReq');
+  const subStatus = document.getElementById('suspectedPhotoStatus');
+  const noPhotosMsg = document.getElementById('noPhotosMsg');
+
+  if (val) {
+    if (notice) {
+      notice.style.color = '#ef4444';
+      notice.innerHTML = '⚠️ Note: Since you selected a Suspected Part, attaching a photo of it below is mandatory.';
+    }
+    if (reqIndicator) reqIndicator.style.display = 'inline';
+    if (subStatus) {
+      subStatus.textContent = 'Mandatory';
+      subStatus.style.color = '#ef4444';
+    }
+    if (noPhotosMsg) noPhotosMsg.textContent = '📷 Capture/upload at least 1 photo of the suspected part (mandatory).';
+  } else {
+    if (notice) {
+      notice.style.color = 'var(--muted)';
+      notice.innerHTML = 'ℹ️ Note: No Suspected Part selected. Photo upload below is optional.';
+    }
+    if (reqIndicator) reqIndicator.style.display = 'none';
+    if (subStatus) {
+      subStatus.textContent = 'Optional';
+      subStatus.style.color = 'var(--muted)';
+    }
+    if (noPhotosMsg) noPhotosMsg.textContent = '📷 Photo upload is optional (no suspected part selected).';
+  }
+}
+
+function onEquipmentChange() {
+  const equipName = document.getElementById('fEquipment').value;
+  const natSel = document.getElementById('fNature');
+  if (!equipName) {
+    natSel.innerHTML = '<option value="">— Select Equipment First —</option>';
+    return;
+  }
+  const eq = (MASTER_DB.equipment || []).find(e => e.name === equipName && e.status === 'active');
+  if (!eq || !eq.complaints?.length) {
+    natSel.innerHTML = '<option value="">— No types defined —</option>';
+    return;
+  }
+  natSel.innerHTML = '<option value="">— Select Nature —</option>';
+  eq.complaints.filter(c => c.status === 'active').forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.name;
+    opt.textContent = c.name;
+    natSel.appendChild(opt);
+  });
+}
+
+function getBuiltInMasterData() {
+  return {
+    projects: [
+      { id: 'PRJ01', name: 'GK', fullName: 'Gyan Kunj', status: 'active' },
+      { id: 'PRJ02', name: 'ICT', fullName: 'ICT Lab', status: 'active' }
+    ],
+    projectEquipmentMap: [],
+    suspectedParts: [
+      { id: 'SP01', name: 'Motherboard', status: 'active' },
+      { id: 'SP02', name: 'RAM', status: 'active' },
+      { id: 'SP03', name: 'SSD', status: 'active' },
+      { id: 'SP04', name: 'HDD', status: 'active' },
+      { id: 'SP05', name: 'Adaptor', status: 'active' },
+      { id: 'SP06', name: 'Battery', status: 'active' },
+      { id: 'SP07', name: 'Display Panel', status: 'active' },
+      { id: 'SP08', name: 'Keyboard', status: 'active' },
+      { id: 'SP09', name: 'Touchpad', status: 'active' },
+      { id: 'SP10', name: 'TFT', status: 'active' },
+      { id: 'SP11', name: 'Power Supply', status: 'active' },
+      { id: 'SP12', name: 'LAN Card', status: 'active' },
+      { id: 'SP13', name: 'WiFi Module', status: 'active' }
+    ],
+    equipment: [
+    { id:'EQ01', name:'Desktop Computer',           status:'active', complaints:[
+      {id:'NC001',name:'Not Starting / Dead',status:'active'},{id:'NC002',name:'Power Issue',status:'active'},
+      {id:'NC003',name:'No Display',status:'active'},{id:'NC004',name:'Slow Performance',status:'active'},
+      {id:'NC005',name:'Hardware Issue',status:'active'},{id:'NC006',name:'Software Issue',status:'active'},
+      {id:'NC007',name:'Physical Damage',status:'active'},{id:'NC008',name:'Missing / Theft',status:'active'},
+      {id:'NC009',name:'Installation Required',status:'active'},{id:'NC010',name:'Other',status:'active'}]},
+    { id:'EQ02', name:'Laptop',                     status:'active', complaints:[
+      {id:'NC011',name:'Not Starting / Dead',status:'active'},{id:'NC012',name:'Battery Issue',status:'active'},
+      {id:'NC013',name:'No Display',status:'active'},{id:'NC014',name:'Slow Performance',status:'active'},
+      {id:'NC015',name:'Keyboard Issue',status:'active'},{id:'NC016',name:'Touchpad Issue',status:'active'},
+      {id:'NC017',name:'Software Issue',status:'active'},{id:'NC018',name:'Physical Damage',status:'active'},
+      {id:'NC019',name:'Missing / Theft',status:'active'},{id:'NC020',name:'Other',status:'active'}]},
+    { id:'EQ03', name:'Projector',                  status:'active', complaints:[
+      {id:'NC021',name:'No Display / Projection',status:'active'},{id:'NC022',name:'Lamp / Bulb Issue',status:'active'},
+      {id:'NC023',name:'Remote Not Working',status:'active'},{id:'NC024',name:'Not Starting',status:'active'},
+      {id:'NC025',name:'Physical Damage',status:'active'},{id:'NC026',name:'Other',status:'active'}]},
+    { id:'EQ04', name:'Interactive Smartboard',     status:'active', complaints:[
+      {id:'NC027',name:'Touch Not Working',status:'active'},{id:'NC028',name:'Display Issue',status:'active'},
+      {id:'NC029',name:'Not Starting',status:'active'},{id:'NC030',name:'Software Issue',status:'active'},
+      {id:'NC031',name:'Physical Damage',status:'active'},{id:'NC032',name:'Other',status:'active'}]},
+    { id:'EQ05', name:'Printer',                    status:'active', complaints:[
+      {id:'NC033',name:'Paper Jam',status:'active'},{id:'NC034',name:'Cartridge / Ink Issue',status:'active'},
+      {id:'NC035',name:'Print Quality Issue',status:'active'},{id:'NC036',name:'Not Printing',status:'active'},
+      {id:'NC037',name:'Physical Damage',status:'active'},{id:'NC038',name:'Other',status:'active'}]},
+    { id:'EQ06', name:'Scanner',                    status:'active', complaints:[
+      {id:'NC039',name:'Not Scanning',status:'active'},{id:'NC040',name:'Scan Quality Issue',status:'active'},
+      {id:'NC041',name:'Driver Issue',status:'active'},{id:'NC042',name:'Physical Damage',status:'active'},
+      {id:'NC043',name:'Other',status:'active'}]},
+    { id:'EQ07', name:'UPS / Power Backup',         status:'active', complaints:[
+      {id:'NC044',name:'Battery Fault',status:'active'},{id:'NC045',name:'Not Charging',status:'active'},
+      {id:'NC046',name:'No Output',status:'active'},{id:'NC047',name:'Alarm / Beeping',status:'active'},
+      {id:'NC048',name:'Physical Damage',status:'active'},{id:'NC049',name:'Other',status:'active'}]},
+    { id:'EQ08', name:'Networking / Switch / Router',status:'active', complaints:[
+      {id:'NC050',name:'No Connectivity',status:'active'},{id:'NC051',name:'Port Not Working',status:'active'},
+      {id:'NC052',name:'Configuration Issue',status:'active'},{id:'NC053',name:'Physical Damage',status:'active'},
+      {id:'NC054',name:'Other',status:'active'}]},
+    { id:'EQ09', name:'Webcam',                     status:'active', complaints:[
+      {id:'NC055',name:'No Video',status:'active'},{id:'NC056',name:'Poor Video Quality',status:'active'},
+      {id:'NC057',name:'Driver Issue',status:'active'},{id:'NC058',name:'Physical Damage',status:'active'},
+      {id:'NC059',name:'Other',status:'active'}]},
+    { id:'EQ10', name:'Speaker / Audio System',     status:'active', complaints:[
+      {id:'NC060',name:'No Sound',status:'active'},{id:'NC061',name:'Poor Sound Quality',status:'active'},
+      {id:'NC062',name:'Not Working',status:'active'},{id:'NC063',name:'Physical Damage',status:'active'},
+      {id:'NC064',name:'Other',status:'active'}]},
+    { id:'EQ11', name:'Tablet',                     status:'active', complaints:[
+      {id:'NC065',name:'Not Starting',status:'active'},{id:'NC066',name:'Touchscreen Issue',status:'active'},
+      {id:'NC067',name:'Battery Issue',status:'active'},{id:'NC068',name:'Software Issue',status:'active'},
+      {id:'NC069',name:'Physical Damage',status:'active'},{id:'NC070',name:'Missing / Theft',status:'active'},
+      {id:'NC071',name:'Other',status:'active'}]},
+    { id:'EQ12', name:'Server',                     status:'active', complaints:[
+      {id:'NC072',name:'Not Starting',status:'active'},{id:'NC073',name:'Hard Disk Issue',status:'active'},
+      {id:'NC074',name:'Network Issue',status:'active'},{id:'NC075',name:'Software Issue',status:'active'},
+      {id:'NC076',name:'Physical Damage',status:'active'},{id:'NC077',name:'Other',status:'active'}]},
+    { id:'EQ13', name:'Other',                      status:'active', complaints:[
+      {id:'NC078',name:'Hardware Issue',status:'active'},{id:'NC079',name:'Software Issue',status:'active'},
+      {id:'NC080',name:'Physical Damage',status:'active'},{id:'NC081',name:'Missing / Theft',status:'active'},
+      {id:'NC082',name:'Not Working',status:'active'},{id:'NC083',name:'Other',status:'active'}]},
+  ]};
+}
+
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+/* ─────────────── USER MANAGEMENT ─────────────── */
+function getUser() {
+  const u = localStorage.getItem('complainant');
+  return u ? JSON.parse(u) : null;
+}
+function saveUser() {
+  const name  = document.getElementById('setupName').value.trim();
+  const phone = document.getElementById('setupPhone').value.trim();
+  const role  = document.getElementById('setupRole').value;
+  if (!name || !phone) { showToast('Enter your name and phone number', 'warn'); return; }
+  if (!/^\d{10}$/.test(phone)) { showToast('Enter valid 10-digit mobile number', 'warn'); return; }
+  
+  localStorage.setItem('complainant', JSON.stringify({ name, phone, role }));
+  document.getElementById('setupScreen').style.display = 'none';
+  showSegmentScreen({ name, phone, role });
+}
+
+/* ─────────────── SEGMENT MENU + DEPARTMENT COMPLAINTS ─────────────── */
+// Teachers go straight into the normal complaint form; only engineers get the
+// Advance/Department choice, since department tickets are engineer work.
+function showSegmentScreen(user) {
+  if ((user.role || '').toLowerCase().trim() !== 'engineer') { startApp(user); return; }
+  document.getElementById('loadingScreen').style.display = 'none';
+  document.getElementById('setupScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('departmentScreen').style.display = 'none';
+  document.getElementById('segGreeting').textContent = 'Welcome, ' + (user.name || '').split(' ')[0] + '!';
+  document.getElementById('segmentScreen').style.display = 'flex';
+}
+function enterAdvance() {
+  document.getElementById('segmentScreen').style.display = 'none';
+  startApp(getUser());
+}
+function enterDepartment() {
+  document.getElementById('segmentScreen').style.display = 'none';
+  document.getElementById('departmentScreen').style.display = 'flex';
+  setTimeout(() => document.getElementById('deptDiseInput').focus(), 100);
+}
+function backToSegment() {
+  document.getElementById('departmentScreen').style.display = 'none';
+  showSegmentScreen(getUser());
+}
+
+let deptTickets = [];
+
+async function searchDeptTickets() {
+  const dise = document.getElementById('deptDiseInput').value.trim();
+  if (!/^\d{8,13}$/.test(dise)) { showToast('Enter a valid DISE code (numbers only)', 'warn'); return; }
+  const btn = document.getElementById('deptSearchBtn');
+  const results = document.getElementById('deptResults');
+  btn.disabled = true; btn.textContent = '…';
+  results.innerHTML = '<div style="text-align:center; color:var(--muted); padding:20px; font-size:0.8rem;">Searching…</div>';
+  try {
+    const res = await fetch(GOOGLE_SCRIPT_URL + '?action=get_department_complaint&dise=' + encodeURIComponent(dise) + '&t=' + Date.now());
+    deptTickets = await res.json();
+    renderDeptTickets();
+  } catch (e) {
+    results.innerHTML = '';
+    showToast('Network error: ' + e.message, 'danger');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Search';
+  }
+}
+
+function deptStatusChip(status) {
+  const map = {
+    'Pending':     ['#fef2f2', '#b91c1c', 'Pending'],
+    'InProgress':  ['#fefce8', '#a16207', 'In Progress'],
+    'PartRequest': ['#f5f3ff', '#6d28d9', 'Part Requested'],
+    'PendingOTP':  ['#fff7ed', '#c2410c', 'Awaiting OTP (office)'],
+  };
+  const m = map[status] || map['Pending'];
+  return '<span style="background:' + m[0] + '; color:' + m[1] + '; padding:2px 10px; border-radius:10px; font-size:0.68rem; font-weight:800;">' + m[2] + '</span>';
+}
+
+function escDept(str) {
+  return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function renderDeptTickets() {
+  const results = document.getElementById('deptResults');
+  if (!Array.isArray(deptTickets) || !deptTickets.length) {
+    results.innerHTML = '<div style="background:white; border:1.5px solid var(--border); border-radius:14px; padding:24px; text-align:center; color:var(--muted); font-size:0.85rem;">✅ No open department tickets for this school.</div>';
+    return;
+  }
+  const t0 = deptTickets[0];
+  results.innerHTML =
+    '<div style="background:#f0f4ff; border:1.5px solid var(--border); border-radius:14px; padding:12px 14px; margin-bottom:12px;">' +
+      '<div style="font-weight:800; font-size:0.88rem;">' + escDept(t0.school) + '</div>' +
+      '<div style="font-size:0.7rem; color:var(--muted);">' + escDept(t0.district) + ' · ' + escDept(t0.block) + ' · ' + escDept(t0.village) + ' — ' + deptTickets.length + ' open ticket(s)</div>' +
+    '</div>' +
+    deptTickets.map((t, i) =>
+      '<div style="background:white; border:1.5px solid var(--border); border-radius:14px; padding:14px; margin-bottom:12px;">' +
+        '<div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;">' +
+          '<div style="font-weight:800; font-size:0.85rem;">🎫 ' + escDept(t.ticketId) + '</div>' + deptStatusChip(t.internalStatus) +
+        '</div>' +
+        '<div style="font-size:0.78rem; margin-bottom:4px;"><b>' + escDept(t.deviceType) + '</b> — ' + escDept(t.issueType) + '</div>' +
+        '<div style="font-size:0.74rem; color:var(--muted); margin-bottom:6px;">' + escDept(t.issueDetails) + '</div>' +
+        '<div style="font-size:0.72rem; color:var(--muted); margin-bottom:10px;">👤 ' + escDept(t.contactName) + ' · 📞 ' + escDept(t.phoneNumber) + ' · ' + (t.totalDaysOfTicket || 0) + ' days old</div>' +
+        (t.internalStatus === 'PendingOTP'
+          ? '<div style="font-size:0.74rem; background:#fff7ed; color:#c2410c; border-radius:10px; padding:8px 10px;">This ticket was closed on site without OTP. The back office will finalize it once the OTP is collected.</div>'
+          : '<div style="display:flex; gap:6px; flex-wrap:wrap;">' +
+              '<button onclick="deptAction(' + i + ', \'closed_with_otp\')" style="flex:1; min-width:110px; background:#16a34a; color:white; border:none; border-radius:10px; padding:9px 6px; font-size:0.72rem; font-weight:800; cursor:pointer;">✅ Close with OTP</button>' +
+              '<button onclick="deptAction(' + i + ', \'closed_without_otp\')" style="flex:1; min-width:110px; background:#f59e0b; color:white; border:none; border-radius:10px; padding:9px 6px; font-size:0.72rem; font-weight:800; cursor:pointer;">📩 Close without OTP</button>' +
+              '<button onclick="deptAction(' + i + ', \'part_request\')" style="flex:1; min-width:110px; background:#7c3aed; color:white; border:none; border-radius:10px; padding:9px 6px; font-size:0.72rem; font-weight:800; cursor:pointer;">🔧 Part Request</button>' +
+            '</div>' +
+            '<div id="deptForm' + i + '" style="display:none; margin-top:10px; border-top:1.5px dashed var(--border); padding-top:10px;"></div>'
+        ) +
+      '</div>'
+    ).join('');
+}
+
+function deptAction(i, action) {
+  // Close any other open forms first
+  deptTickets.forEach((_, j) => { const f = document.getElementById('deptForm' + j); if (f && j !== i) f.style.display = 'none'; });
+  const form = document.getElementById('deptForm' + i);
+  const titles = {
+    'closed_with_otp': ['✅ Close with OTP', 'Ask the school contact for the OTP and enter it below.'],
+    'closed_without_otp': ['📩 Close without OTP', 'The ticket will wait for the back office to enter the OTP later.'],
+    'part_request': ['🔧 Part Request', 'Marks this ticket as waiting for a spare part.'],
+  };
+  form.innerHTML =
+    '<div style="font-weight:800; font-size:0.78rem; margin-bottom:4px;">' + titles[action][0] + '</div>' +
+    '<div style="font-size:0.7rem; color:var(--muted); margin-bottom:8px;">' + titles[action][1] + '</div>' +
+    (action === 'closed_with_otp'
+      ? '<input type="tel" id="deptOtp' + i + '" placeholder="OTP from school contact" inputmode="numeric" maxlength="8" style="width:100%; padding:10px 12px; border:2px solid var(--border); border-radius:10px; font-size:0.85rem; margin-bottom:8px; outline:none;" />'
+      : '') +
+    '<textarea id="deptNotes' + i + '" placeholder="Diagnosis / work done (optional)" rows="2" style="width:100%; padding:10px 12px; border:2px solid var(--border); border-radius:10px; font-size:0.8rem; margin-bottom:8px; outline:none; resize:vertical; font-family:inherit;"></textarea>' +
+    '<div style="display:flex; gap:8px;">' +
+      '<button onclick="this.closest(\'div\').parentElement.style.display=\'none\'" style="flex:1; background:white; border:1.5px solid var(--border); border-radius:10px; padding:10px; font-size:0.75rem; font-weight:700; cursor:pointer;">Cancel</button>' +
+      '<button id="deptSubmit' + i + '" onclick="submitDeptResolution(' + i + ', \'' + action + '\')" style="flex:2; background:var(--primary); color:white; border:none; border-radius:10px; padding:10px; font-size:0.75rem; font-weight:800; cursor:pointer;">Confirm</button>' +
+    '</div>';
+  form.style.display = 'block';
+}
+
+async function submitDeptResolution(i, action) {
+  const t = deptTickets[i];
+  const user = getUser() || {};
+  const otpField = document.getElementById('deptOtp' + i);
+  const otp = otpField ? otpField.value.trim() : '';
+  if (action === 'closed_with_otp' && !otp) { showToast('Enter the OTP first', 'warn'); return; }
+  const notes = (document.getElementById('deptNotes' + i) || { value: '' }).value.trim();
+
+  const btn = document.getElementById('deptSubmit' + i);
+  btn.disabled = true; btn.textContent = '⏳ Sending…';
+  try {
+    const res = await fetch(GOOGLE_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'resolve_department_complaint',
+        ticketId: t.ticketId,
+        resolutionAction: action,
+        otp: otp,
+        resolvedBy: (user.name || '') + ' (' + (user.phone || '') + ')',
+        technicianName: user.name || '',
+        diagnosisNotes: notes,
+      }),
+    });
+    const out = await res.json();
+    if (out.status !== 'ok') throw new Error(out.message || 'Server rejected the update');
+    showToast('✅ Ticket ' + t.ticketId + ' updated!', 'success');
+    searchDeptTickets(); // refresh the list
+  } catch (e) {
+    showToast('❌ ' + e.message, 'danger');
+    btn.disabled = false; btn.textContent = 'Confirm';
+  }
+}
+function startApp(user) {
+  document.getElementById('loadingScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  document.getElementById('userChipName').textContent = user.name.split(' ')[0];
+  loadRecentLookups();
+  updateStepUI();
+  applyRoleVisibility(user);
+}
+
+function applyRoleVisibility(user) {
+  if (!user) return;
+  const role = (user.role || '').toLowerCase().trim();
+  const dropdownField = document.getElementById('suspectedPartDropdownField');
+  const photoField = document.getElementById('suspectedPartPhotoField');
+  
+  if (role === 'teacher') {
+    if (dropdownField) dropdownField.style.display = 'none';
+    if (photoField) photoField.style.display = 'none';
+    const fSus = document.getElementById('fSuspectedPart');
+    if (fSus) {
+      fSus.value = '';
+      onSuspectedPartChange();
+    }
+  } else {
+    if (dropdownField) dropdownField.style.display = 'block';
+    if (photoField) photoField.style.display = 'block';
+  }
+}
+function showSetupScreen() {
+  document.getElementById('loadingScreen').style.display = 'none';
+  document.getElementById('setupScreen').style.display = 'flex';
+}
+function showUserSheet() {
+  const user = getUser() || {};
+  document.getElementById('editName').value  = user.name  || '';
+  document.getElementById('editPhone').value = user.phone || '';
+  document.getElementById('editRole').value  = user.role  || '';
+  document.getElementById('userSheetOverlay').classList.add('show');
+}
+function closeUserSheet(e) {
+  if (e.target === document.getElementById('userSheetOverlay'))
+    document.getElementById('userSheetOverlay').classList.remove('show');
+}
+function showHelpSheet() {
+  document.getElementById('helpSheetOverlay').classList.add('show');
+}
+function closeHelpSheet(e) {
+  if (e.target === document.getElementById('helpSheetOverlay'))
+    document.getElementById('helpSheetOverlay').classList.remove('show');
+}
+function updateUser() {
+  const name  = document.getElementById('editName').value.trim();
+  const phone = document.getElementById('editPhone').value.trim();
+  const role  = document.getElementById('editRole').value;
+  if (!name || !phone) { showToast('Name and phone required', 'warn'); return; }
+  localStorage.setItem('complainant', JSON.stringify({ name, phone, role }));
+  document.getElementById('userChipName').textContent = name.split(' ')[0];
+  document.getElementById('userSheetOverlay').classList.remove('show');
+  applyRoleVisibility({ name, phone, role });
+  showToast('Profile updated!', 'success');
+}
+
+/* ─────────────── ✏️ EDIT PRINCIPAL / CONTACT ─────────────── */
+function openEditField(field) {
+  if (!foundRecord) { showToast('⚠️ No school selected', 'warn'); return; }
+  editFieldKey = field;
+  const isPrincipal = (field === 'principal');
+  const label = isPrincipal ? 'Principal Name' : 'Contact Number';
+  const curVal = isPrincipal ? (foundRecord.principal || '') : (foundRecord.mobile || '');
+
+  document.getElementById('editFieldTitle').textContent = `✏️ Edit ${label}`;
+  document.getElementById('editFieldLabel').textContent = `New ${label}`;
+  document.getElementById('editFieldCurrentVal').textContent = curVal || 'Not set';
+  const inp = document.getElementById('editFieldInput');
+  inp.value = curVal;
+  inp.inputMode = isPrincipal ? 'text' : 'numeric';
+  inp.type = isPrincipal ? 'text' : 'tel';
+  inp.maxLength = isPrincipal ? 100 : 10;
+  document.getElementById('editFieldOverlay').classList.add('show');
+  setTimeout(() => inp.focus(), 380);
+}
+
+function closeEditFieldSheet(e) {
+  if (e.target === document.getElementById('editFieldOverlay'))
+    document.getElementById('editFieldOverlay').classList.remove('show');
+}
+
+function saveEditField() {
+  const newVal = document.getElementById('editFieldInput').value.trim();
+  if (!newVal) { showToast('⚠️ Please enter a value', 'warn'); return; }
+  const isPrincipal = (editFieldKey === 'principal');
+  const dbField = isPrincipal ? 'principal' : 'mobile';
+  const oldVal = foundRecord[dbField] || '';
+
+  // Audit log
+  const user = getUser() || {};
+  const logs = JSON.parse(localStorage.getItem('schoolUpdateLog') || '[]');
+  logs.unshift({
+    dise:          foundRecord.dise,
+    school:        foundRecord.school,
+    field:         editFieldKey,
+    oldValue:      oldVal,
+    newValue:      newVal,
+    modifiedBy:    user.name  || 'Unknown',
+    modifiedPhone: user.phone || '',
+    modifiedAt:    new Date().toISOString(),
+  });
+  localStorage.setItem('schoolUpdateLog', JSON.stringify(logs.slice(0, 500)));
+
+  // Update live record
+  foundRecord[dbField] = newVal;
+  document.getElementById(isPrincipal ? 's2Principal' : 's2Contact').textContent = newVal;
+
+  // Try to persist on server (non-blocking)
+  syncSchoolUpdate(foundRecord.dise, dbField, newVal, oldVal);
+
+  document.getElementById('editFieldOverlay').classList.remove('show');
+  showToast(`✅ ${isPrincipal ? 'Principal' : 'Contact'} updated`, 'success');
+}
+
+async function syncSchoolUpdate(dise, field, newValue, oldValue) {
+  const isLocalhost = isLocal();
+  try {
+    if (GOOGLE_SCRIPT_URL && !isLocalhost && navigator.onLine) {
+      await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ action: 'update_school', dise, field, newValue, oldValue }),
+      });
+      // Also update in-memory SCHOOL_DB
+      const entries = SCHOOL_DB[dise];
+      const list = Array.isArray(entries) ? entries : (entries ? [entries] : []);
+      list.forEach(r => { if (r.dise === dise) r[field] = newValue; });
+    } else {
+      const res = await fetch('/update_school', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dise, field, newValue, oldValue }),
+      });
+      if (res.ok) {
+        // Also update in-memory SCHOOL_DB
+        const entries = SCHOOL_DB[dise];
+        const list = Array.isArray(entries) ? entries : (entries ? [entries] : []);
+        list.forEach(r => { if (r.dise === dise) r[field] = newValue; });
+      }
+    }
+  } catch (_) { /* offline — change is in audit log and foundRecord */ }
+}
+
+/* ─────────────── LOOKUP ─────────────── */
+function onDiseInput(input) {
+  const val = input.value.trim();
+  if (val.length >= 11) triggerLookup();
+}
+
+function triggerLookup() {
+  const dise    = document.getElementById('lookupDise').value.trim();
+  const project = document.getElementById('lookupProject').value;
+  document.getElementById('lookupStatus').className = 'status-banner';
+
+  if (!dise) { showStatus('error', '⚠️ Enter DISE Code'); return; }
+
+  const entries = SCHOOL_DB[dise];
+  if (!entries || (Array.isArray(entries) && entries.length === 0)) {
+    showStatus('error', `❌ No school found for "${dise}"`);
+    foundRecord = null; return;
+  }
+
+  const list = Array.isArray(entries) ? entries : [entries];
+  let record = list[0];
+  if (project) {
+    const match = list.find(r => r.project === project);
+    if (match) record = match;
+  }
+  foundRecord = record;
+
+  if (list.length > 1 && !project) {
+    const projs = list.map(r => r.project).join(' & ');
+    showStatus('success', `✅ ${record.school} — in ${projs}. Please select a Project above.`);
+  } else if (project && record.project !== project) {
+    showStatus('success', `✅ Found: ${record.school} (Project: ${record.project})`);
+    document.getElementById('lookupProject').value = record.project;
+  } else {
+    showStatus('success', `✅ ${record.school}`);
+  }
+  saveRecentLookup(record);
+}
+
+function showStatus(type, msg) {
+  const el = document.getElementById('lookupStatus');
+  el.className = 'status-banner ' + type;
+  el.textContent = msg;
+}
+
+/* ─────────────── RECENT LOOKUPS ─────────────── */
+function saveRecentLookup(record) {
+  let r = JSON.parse(localStorage.getItem('recentLookups') || '[]');
+  r = r.filter(x => x.dise !== record.dise);
+  r.unshift(record);
+  localStorage.setItem('recentLookups', JSON.stringify(r.slice(0, 5)));
+}
+function loadRecentLookups() {
+  const r = JSON.parse(localStorage.getItem('recentLookups') || '[]');
+  if (!r.length) return;
+  document.getElementById('recentCard').style.display = 'block';
+  document.getElementById('recentList').innerHTML = r.map(x => `
+    <div onclick="selectRecent('${x.dise}')" style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;">
+      <span style="font-size:22px;">🏫</span>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:0.85rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${x.school}</div>
+        <div style="font-size:0.74rem;color:var(--muted);">${x.district} • DISE: ${x.dise}</div>
+      </div>
+      <span style="color:var(--primary);font-size:18px;">→</span>
+    </div>`).join('');
+}
+function selectRecent(dise) {
+  document.getElementById('lookupDise').value = dise;
+  triggerLookup();
+}
+
+/* ─────────────── STEP NAVIGATION ─────────────── */
+function goNext() {
+  if (!validateStep(currentStep)) return;
+  gotoStep(currentStep + 1);
+}
+function goBack() {
+  gotoStep(currentStep - 1);
+}
+function gotoStep(n) {
+  if (n < 1 || n > totalSteps) return;
+  document.getElementById('step' + currentStep).classList.remove('active');
+  currentStep = n;
+  document.getElementById('step' + currentStep).classList.add('active');
+  document.getElementById('scrollArea').scrollTo({ top: 0, behavior: 'smooth' });
+  updateStepUI();
+  if (currentStep === 2) fillSchoolSummary();
+  if (currentStep === 3) populateEquipmentDropdown();
+  if (currentStep === 4) fillComplaintSummary();
+}
+
+function updateStepUI() {
+  ['lbl1','lbl2','lbl3','lbl4'].forEach((id, i) => {
+    document.getElementById(id).className = 'step-label' + (i+1 === currentStep ? ' active' : '');
+  });
+  ['pill1','pill2','pill3','pill4'].forEach((id, i) => {
+    document.getElementById(id).className = 'step-pill' + (i+1 < currentStep ? ' done' : i+1 === currentStep ? ' active' : '');
+  });
+  document.getElementById('btnBack').style.display   = currentStep > 1          ? 'flex' : 'none';
+  document.getElementById('btnNext').style.display   = currentStep < totalSteps ? 'flex' : 'none';
+  document.getElementById('btnSubmit').style.display = currentStep === totalSteps ? 'flex' : 'none';
+  if (currentStep === totalSteps) updateNetworkStatus();
+}
+
+function validateStep(step) {
+  if (step === 1) {
+    if (!foundRecord) {
+      const dise = document.getElementById('lookupDise').value.trim();
+      if (!dise) { showToast('⚠️ Enter DISE Code first', 'warn'); return false; }
+      triggerLookup();
+      if (!foundRecord) { showToast('❌ School not found. Check DISE Code', 'warn'); return false; }
+    }
+    return true;
+  }
+  if (step === 3) {
+    const equipment = document.getElementById('fEquipment').value;
+    const nature    = document.getElementById('fNature').value;
+    const qty       = parseInt(document.getElementById('fQty').value) || 0;
+    const date      = document.getElementById('fDate').value;
+    const serial    = document.getElementById('fSerial').value.trim();
+    const suspectedPart = document.getElementById('fSuspectedPart').value;
+    
+    if (!equipment) { showToast('⚠️ Select Equipment', 'warn'); return false; }
+    if (!nature)    { showToast('⚠️ Select Nature of Complaint', 'warn'); return false; }
+    if (qty < 1)    { showToast('⚠️ Enter valid Quantity', 'warn'); return false; }
+    if (!date)      { showToast('⚠️ Select Complaint Date', 'warn'); return false; }
+    if (!serial)    { showToast('⚠️ Enter or scan Serial Number', 'warn'); return false; }
+    if (!serialPhoto) { showToast('⚠️ Please attach Serial Number Photo', 'warn'); return false; }
+    if (suspectedPart && photos.filter(Boolean).length === 0) {
+      showToast('⚠️ Photo is mandatory when a Suspected Part is selected. Please capture/upload a photo of the part!', 'warn');
+      return false;
+    }
+
+    // Check if serial is unique in the current group
+    if (complaintGroup && complaintGroup.submitted) {
+      const isDuplicate = complaintGroup.submitted.some(c => c.serialNumber && c.serialNumber.trim().toLowerCase() === serial.toLowerCase());
+      if (isDuplicate) {
+        showToast('⚠️ Duplicate Serial Number in this group!', 'warn');
+        return false;
+      }
+    }
+
+    // If qty > 1 and no group active yet — initialize group
+    if (qty > 1 && !complaintGroup) {
+      complaintGroup = {
+        total:     qty,
+        current:   1,
+        groupId:   genGroupId(),
+        equipment: equipment,
+        nature:    nature,
+        date:      date,
+        medium:    document.getElementById('fSuspectedPart').value,
+        desc:      document.getElementById('fDesc').value,
+        submitted: [],
+      };
+      updateGroupBanner();
+      showToast(`📦 Group created: ${qty} items to register`, 'success');
+    }
+    return true;
+  }
+  return true;
+}
+
+/* ─────────────── FILL DISPLAYS ─────────────── */
+function fillSchoolSummary() {
+  if (!foundRecord) return;
+  const r = foundRecord;
+  document.getElementById('s2SchoolName').textContent = r.school    || '—';
+  document.getElementById('s2SchoolCode').textContent = r.schoolCode || '—';
+  document.getElementById('s2Project').textContent    = r.project   || '—';
+  document.getElementById('s2Dise').textContent       = r.dise      || '—';
+  document.getElementById('s2District').textContent   = r.district  || '—';
+  document.getElementById('s2Taluka').textContent     = r.block     || '—';
+  document.getElementById('s2Principal').textContent  = r.principal || '—';
+  document.getElementById('s2Contact').textContent    = r.mobile    || '—';
+  document.getElementById('s2Pincode').textContent    = r.pincode   || '—';
+  document.getElementById('s2Address').textContent    = r.address   || '—';
+}
+
+function fillComplaintSummary() {
+  const r = foundRecord || {};
+  const qtyDisplay = complaintGroup
+    ? `${complaintGroup.current} of ${complaintGroup.total}`
+    : (document.getElementById('fQty').value || '—');
+  const lines = [
+    ['School',     r.school    || '—'],
+    ['District',   r.district  || '—'],
+    ['DISE Code',  r.dise      || '—'],
+    ['Equipment',  document.getElementById('fEquipment').value || '—'],
+    ['Nature',     document.getElementById('fNature').value    || '—'],
+    ['Serial No.', document.getElementById('fSerial').value    || 'N/A'],
+    ['Item No.',   qtyDisplay],
+    ['Date',       document.getElementById('fDate').value      || '—'],
+    ['Suspected Part', document.getElementById('fSuspectedPart').value || '—'],
+    ['Photos',     `${photos.filter(Boolean).length} attached`],
+  ];
+  if (complaintGroup) lines.push(['Group ID', complaintGroup.groupId]);
+  document.getElementById('summaryContent').innerHTML = lines.map(([k, v]) =>
+    `<div style="display:flex;gap:8px;"><span style="color:var(--muted);min-width:80px;flex-shrink:0;">${k}</span><b style="flex:1;">${v}</b></div>`
+  ).join('');
+}
+
+/* ─────────────── GROUP BANNER ─────────────── */
+function updateGroupBanner() {
+  const banner = document.getElementById('qtyProgressBanner');
+  if (!complaintGroup) { banner.style.display = 'none'; return; }
+  banner.style.display = 'flex';
+  document.getElementById('qtyProgressLabel').textContent = complaintGroup.equipment;
+  document.getElementById('qtyProgressTitle').textContent = `Item ${complaintGroup.current} of ${complaintGroup.total}`;
+  const dots = document.getElementById('qtyDots');
+  dots.innerHTML = '';
+  const maxDots = Math.min(complaintGroup.total, 10); // Cap at 10 dots
+  for (let i = 1; i <= maxDots; i++) {
+    const d = document.createElement('div');
+    d.className = 'qty-dot' + (i < complaintGroup.current ? ' done' : i === complaintGroup.current ? ' active' : '');
+    dots.appendChild(d);
+  }
+}
+
+function genGroupId() {
+  const d = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  return `GRP-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${Math.floor(1000+Math.random()*9000)}`;
+}
+
+/* ─────────────── PHOTOS ─────────────── */
+function compressPhoto(file) {
+  return new Promise((resolve, reject) => {
+    if (file.type === 'application/pdf') {
+      const reader = new FileReader();
+      reader.onload = e => resolve(e.target.result);
+      reader.onerror = err => reject(err);
+      reader.readAsDataURL(file);
+      return;
+    }
+    
+    const reader = new FileReader();
+    reader.onload = function(event) {
+      const img = new Image();
+      img.onload = function() {
+        const maxW = 1200;
+        const maxH = 1200;
+        let w = img.width;
+        let h = img.height;
+        if (w > maxW || h > maxH) {
+          if (w > h) {
+            h = Math.round((h * maxW) / w);
+            w = maxW;
+          } else {
+            w = Math.round((w * maxH) / h);
+            h = maxH;
+          }
+        }
+        
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        resolve(dataUrl);
+      };
+      img.onerror = err => reject(err);
+      img.src = event.target.result;
+    };
+    reader.onerror = err => reject(err);
+    reader.readAsDataURL(file);
+  });
+}
+
+async function addPhotos(event) {
+  const files = Array.from(event.target.files);
+  if (files.length === 0) return;
+  
+  const progress = document.getElementById('uploadProgress');
+  const fill = document.getElementById('uploadProgressFill');
+  
+  if (progress && fill) {
+    progress.classList.add('show');
+    fill.style.width = '10%';
+  }
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (photos.filter(Boolean).length >= 10) {
+      showToast('Max 10 photos allowed', 'warn');
+      break;
+    }
+    const idx = photos.length;
+    photos.push(null);
+    renderPlaceholder(idx);
+    
+    try {
+      if (fill) fill.style.width = `${10 + Math.round((i + 0.3) / files.length * 80)}%`;
+      const base64Data = await compressPhoto(file);
+      photos[idx] = base64Data;
+      updateThumb(idx, base64Data);
+      if (fill) fill.style.width = `${10 + Math.round((i + 1) / files.length * 80)}%`;
+    } catch (err) {
+      console.error(err);
+      showToast('Error processing image', 'error');
+      removePlaceholder(idx);
+    }
+  }
+  
+  if (fill) fill.style.width = '100%';
+  setTimeout(() => {
+    if (progress) progress.classList.remove('show');
+  }, 500);
+
+  event.target.value = '';
+  updatePhotoCount();
+}
+
+function renderPlaceholder(idx) {
+  const grid = document.getElementById('photoGrid');
+  document.getElementById('noPhotosMsg').style.display = 'none';
+  const div = document.createElement('div');
+  div.className = 'photo-thumb placeholder';
+  div.id = 'thumb-' + idx;
+  div.innerHTML = `<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f1f5fd;font-size:0.8rem;color:var(--muted);">
+    <span style="font-size:1.5rem;animation:spin 1s linear infinite;">⏳</span>
+    <span>Processing…</span>
+  </div>`;
+  grid.appendChild(div);
+}
+
+function removePlaceholder(idx) {
+  const el = document.getElementById('thumb-' + idx);
+  if (el) el.remove();
+  photos[idx] = null;
+  updatePhotoCount();
+  if (!photos.filter(Boolean).length) document.getElementById('noPhotosMsg').style.display = '';
+}
+
+function updateThumb(idx, base64Data) {
+  const div = document.getElementById('thumb-' + idx);
+  if (!div) return;
+  div.className = 'photo-thumb';
+  
+  const isPdf = base64Data.startsWith('data:application/pdf');
+  
+  if (isPdf) {
+    div.innerHTML = `
+      <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#ffebeb;font-size:2rem;">📄</div>
+      <button class="del-btn" onclick="removePhoto(${idx})">✕</button>
+      <div class="photo-actions">
+        <button onclick="removePhoto(${idx})">🗑️ Remove</button>
+      </div>
+    `;
+  } else {
+    div.innerHTML = `
+      <img src="${base64Data}" alt="Photo" onclick="viewFullscreen('${base64Data}')" />
+      <button class="del-btn" onclick="removePhoto(${idx})">✕</button>
+      <div class="photo-actions">
+        <button onclick="viewFullscreen('${base64Data}')">🔍 View</button>
+        <button onclick="triggerRetake(${idx})">🔄 Retake</button>
+      </div>
+    `;
+  }
+  updatePhotoCount();
+}
+
+function removePhoto(idx) {
+  photos[idx] = null;
+  const el = document.getElementById('thumb-' + idx);
+  if (el) el.remove();
+  updatePhotoCount();
+  if (!photos.filter(Boolean).length) document.getElementById('noPhotosMsg').style.display = '';
+}
+
+function updatePhotoCount() {
+  document.getElementById('photoCountBadge').textContent = photos.filter(Boolean).length;
+}
+
+// ── SERIAL PHOTO HELPERS ──
+async function addSerialPhoto(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  const progress = document.getElementById('serialUploadProgress');
+  const fill = document.getElementById('serialUploadProgressFill');
+  
+  if (progress && fill) {
+    progress.classList.add('show');
+    fill.style.width = '15%';
+  }
+  
+  renderSerialPlaceholder();
+  
+  try {
+    if (fill) fill.style.width = '50%';
+    const base64Data = await compressPhoto(file);
+    serialPhoto = base64Data;
+    updateSerialPhotoThumb(base64Data);
+    if (fill) fill.style.width = '90%';
+  } catch (err) {
+    console.error(err);
+    showToast('Error processing serial photo', 'error');
+    removeSerialPhoto();
+  }
+  
+  if (fill) fill.style.width = '100%';
+  setTimeout(() => {
+    if (progress) progress.classList.remove('show');
+  }, 500);
+
+  event.target.value = '';
+}
+
+function renderSerialPlaceholder() {
+  const grid = document.getElementById('serialPhotoGrid');
+  grid.innerHTML = '';
+  document.getElementById('noSerialPhotoMsg').style.display = 'none';
+  const div = document.createElement('div');
+  div.className = 'photo-thumb placeholder';
+  div.style.width = '80px';
+  div.style.height = '80px';
+  div.innerHTML = `<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f1f5fd;font-size:0.7rem;color:var(--muted);">
+    <span style="font-size:1.2rem;animation:spin 1s linear infinite;">⏳</span>
+    <span>Processing…</span>
+  </div>`;
+  grid.appendChild(div);
+}
+
+function updateSerialPhotoThumb(base64Data) {
+  const grid = document.getElementById('serialPhotoGrid');
+  grid.innerHTML = '';
+  
+  const div = document.createElement('div');
+  div.className = 'photo-thumb';
+  div.style.width = '100px';
+  div.style.height = '100px';
+  
+  div.innerHTML = `
+    <img src="${base64Data}" alt="Serial Photo" onclick="viewFullscreen('${base64Data}')" style="width:100%;height:100%;object-fit:cover;border-radius:8px;" />
+    <button class="del-btn" onclick="removeSerialPhoto()" style="top:-6px;right:-6px;width:20px;height:20px;font-size:0.7rem;">✕</button>
+    <div class="photo-actions" style="font-size:0.7rem;padding:2px;">
+      <button onclick="viewFullscreen('${base64Data}')" style="padding:2px 4px;">🔍 View</button>
+      <button onclick="triggerSerialRetake()" style="padding:2px 4px;">🔄 Retake</button>
+    </div>
+  `;
+  grid.appendChild(div);
+  document.getElementById('noSerialPhotoMsg').style.display = 'none';
+}
+
+function removeSerialPhoto() {
+  serialPhoto = null;
+  document.getElementById('serialPhotoGrid').innerHTML = '';
+  document.getElementById('noSerialPhotoMsg').style.display = 'block';
+}
+
+function triggerSerialRetake() {
+  document.getElementById('serialRetakeInput').click();
+}
+
+let retakeIdx = null;
+function triggerRetake(idx) {
+  retakeIdx = idx;
+  document.getElementById('retakeInput').click();
+}
+
+function viewFullscreen(base64Data) {
+  const overlay = document.getElementById('photoViewerOverlay');
+  const img = document.getElementById('photoViewerImg');
+  img.src = base64Data;
+  overlay.classList.add('show');
+}
+
+function closePhotoViewerDirect() {
+  const overlay = document.getElementById('photoViewerOverlay');
+  overlay.classList.remove('show');
+}
+
+function closePhotoViewer(e) {
+  if (e.target === document.getElementById('photoViewerOverlay')) {
+    closePhotoViewerDirect();
+  }
+}
+
+// Retake input handler
+document.addEventListener('DOMContentLoaded', () => {
+  const retakeInput = document.getElementById('retakeInput');
+  if (retakeInput) {
+    retakeInput.addEventListener('change', async (event) => {
+      if (event.target.files.length > 0 && retakeIdx !== null) {
+        const file = event.target.files[0];
+        const progress = document.getElementById('uploadProgress');
+        const fill = document.getElementById('uploadProgressFill');
+        if (progress && fill) {
+          progress.classList.add('show');
+          fill.style.width = '30%';
+        }
+        showToast('🔄 Compressing new photo…', 'info');
+        try {
+          const base64Data = await compressPhoto(file);
+          if (fill) fill.style.width = '70%';
+          photos[retakeIdx] = base64Data;
+          updateThumb(retakeIdx, base64Data);
+          if (fill) fill.style.width = '100%';
+          setTimeout(() => {
+            if (progress) progress.classList.remove('show');
+          }, 400);
+          showToast('Photo retaken successfully', 'success');
+        } catch (err) {
+          console.error(err);
+          showToast('Failed to retake photo', 'error');
+          if (progress) progress.classList.remove('show');
+        }
+        retakeIdx = null;
+      }
+      event.target.value = '';
+    });
+  }
+});
+
+
+/* ─────────────── SUBMIT ─────────────── */
+async function submitForm() {
+  const suspectedPart = document.getElementById('fSuspectedPart').value;
+  const activePhotos = photos.filter(Boolean);
+  if (suspectedPart && activePhotos.length === 0) {
+    showToast('⚠️ Photo is mandatory when a Suspected Part is selected. Please capture/upload a photo of the part!', 'warn');
+    return;
+  }
+
+  const btn = document.getElementById('btnSubmit');
+  btn.disabled = true;
+  btn.textContent = '⏳ Checking for duplicates…';
+
+  try {
+    const dupInfo = await checkDuplicateBeforeSubmit();
+    if (dupInfo) {
+      btn.disabled = false;
+      btn.textContent = '✅ Submit Complaint';
+      showDuplicateWarning(dupInfo);
+      return;
+    }
+  } catch (err) {
+    console.warn('Duplicate check error:', err);
+  }
+
+  pendingDuplicateStatus = 'NO';
+  btn.disabled = false;
+  btn.textContent = '✅ Submit Complaint';
+  proceedWithSubmission();
+}
+
+async function proceedWithSubmission() {
+  if (!gpsLocation) {
+    const btn = document.getElementById('btnSubmit');
+    btn.disabled = true;
+    btn.textContent = '📡 Acquiring GPS Location…';
+    showToast('📡 Acquiring GPS Location (Mandatory)…', 'info');
+    
+    navigator.geolocation.getCurrentPosition(
+      position => {
+        gpsLocation = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude
+        };
+        btn.disabled = false;
+        btn.textContent = '✅ Submit Complaint';
+        proceedWithSubmission(); // retry submission with GPS acquired
+      },
+      error => {
+        btn.disabled = false;
+        btn.textContent = '✅ Submit Complaint';
+        let msg = '⚠️ GPS Access is mandatory to submit complaints. Please allow Location permissions in your browser.';
+        if (error.code === error.PERMISSION_DENIED) {
+          msg = '⚠️ Location permission denied. GPS access is mandatory. Please reset website permissions and try again.';
+        } else if (error.code === error.TIMEOUT) {
+          msg = '⚠️ GPS acquisition timed out. Please ensure you are in a location with good GPS visibility and try again.';
+        }
+        showToast(msg, 'warn');
+        alert(msg);
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+    return;
+  }
+
+  const activePhotos = photos.filter(Boolean);
+  const user = getUser() || {};
+  const r    = foundRecord;
+  const itemNum    = complaintGroup ? complaintGroup.current : 1;
+  const totalItems = complaintGroup ? complaintGroup.total   : parseInt(document.getElementById('fQty').value) || 1;
+
+  const complaint = {
+    submittedAt:       new Date().toISOString(),
+    complainantName:   user.name  || '',
+    complainantPhone:  user.phone || '',
+    complainantRole:   user.role  || '',
+    project:           r?.project    || '',
+    dise:              r?.dise       || '',
+    schoolCode:        r?.schoolCode || '',
+    district:          r?.district   || '',
+    taluka:            r?.block      || '',
+    school:            r?.school     || '',
+    principal:         r?.principal  || '',
+    contact:           r?.mobile     || '',
+    address:           r?.address    || '',
+    pincode:           r?.pincode    || '',
+    equipment:         document.getElementById('fEquipment').value,
+    natureOfComplaint: document.getElementById('fNature').value,
+    serialNumber:      document.getElementById('fSerial').value,
+    quantity:          totalItems,
+    itemNumber:        itemNum,
+    groupId:           complaintGroup?.groupId || '',
+    complaintDate:     document.getElementById('fDate').value,
+    suspectedPart:     document.getElementById('fSuspectedPart').value,
+    medium:            document.getElementById('fSuspectedPart').value,
+    description:       document.getElementById('fDesc').value,
+    photos:            activePhotos,
+    serialPhoto:       serialPhoto,
+    latitude:          gpsLocation.latitude,
+    longitude:         gpsLocation.longitude,
+    duplicateStatus:   pendingDuplicateStatus
+  };
+
+  lastComplaint = complaint;
+  const btn = document.getElementById('btnSubmit');
+  btn.disabled = true; btn.textContent = '⏳ Submitting…';
+
+  let submitted = false;
+  
+  // Submit to local server complaints.json
+  try {
+    await fetch('/submit_complaint', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(complaint),
+    });
+  } catch (err) {
+    console.warn("Local storage write failed: ", err);
+  }
+
+  if (GOOGLE_SCRIPT_URL && navigator.onLine) {
+    try {
+      const res = await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(complaint),
+      });
+      if (res.ok) {
+        const result = await res.json();
+        if (result && result.status === 'ok') {
+          submitted = true;
+        } else if (result && result.retryable) {
+          console.warn("Server is busy/locked. Caching for background retry.");
+          submitted = false;
+        } else {
+          console.error("Backend error submitting complaint:", result ? result.message : 'Unknown');
+          submitted = true; // Mark as submitted to avoid infinite retry of fatal errors
+        }
+      } else {
+        submitted = false; // 429/503/500 errors go to offlineQueue
+      }
+    } catch (err) {
+      console.warn("Fetch failed: ", err);
+      submitted = false; // Network failure goes to offlineQueue
+    }
+  }
+  if (!submitted) {
+    offlineQueue.push(complaint);
+    localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
+    if ('serviceWorker' in navigator && 'SyncManager' in window) {
+      const reg = await navigator.serviceWorker.ready;
+      try { await reg.sync.register('submit-complaint'); } catch (_) {}
+    }
+  }
+
+  btn.disabled = false; btn.textContent = '✅ Submit Complaint';
+
+  // ── Group flow ──
+  if (complaintGroup) {
+    complaintGroup.submitted.push(complaint);
+    const remaining = complaintGroup.total - complaintGroup.current;
+
+    if (remaining > 0) {
+      // Mid-group success
+      document.getElementById('successIcon').textContent = '✓';
+      document.getElementById('successTitle').textContent = `${complaintGroup.current} of ${complaintGroup.total} Done!`;
+      document.getElementById('successMsg').textContent =
+        `${complaint.equipment}\nSerial: ${complaint.serialNumber || 'N/A'}\n\n${remaining} more item${remaining > 1 ? 's' : ''} remaining.`;
+      document.getElementById('successNextBtn').textContent = `Next Item (${complaintGroup.current + 1} of ${complaintGroup.total}) →`;
+      document.getElementById('successNextBtn').style.display = '';
+      document.getElementById('successNewBtn').style.display = 'none';
+    } else {
+      // Final group success
+      const tot = complaintGroup.total;
+      document.getElementById('successIcon').textContent = '🎉';
+      document.getElementById('successTitle').textContent = `All ${tot} Items Submitted!`;
+      document.getElementById('successMsg').textContent =
+        `Group ID: ${complaintGroup.groupId}\n\n${tot} ${complaint.equipment} complaint${tot > 1 ? 's' : ''} successfully recorded.`;
+      document.getElementById('successNextBtn').style.display = 'none';
+      document.getElementById('successNewBtn').style.display = '';
+      complaintGroup = null;
+    }
+  } else {
+    // Single-item success
+    document.getElementById('successIcon').textContent = '✓';
+    document.getElementById('successTitle').textContent = submitted ? 'Complaint Submitted!' : 'Complaint Saved!';
+    document.getElementById('successMsg').textContent = submitted
+      ? `Complaint for ${r?.school} sent to server.\nEquipment: ${complaint.equipment}.`
+      : `You are offline. Complaint saved locally and will be sent when you have internet.`;
+    document.getElementById('successNextBtn').style.display = 'none';
+    document.getElementById('successNewBtn').style.display = '';
+  }
+
+  document.getElementById('successOverlay').classList.add('show');
+}
+
+/* Called when "Next Item →" is tapped in group flow */
+function handleNextItem() {
+  document.getElementById('successOverlay').classList.remove('show');
+  if (!complaintGroup) return;
+
+  complaintGroup.current++;
+  updateGroupBanner();
+
+  // Pre-fill equipment/nature/date/medium/desc — clear serial + photos
+  document.getElementById('fEquipment').value = complaintGroup.equipment;
+  onEquipmentChange();
+  // Wait for nature dropdown to populate, then set value
+  setTimeout(() => {
+    document.getElementById('fNature').value = complaintGroup.nature;
+  }, 50);
+  document.getElementById('fDate').value   = complaintGroup.date;
+  document.getElementById('fSuspectedPart').value = complaintGroup.medium;
+  onSuspectedPartChange();
+  document.getElementById('fDesc').value   = complaintGroup.desc;
+  document.getElementById('fSerial').value = '';
+
+  // Lock qty field to show group context
+  const qtyInp = document.getElementById('fQty');
+  qtyInp.value = complaintGroup.total;
+  qtyInp.readOnly = true;
+
+  // Reset photos & gps location
+  photos = [];
+  serialPhoto = null;
+  gpsLocation = null;
+  document.getElementById('photoGrid').innerHTML = '';
+  document.getElementById('noPhotosMsg').style.display = '';
+  document.getElementById('serialPhotoGrid').innerHTML = '';
+  document.getElementById('noSerialPhotoMsg').style.display = 'block';
+  updatePhotoCount();
+
+  // Update complaint card subtitle
+  document.getElementById('complaintCardSub').textContent =
+    `Item ${complaintGroup.current} of ${complaintGroup.total} — Enter serial number`;
+
+  gotoStep(3);
+}
+
+function newComplaint() {
+  document.getElementById('successOverlay').classList.remove('show');
+  complaintGroup = null;
+  resetAll();
+}
+
+function shareComplaint() {
+  if (!lastComplaint) return;
+  const grp = lastComplaint.groupId ? `\nGroup ID: ${lastComplaint.groupId} (Item ${lastComplaint.itemNumber}/${lastComplaint.quantity})` : '';
+  const txt = [
+    `📋 SCHOOL COMPLAINT REPORT`,
+    `School: ${lastComplaint.school}`,
+    `DISE: ${lastComplaint.dise}`,
+    `District: ${lastComplaint.district}`,
+    `Equipment: ${lastComplaint.equipment}`,
+    `Nature: ${lastComplaint.natureOfComplaint}`,
+    `Serial: ${lastComplaint.serialNumber || 'N/A'}`,
+    `Date: ${lastComplaint.complaintDate}`,
+    `Suspected Part: ${lastComplaint.suspectedPart || lastComplaint.medium || 'None'}`,
+    `Description: ${lastComplaint.description || 'None'}`,
+    `By: ${lastComplaint.complainantName} (${lastComplaint.complainantPhone})`,
+    `Logged: ${new Date(lastComplaint.submittedAt).toLocaleString()}`,
+    grp,
+  ].join('\n');
+  if (navigator.share) {
+    navigator.share({ title: 'School Complaint', text: txt }).catch(() => {});
+  } else {
+    navigator.clipboard?.writeText(txt).then(() => showToast('Copied to clipboard!', 'success'));
+  }
+}
+
+function resetAll() {
+  foundRecord    = null;
+  complaintGroup = null;
+  photos         = [];
+  gpsLocation    = null;
+  document.getElementById('lookupDise').value    = '';
+  document.getElementById('lookupProject').value = '';
+  document.getElementById('lookupStatus').className = 'status-banner';
+  document.getElementById('fEquipment').value = '';
+  document.getElementById('fNature').innerHTML = '<option value="">— Select Equipment First —</option>';
+  const qtyInp = document.getElementById('fQty');
+  qtyInp.value = '1'; qtyInp.readOnly = false;
+  document.getElementById('fDate').value   = todayDate();
+  document.getElementById('fSerial').value = '';
+  serialPhoto = null;
+  document.getElementById('serialPhotoGrid').innerHTML = '';
+  document.getElementById('noSerialPhotoMsg').style.display = 'block';
+  document.getElementById('fSuspectedPart').value = '';
+  onSuspectedPartChange();
+  document.getElementById('fDesc').value   = '';
+  document.getElementById('photoGrid').innerHTML = '';
+  document.getElementById('noPhotosMsg').style.display = '';
+  document.getElementById('qtyProgressBanner').style.display = 'none';
+  document.getElementById('complaintCardSub').textContent = 'Fill all required fields';
+  updatePhotoCount();
+  gotoStep(1);
+  // Re-fetch latest configurations in background
+  loadSchoolData();
+  loadMasterData();
+}
+
+/* ─────────────── OFFLINE QUEUE ─────────────── */
+let isRetrying = false;
+async function retryQueue() {
+  if (isRetrying || !offlineQueue.length || !navigator.onLine) return;
+  isRetrying = true;
+
+  try {
+    while (offlineQueue.length && navigator.onLine) {
+      const item = offlineQueue[0];
+      let syncedLocal = false;
+      let syncedRemote = false;
+
+      // Retry local
+      try {
+        await fetch('/submit_complaint', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(item),
+        });
+        syncedLocal = true;
+      } catch (_) {}
+
+      // Retry remote Google Script
+      if (GOOGLE_SCRIPT_URL) {
+        try {
+          const res = await fetch(GOOGLE_SCRIPT_URL, {
+            method: 'POST',
+            mode: 'cors',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify(item),
+          });
+          if (res.ok) {
+            const result = await res.json();
+            if (result && result.status === 'ok') {
+              syncedRemote = true;
+            } else if (result && result.retryable) {
+              console.warn("Server is busy/locked during retry. Retaining in queue.");
+              syncedRemote = false;
+              break; // Stop processing, wait for next trigger
+            } else {
+              syncedRemote = true; // Avoid infinite retry loop for fatal validation errors
+            }
+          } else {
+            syncedRemote = false;
+            break; // Stop processing if server returns HTTP error
+          }
+        } catch (_) {
+          syncedRemote = false;
+          break; // Stop processing if network fetch fails
+        }
+      } else {
+        syncedRemote = true;
+      }
+
+      if (syncedLocal && syncedRemote) {
+        offlineQueue.shift(); // Remove the successfully synced item
+        localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
+      } else {
+        break; // Stop loop if one fails to avoid infinite spinner/loop
+      }
+    }
+  } finally {
+    isRetrying = false;
+  }
+  if (!offlineQueue.length) showToast('Queued complaints sent!', 'success');
+}
+
+function updateNetworkStatus() {
+  const notice = document.getElementById('offlineNotice');
+  if (!navigator.onLine) { notice.classList.remove('hidden'); }
+  else { notice.classList.add('hidden'); retryQueue(); }
+}
+
+/* ─────────────── HELPERS ─────────────── */
+function todayDate() { return new Date().toISOString().split('T')[0]; }
+
+let toastTimer;
+function showToast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast ' + (type || '');
+  clearTimeout(toastTimer);
+  el.classList.add('show');
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+/* ─────────────── BARCODE SCANNER ─────────────── */
+async function startScanner() {
+  document.getElementById('scannerOverlay').classList.add('show');
+  
+  if (html5QrCode) {
+    try { await html5QrCode.stop(); } catch(_) {}
+    html5QrCode = null;
+  }
+  
+  const cameraSelect = document.getElementById('scannerCameraSelect');
+  cameraSelect.innerHTML = '<option value="environment">Rear Camera (Default)</option>';
+  
+  html5QrCode = new Html5Qrcode("reader");
+  
+  try {
+    await runScanner({ facingMode: "environment" });
+    
+    // Detect cameras in background
+    Html5Qrcode.getCameras().then(devices => {
+      if (devices && devices.length > 0) {
+        cameraSelect.innerHTML = '';
+        devices.forEach((device, index) => {
+          const opt = document.createElement('option');
+          opt.value = device.id;
+          const label = device.label || `Camera ${index + 1}`;
+          opt.textContent = label;
+          if (label.toLowerCase().includes('back') || label.toLowerCase().includes('environment') || label.toLowerCase().includes('rear')) {
+            opt.selected = true;
+          }
+          cameraSelect.appendChild(opt);
+        });
+        
+        cameraSelect.onchange = async () => {
+          if (html5QrCode) {
+            try { await html5QrCode.stop(); } catch(_) {}
+          }
+          html5QrCode = new Html5Qrcode("reader");
+          await runScanner(cameraSelect.value);
+        };
+      }
+    }).catch(err => {
+      console.warn("Could not list cameras:", err);
+    });
+    
+  } catch (err) {
+    console.error(err);
+    showToast('Failed to access camera', 'warn');
+    closeScannerOverlayDirect();
+  }
+}
+
+async function runScanner(cameraConfig) {
+  if (!html5QrCode) return;
+  
+  const config = {
+    fps: 20,
+    qrbox: (width, height) => {
+      // Widen the box to fit linear 1D barcodes better
+      const w = Math.min(width * 0.85, 340);
+      const h = Math.min(height * 0.35, 130);
+      return { width: w, height: h };
+    },
+    formatsToSupport: [
+      Html5QrcodeSupportedFormats.QR_CODE,
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.CODE_93,
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.ITF
+    ],
+    experimentalFeatures: {
+      useBarCodeDetectorIfSupported: true
+    }
+  };
+  
+  try {
+    await html5QrCode.start(
+      cameraConfig,
+      config,
+      (decodedText) => {
+        document.getElementById('fSerial').value = decodedText.trim();
+        showToast('✓ Scanned: ' + decodedText, 'success');
+        stopScanner();
+      },
+      () => {
+        // Verbose error, ignore
+      }
+    );
+  } catch (err) {
+    console.error(err);
+    showToast('Failed to start scanner on selected camera', 'warn');
+  }
+}
+
+async function stopScanner() {
+  if (html5QrCode) {
+    try {
+      await html5QrCode.stop();
+    } catch (err) {
+      console.warn("Error stopping scanner:", err);
+    }
+    html5QrCode = null;
+  }
+  closeScannerOverlayDirect();
+}
+
+function closeScannerOverlayDirect() {
+  document.getElementById('scannerOverlay').classList.remove('show');
+}
+
+function closeScannerOverlay(e) {
+  if (e.target === document.getElementById('scannerOverlay')) {
+    stopScanner();
+  }
+}
+
+function cancelComplaintGroup() {
+  if (confirm("Are you sure you want to cancel registering this group of complaints? All progress for this group will be cleared.")) {
+    complaintGroup = null;
+    const qtyInp = document.getElementById('fQty');
+    qtyInp.value = '1';
+    qtyInp.readOnly = false;
+    document.getElementById('qtyProgressBanner').style.display = 'none';
+    document.getElementById('fSerial').value = '';
+    
+    // Reset photos
+    photos = [];
+    serialPhoto = null;
+    document.getElementById('photoGrid').innerHTML = '';
+    document.getElementById('noPhotosMsg').style.display = '';
+    document.getElementById('serialPhotoGrid').innerHTML = '';
+    document.getElementById('noSerialPhotoMsg').style.display = 'block';
+    updatePhotoCount();
+    
+    document.getElementById('complaintCardSub').textContent = 'Fill all required fields';
+    showToast('Group registration cancelled', 'info');
+  }
+}
+
+// ── OCR FUNCTIONS REMOVED ──
+function stopOCR() {}
+
+// ── DUPLICATE CHECK FUNCTIONS ──
+let pendingDuplicateStatus = 'NO';
+
+async function checkDuplicateBeforeSubmit() {
+  const serial = (document.getElementById('fSerial').value || '').trim().toUpperCase();
+  if (!serial) return null;
+
+  const isLocalDup = offlineQueue.some(c => c.serialNumber && c.serialNumber.trim().toUpperCase() === serial);
+  if (isLocalDup) {
+    return {
+      isDuplicate: true,
+      existingSchool: 'Saved in offline queue (pending sync)',
+      existingCaseId: 'Pending'
+    };
+  }
+
+  try {
+    if (!isLocal() && GOOGLE_SCRIPT_URL && navigator.onLine) {
+      const resp = await fetch(GOOGLE_SCRIPT_URL + '?action=check_duplicate&serial=' + encodeURIComponent(serial));
+      if (resp.ok) {
+        const result = await resp.json();
+        if (result && result.isDuplicate) {
+          return result;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Duplicate check failed, proceeding:', e);
+  }
+  return null;
+}
+
+function showDuplicateWarning(dupInfo) {
+  let msg = 'This Serial Number has already been registered in the current month.';
+  if (dupInfo.existingSchool) msg += `\n\nSchool: ${dupInfo.existingSchool}`;
+  if (dupInfo.existingCaseId) msg += `\nCase ID: ${dupInfo.existingCaseId}`;
+  if (dupInfo.existingDate) {
+    const dateStr = new Date(dupInfo.existingDate).toLocaleDateString();
+    msg += `\nDate: ${dateStr}`;
+  }
+  document.getElementById('duplicateWarningMsg').textContent = msg;
+  document.getElementById('duplicateWarningOverlay').classList.add('show');
+}
+
+function cancelDuplicateSubmit() {
+  document.getElementById('duplicateWarningOverlay').classList.remove('show');
+  pendingDuplicateStatus = 'NO';
+}
+
+function confirmDuplicateSubmit() {
+  document.getElementById('duplicateWarningOverlay').classList.remove('show');
+  pendingDuplicateStatus = 'YES';
+  proceedWithSubmission();
+}
+</script>
+</body>
+</html>

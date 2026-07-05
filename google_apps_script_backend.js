@@ -23,6 +23,12 @@
 const SHEET_ID = '1VHQWSMMdjlUlsU1O1DB2rg8eaOrwuuSGs8fvVKzKpOw';
 const SHEET_TAB_NAME = 'Complaints';
 
+// -- DEPARTMENT COMPLAINT IMPORT (ssgujarat.org scrape/bulk-upload) --
+const DEPT_SHEET_TAB_NAME = 'DepartmentComplaints';
+const RES_SHEET_TAB_NAME = 'DepartmentResolutions';
+// Set once via: run setImportKey("your-long-random-secret") from the Apps Script editor.
+// Any doPost with action=import_department_complaints must send the same value as importKey.
+
 // -- GOOGLE DRIVE PHOTO STORAGE --
 const DRIVE_ROOT_FOLDER = 'ArMee Complaints Photos';
 
@@ -64,6 +70,48 @@ const HEADERS = [
   'View Serial Photo',
   'Serial Photo URL',
   'Archived'
+];
+
+// Raw mirror of the ssgujarat.org "Export To Excel" columns, plus 3 tracking columns.
+const DEPT_HEADERS = [
+  'District', 'BlockId', 'Block', 'ClusterId', 'Cluster', 'VillageId', 'Village',
+  'SchoolId', 'School', 'TicketId', 'Agency', 'Asset_Type', 'Device_Type', 'Issue_Type',
+  'Issue_Details', 'Issue_Photo', 'Contact_Name', 'Phone_Number', 'Time_Preference_Call',
+  'Ticket_Status', 'CreatedBy', 'CreatedDate', 'UpdatedBy', 'UpdatedDate',
+  'Diagnosis_Notes_Agency', 'Schedule_Visit_Date', 'Technician_Name', 'Technician_Number',
+  'Issue_Resolved_By', 'TotalDaysOfTicket',
+  'ImportedAt', 'LastSeenStatus', 'ImportSource'
+];
+
+// Our internal resolution/tracking layer, keyed by TicketId. Never blended into DEPT_HEADERS.
+const RES_HEADERS = [
+  'TicketId', 'InternalStatus', 'ClosureType', 'OtpValue', 'ResolvedBy', 'TechnicianName',
+  'DiagnosisNotes', 'ResolvedAt', 'OwningDistrictAdmin'
+];
+
+// -- BRANCH / DISTRICT OFFICE STRUCTURE --
+// District Office and Branch are separate entities: today each office has exactly
+// one branch of the same name, but the schema allows one office -> many branches.
+// Dashboard grouping resolves complaint strings through BranchAliasMap -> Branches
+// -> DistrictOffices; the raw manager name is never a grouping key.
+const DO_SHEET_TAB_NAME = 'DistrictOffices';
+const DO_HEADERS = [
+  'DistrictOfficeID', 'DistrictOfficeName', 'DistrictOfficeCode', 'Region',
+  'ContactPerson', 'ContactNumber', 'Status', 'CreatedDate'
+];
+const BR_SHEET_TAB_NAME = 'Branches';
+const BR_HEADERS = [
+  'BranchID', 'BranchName', 'BranchCode', 'DistrictOfficeID',
+  'BranchManagerName', 'BranchManagerContact', 'Status', 'CreatedDate'
+];
+const ALIAS_SHEET_TAB_NAME = 'BranchAliasMap';
+const ALIAS_HEADERS = ['AliasText', 'BranchID', 'MappedBy', 'MappedDate'];
+
+// The 13 current district offices; each seeds one branch of the same name.
+const BRANCH_STRUCTURE_SEED = [
+  ['Ahmedabad', 'AHM'], ['Mehsana', 'MEH'], ['Bharuch', 'BRC'], ['Anand', 'AND'],
+  ['Vadodara', 'VAD'], ['Godhra', 'GDH'], ['Bhuj', 'BHJ'], ['Bhavnagar', 'BVN'],
+  ['Jamnagar', 'JMN'], ['Rajkot', 'RJK'], ['Junagadh', 'JND'], ['Vapi', 'VAP'], ['Surat', 'SRT']
 ];
 
 
@@ -321,6 +369,56 @@ function doPost(e) {
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
+    if (data.action === 'import_department_complaints') {
+      var importResult = importDepartmentComplaints(ss, data);
+      return ContentService.createTextOutput(JSON.stringify(importResult))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (data.action === 'resolve_department_complaint') {
+      var resolveResult = resolveDepartmentComplaint(ss, data);
+      return ContentService.createTextOutput(JSON.stringify(resolveResult))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // Scraper failure alert: emails ALERT_EMAIL (script property) or the sheet
+    // owner so a broken scrape never fails silently.
+    if (data.action === 'scraper_alert') {
+      var alertKeyError = requireImportKey(data);
+      if (alertKeyError) {
+        return ContentService.createTextOutput(JSON.stringify(alertKeyError))
+                             .setMimeType(ContentService.MimeType.JSON);
+      }
+      var alertTo = PropertiesService.getScriptProperties().getProperty('ALERT_EMAIL') ||
+                    'jignesh.patel@armeeinfotech.com';
+      try {
+        MailApp.sendEmail(alertTo, '⚠️ ICT Scraper Alert', String(data.message || 'The scraper reported a failure.'));
+      } catch (mailErr) {
+        Logger.log('Alert email error: ' + mailErr.toString());
+      }
+      return ContentService.createTextOutput(JSON.stringify({ status: 'ok' }))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // Branch/district-office management: all mutations require the shared key,
+    // since the Web App URL itself is unauthenticated.
+    var branchActions = {
+      'create_district_office': createDistrictOffice,
+      'update_district_office': updateDistrictOffice,
+      'delete_district_office': deleteDistrictOffice,
+      'create_branch': createBranch,
+      'update_branch': updateBranch,
+      'delete_branch': deleteBranch,
+      'map_alias': mapAlias,
+      'delete_alias_mapping': deleteAliasMapping
+    };
+    if (branchActions[data.action]) {
+      var keyError = requireImportKey(data);
+      var branchResult = keyError || branchActions[data.action](ss, data);
+      return ContentService.createTextOutput(JSON.stringify(branchResult))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
     // Default: submit new complaint
     if (!data.action || data.action === 'submit_complaint') {
       return handleSubmitComplaint(ss, data);
@@ -375,6 +473,65 @@ function doGet(e) {
     if (action === 'get_complaints_with_archive') {
       var data = getComplaintsWithArchive(ss);
       return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (action === 'get_department_complaint') {
+      var dise = String(e.parameter.dise || '').trim();
+      var deptResult = getDepartmentComplaintsForSchool(ss, dise);
+      return ContentService.createTextOutput(JSON.stringify(deptResult)).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (action === 'get_department_dashboard') {
+      var dashboard = getDepartmentDashboard(ss);
+      return ContentService.createTextOutput(JSON.stringify(dashboard)).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (action === 'get_district_offices') {
+      return ContentService.createTextOutput(JSON.stringify(loadBranchStructure(ss).offices))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (action === 'get_branches') {
+      var struct = loadBranchStructure(ss);
+      var branchList = struct.branches.map(function(b) {
+        var office = struct.officeById[b.districtOfficeId];
+        return {
+          id: b.id, name: b.name, code: b.code, districtOfficeId: b.districtOfficeId,
+          districtOfficeName: office ? office.name : '', managerName: b.managerName,
+          managerContact: b.managerContact, status: b.status, createdDate: b.createdDate
+        };
+      });
+      return ContentService.createTextOutput(JSON.stringify(branchList))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (action === 'get_alias_mappings') {
+      var struct2 = loadBranchStructure(ss);
+      var aliasList = struct2.aliases.map(function(a) {
+        var br = struct2.branchById[a.branchId];
+        return {
+          aliasText: a.aliasText, branchId: a.branchId,
+          branchName: br ? br.name : '(deleted)', mappedBy: a.mappedBy, mappedDate: a.mappedDate
+        };
+      });
+      return ContentService.createTextOutput(JSON.stringify(aliasList))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (action === 'get_unmapped_aliases') {
+      return ContentService.createTextOutput(JSON.stringify(getUnmappedAliases(ss)))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (action === 'get_department_complaints_list') {
+      return ContentService.createTextOutput(JSON.stringify(getDepartmentComplaintsList(ss)))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (action === 'get_branch_complaints') {
+      var branchComplaints = getBranchComplaints(ss, String(e.parameter.branchId || '').trim());
+      return ContentService.createTextOutput(JSON.stringify(branchComplaints))
+                           .setMimeType(ContentService.MimeType.JSON);
     }
 
     if (action === 'make_photos_public') {
@@ -1012,6 +1169,1108 @@ function deleteComplaintRow(ss, caseId, submittedAt, dise) {
 }
 
 
+// ═══════════════ DEPARTMENT COMPLAINTS (ssgujarat.org import) ═══════════════
+
+function getOrCreateDeptSheet(ss) {
+  var sheet = ss.getSheetByName(DEPT_SHEET_TAB_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(DEPT_SHEET_TAB_NAME);
+    setupDeptHeaders(sheet);
+  }
+  return sheet;
+}
+
+function getOrCreateResSheet(ss) {
+  var sheet = ss.getSheetByName(RES_SHEET_TAB_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(RES_SHEET_TAB_NAME);
+    setupResHeaders(sheet);
+  }
+  return sheet;
+}
+
+function setupDeptHeaders(sheet) {
+  sheet.getRange(1, 1, 1, DEPT_HEADERS.length).setValues([DEPT_HEADERS]);
+  var headerRange = sheet.getRange(1, 1, 1, DEPT_HEADERS.length);
+  headerRange.setBackground('#1a56db').setFontColor('#ffffff').setFontWeight('bold').setFontSize(10);
+  sheet.setFrozenRows(1);
+}
+
+function setupResHeaders(sheet) {
+  sheet.getRange(1, 1, 1, RES_HEADERS.length).setValues([RES_HEADERS]);
+  var headerRange = sheet.getRange(1, 1, 1, RES_HEADERS.length);
+  headerRange.setBackground('#1a56db').setFontColor('#ffffff').setFontWeight('bold').setFontSize(10);
+  sheet.setFrozenRows(1);
+}
+
+/**
+ * Run once from the Apps Script editor (Run > setImportKey, or type a call in
+ * the editor) to set the shared secret the scraper/bulk-upload must send back.
+ */
+function setImportKey(key) {
+  if (!key) {
+    Logger.log('Usage: call setImportKey("your-long-random-secret") with an argument.');
+    return;
+  }
+  PropertiesService.getScriptProperties().setProperty('IMPORT_KEY', key);
+  Logger.log('IMPORT_KEY has been set.');
+}
+
+function initDepartmentSheets() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  getOrCreateDeptSheet(ss);
+  getOrCreateResSheet(ss);
+  Logger.log('DepartmentComplaints and DepartmentResolutions tabs are ready.');
+}
+
+function normalizeTicketStatus(s) {
+  return String(s || '').trim().toLowerCase().replace(/[\s-]/g, '');
+}
+
+/**
+ * body: { importKey, rows: [ {District, BlockId, ..., TotalDaysOfTicket}, ... ], importSource }
+ * Only rows whose Ticket_Status normalizes to "pending" or "inprogress" are accepted,
+ * matching what the scraper/manual export already filters to before sending.
+ */
+function importDepartmentComplaints(ss, data) {
+  var expectedKey = PropertiesService.getScriptProperties().getProperty('IMPORT_KEY');
+  if (!expectedKey || data.importKey !== expectedKey) {
+    return { status: 'error', message: 'Invalid or missing importKey' };
+  }
+
+  var rows = data.rows || [];
+  var sheet = getOrCreateDeptSheet(ss);
+  var resSheet = getOrCreateResSheet(ss);
+
+  var lastRow = sheet.getLastRow();
+  var existingRows = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, DEPT_HEADERS.length).getValues() : [];
+  var ticketRowNumber = {}; // TicketId -> 1-indexed sheet row number
+  for (var i = 0; i < existingRows.length; i++) {
+    var tid = String(existingRows[i][9] || '').trim();
+    if (tid) ticketRowNumber[tid] = i + 2;
+  }
+
+  var now = new Date();
+  var insertedRows = [];
+  var updatedCount = 0;
+  var newByAdmin = {}; // email -> { name, tickets: [] }
+
+  for (var j = 0; j < rows.length; j++) {
+    var r = rows[j];
+    var status = String(r.Ticket_Status || '').trim();
+    var norm = normalizeTicketStatus(status);
+    if (norm !== 'pending' && norm !== 'inprogress') continue;
+
+    var ticketId = String(r.TicketId || '').trim();
+    if (!ticketId) continue;
+
+    if (ticketRowNumber[ticketId]) {
+      var rowNum = ticketRowNumber[ticketId];
+      sheet.getRange(rowNum, 20).setValue(status);                     // Ticket_Status
+      sheet.getRange(rowNum, 23).setValue(r.UpdatedBy || '');
+      sheet.getRange(rowNum, 24).setValue(r.UpdatedDate || '');
+      sheet.getRange(rowNum, 25).setValue(r.Diagnosis_Notes_Agency || '');
+      sheet.getRange(rowNum, 26).setValue(r.Schedule_Visit_Date || '');
+      sheet.getRange(rowNum, 27).setValue(r.Technician_Name || '');
+      sheet.getRange(rowNum, 28).setValue(r.Technician_Number || '');
+      sheet.getRange(rowNum, 29).setValue(r.Issue_Resolved_By || '');
+      sheet.getRange(rowNum, 30).setValue(r.TotalDaysOfTicket || '');
+      sheet.getRange(rowNum, 32).setValue(status);                     // LastSeenStatus
+      updatedCount++;
+      continue;
+    }
+
+    var newRow = [
+      r.District || '', r.BlockId || '', r.Block || '', r.ClusterId || '', r.Cluster || '',
+      r.VillageId || '', r.Village || '', r.SchoolId || '', r.School || '', ticketId,
+      r.Agency || '', r.Asset_Type || '', r.Device_Type || '', r.Issue_Type || '',
+      r.Issue_Details || '', r.Issue_Photo || '', r.Contact_Name || '', r.Phone_Number || '',
+      r.Time_Preference_Call || '', status, r.CreatedBy || '', r.CreatedDate || '',
+      r.UpdatedBy || '', r.UpdatedDate || '', r.Diagnosis_Notes_Agency || '',
+      r.Schedule_Visit_Date || '', r.Technician_Name || '', r.Technician_Number || '',
+      r.Issue_Resolved_By || '', r.TotalDaysOfTicket || '',
+      now, status, data.importSource || 'AUTO_SCRAPE'
+    ];
+    insertedRows.push(newRow);
+
+    var owningAdmin = getOwningDistrictAdmin(ss, r.District);
+    resSheet.appendRow([ticketId, 'Pending', '', '', '', '', '', '', owningAdmin ? owningAdmin.name : '']);
+
+    if (owningAdmin) {
+      if (!newByAdmin[owningAdmin.email]) {
+        newByAdmin[owningAdmin.email] = { name: owningAdmin.name, tickets: [] };
+      }
+      newByAdmin[owningAdmin.email].tickets.push({
+        ticketId: ticketId, school: r.School, issueType: r.Issue_Type, contact: r.Contact_Name
+      });
+    }
+  }
+
+  if (insertedRows.length > 0) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, insertedRows.length, DEPT_HEADERS.length).setValues(insertedRows);
+  }
+
+  // sendEmails defaults to true (scraper behavior); manual backfills pass false
+  // so a historical import doesn't blast digest emails to every district admin.
+  if (data.sendEmails !== false) {
+    sendDeptComplaintDigestEmails(newByAdmin);
+  }
+
+  return { status: 'ok', inserted: insertedRows.length, updated: updatedCount };
+}
+
+/**
+ * Looks up which active district_admin (from MasterData.accessUsers) owns a given
+ * district via that admin's assignedDistricts list. Returns null if unassigned.
+ * Master data is cached for the duration of the request — imports and the
+ * dashboard call this once per row, and re-reading the sheet each time is slow.
+ */
+var _masterDataRequestCache = null;
+function getOwningDistrictAdmin(ss, district) {
+  if (!district) return null;
+  var target = String(district).trim().toUpperCase();
+  if (!_masterDataRequestCache) {
+    _masterDataRequestCache = getMasterData(ss);
+  }
+  var masterData = _masterDataRequestCache;
+  var accessUsers = masterData.accessUsers || [];
+  for (var i = 0; i < accessUsers.length; i++) {
+    var u = accessUsers[i];
+    if (u.role !== 'district_admin' || u.status !== 'active') continue;
+    var assigned = u.assignedDistricts || [];
+    for (var j = 0; j < assigned.length; j++) {
+      if (String(assigned[j]).trim().toUpperCase() === target) {
+        return { name: u.name, email: u.email };
+      }
+    }
+  }
+  return null;
+}
+
+/** One digest email per admin per import run, not one email per ticket. */
+function sendDeptComplaintDigestEmails(newByAdmin) {
+  for (var email in newByAdmin) {
+    var info = newByAdmin[email];
+    if (!info.tickets.length) continue;
+    var lines = info.tickets.map(function(t) {
+      return '- ' + t.school + ' | Ticket ' + t.ticketId + ' | ' + t.issueType + ' | Contact: ' + t.contact;
+    });
+    var body = 'Hello ' + info.name + ',\n\n' +
+      info.tickets.length + ' new Department Complaint(s) have been assigned to your districts:\n\n' +
+      lines.join('\n') +
+      '\n\nPlease review and act via the ICT Support admin dashboard.';
+    try {
+      MailApp.sendEmail(email, 'New Department Complaint(s) - ' + info.tickets.length + ' ticket(s)', body);
+    } catch (e) {
+      Logger.log('Email send error for ' + email + ': ' + e.toString());
+    }
+  }
+}
+
+function getResolutionsMap(ss) {
+  var sheet = ss.getSheetByName(RES_SHEET_TAB_NAME);
+  var map = {};
+  if (!sheet || sheet.getLastRow() < 2) return map;
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, RES_HEADERS.length).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i];
+    var ticketId = String(row[0] || '').trim();
+    if (!ticketId) continue;
+    map[ticketId] = {
+      internalStatus: row[1] || 'Pending',
+      closureType: row[2] || '',
+      otpValue: row[3] || '',
+      resolvedBy: row[4] || '',
+      technicianName: row[5] || '',
+      diagnosisNotes: row[6] || '',
+      resolvedAt: row[7] || '',
+      owningDistrictAdmin: row[8] || '',
+      rowNumber: i + 2
+    };
+  }
+  return map;
+}
+
+/** Returns open (non-Closed) DepartmentComplaints rows for a given DISE/SchoolId. */
+function getDepartmentComplaintsForSchool(ss, dise) {
+  var target = String(dise || '').trim();
+  var sheet = ss.getSheetByName(DEPT_SHEET_TAB_NAME);
+  if (!target || !sheet || sheet.getLastRow() < 2) return [];
+
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, DEPT_HEADERS.length).getValues();
+  var resolutions = getResolutionsMap(ss);
+  var results = [];
+
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i];
+    var schoolId = String(row[7] || '').trim();
+    if (schoolId !== target) continue;
+
+    var ticketId = String(row[9] || '').trim();
+    var res = resolutions[ticketId] || { internalStatus: 'Pending', closureType: '', owningDistrictAdmin: '' };
+    if (res.internalStatus === 'Closed') continue;
+
+    results.push({
+      district: row[0], block: row[2], cluster: row[4], village: row[6],
+      school: row[8], schoolId: schoolId, ticketId: ticketId,
+      assetType: row[11], deviceType: row[12], issueType: row[13], issueDetails: row[14],
+      contactName: row[16], phoneNumber: row[17], ticketStatus: row[19],
+      createdDate: row[21], totalDaysOfTicket: row[29],
+      internalStatus: res.internalStatus, closureType: res.closureType,
+      owningDistrictAdmin: res.owningDistrictAdmin
+    });
+  }
+  return results;
+}
+
+/**
+ * body: { ticketId, resolutionAction, otp, resolvedBy, technicianName, diagnosisNotes }
+ * resolutionAction one of: 'closed_with_otp' | 'closed_without_otp' | 'part_request' | 'finalize_otp'
+ * 'closed_without_otp' leaves InternalStatus='PendingOTP' until a later 'finalize_otp' call
+ * (made from admin.html once the separately-collected OTP is on hand) closes it for good.
+ */
+function resolveDepartmentComplaint(ss, data) {
+  var ticketId = String(data.ticketId || '').trim();
+  if (!ticketId) return { status: 'error', message: 'ticketId is required' };
+
+  var resSheet = getOrCreateResSheet(ss);
+  var map = getResolutionsMap(ss);
+  var existing = map[ticketId];
+  var now = new Date().toISOString();
+  var action = data.resolutionAction;
+
+  if (action === 'finalize_otp') {
+    if (!existing || existing.internalStatus !== 'PendingOTP') {
+      return { status: 'error', message: 'Ticket is not awaiting OTP finalization' };
+    }
+    resSheet.getRange(existing.rowNumber, 2).setValue('Closed');
+    resSheet.getRange(existing.rowNumber, 4).setValue(data.otp || '');
+    resSheet.getRange(existing.rowNumber, 5).setValue(data.resolvedBy || existing.resolvedBy);
+    resSheet.getRange(existing.rowNumber, 8).setValue(now);
+    return { status: 'ok', internalStatus: 'Closed' };
+  }
+
+  var internalStatus, closureType;
+  if (action === 'closed_with_otp') {
+    internalStatus = 'Closed'; closureType = 'ClosedWithOTP';
+  } else if (action === 'closed_without_otp') {
+    internalStatus = 'PendingOTP'; closureType = 'ClosedWithoutOTP';
+  } else if (action === 'part_request') {
+    internalStatus = 'PartRequest'; closureType = '';
+  } else {
+    return { status: 'error', message: 'Unknown resolutionAction: ' + action };
+  }
+
+  var newRow = [
+    ticketId, internalStatus, closureType,
+    action === 'closed_with_otp' ? (data.otp || '') : '',
+    data.resolvedBy || '', data.technicianName || '', data.diagnosisNotes || '',
+    internalStatus === 'PartRequest' ? '' : now,
+    existing ? existing.owningDistrictAdmin : ''
+  ];
+
+  if (existing) {
+    resSheet.getRange(existing.rowNumber, 1, 1, RES_HEADERS.length).setValues([newRow]);
+  } else {
+    resSheet.appendRow(newRow);
+  }
+
+  return { status: 'ok', internalStatus: internalStatus };
+}
+
+/** Whole calendar days between fromDate and toDate, excluding Sundays. */
+function countBusinessDaysExcludingSundays(fromDate, toDate) {
+  var from = new Date(fromDate);
+  var to = new Date(toDate);
+  if (isNaN(from.getTime()) || isNaN(to.getTime())) return 0;
+  var days = 0;
+  var cursor = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  var end = new Date(to.getFullYear(), to.getMonth(), to.getDate());
+  while (cursor < end) {
+    cursor.setDate(cursor.getDate() + 1);
+    if (cursor.getDay() !== 0) days++; // 0 = Sunday
+  }
+  return days;
+}
+
+function ageBucket(businessDays) {
+  if (businessDays <= 2) return '0-2';
+  if (businessDays <= 5) return '3-5';
+  return '6+';
+}
+
+/**
+ * Aggregated Department Complaint pendency + branch-wise and district-office-wise
+ * aging covering BOTH open Department and open Advance complaints.
+ *
+ * Grouping key is BranchID: each complaint's manager string and district are
+ * resolved through BranchAliasMap -> Branches -> DistrictOffices. Raw manager
+ * names are display-only. Complaints whose strings have no alias yet land in the
+ * `unmapped` bucket (with the strings listed), so nothing silently disappears.
+ * Stats are computed live on every request, so mapping an alias immediately
+ * re-attributes all historical complaints tied to it.
+ */
+function getDepartmentDashboard(ss) {
+  var now = new Date();
+  var structure = loadBranchStructure(ss);
+  var resolutions = getResolutionsMap(ss);
+
+  var pendency = {
+    total: 0, pending: 0, inProgress: 0, partRequest: 0, pendingOtp: 0,
+    closedWithOTP: 0, closedWithoutOTP: 0
+  };
+
+  var branchAgg = {};
+  structure.branches.forEach(function(b) {
+    var office = structure.officeById[b.districtOfficeId];
+    branchAgg[b.id] = {
+      branchId: b.id, branchName: b.name, branchCode: b.code, status: b.status,
+      managerName: b.managerName, districtOfficeId: b.districtOfficeId,
+      districtOfficeName: office ? office.name : '',
+      department: { '0-2': 0, '3-5': 0, '6+': 0 },
+      advance: { '0-2': 0, '3-5': 0, '6+': 0 }
+    };
+  });
+  var unmapped = {
+    strings: {},
+    department: { '0-2': 0, '3-5': 0, '6+': 0 },
+    advance: { '0-2': 0, '3-5': 0, '6+': 0 }
+  };
+
+  function attribute(kind, candidates, businessDays) {
+    var bucket = ageBucket(businessDays);
+    var hit = resolveBranchId(structure, candidates);
+    if (hit) {
+      branchAgg[hit.branchId][kind][bucket]++;
+    } else {
+      unmapped[kind][bucket]++;
+      var label = String(candidates[0] || candidates[1] || 'Unknown').trim() || 'Unknown';
+      unmapped.strings[label] = (unmapped.strings[label] || 0) + 1;
+    }
+  }
+
+  var deptSheet = ss.getSheetByName(DEPT_SHEET_TAB_NAME);
+  var deptRows = (deptSheet && deptSheet.getLastRow() > 1)
+    ? deptSheet.getRange(2, 1, deptSheet.getLastRow() - 1, DEPT_HEADERS.length).getValues()
+    : [];
+
+  for (var i = 0; i < deptRows.length; i++) {
+    var row = deptRows[i];
+    var ticketId = String(row[9] || '').trim();
+    var res = resolutions[ticketId] || { internalStatus: 'Pending', closureType: '', owningDistrictAdmin: '' };
+
+    pendency.total++;
+    if (res.internalStatus === 'Closed') {
+      if (res.closureType === 'ClosedWithOTP') pendency.closedWithOTP++;
+      else pendency.closedWithoutOTP++;
+      continue;
+    }
+    if (res.internalStatus === 'PartRequest') pendency.partRequest++;
+    else if (res.internalStatus === 'PendingOTP') pendency.pendingOtp++;
+    else if (res.internalStatus === 'InProgress') pendency.inProgress++;
+    else pendency.pending++;
+
+    var managerString = res.owningDistrictAdmin;
+    if (!managerString) {
+      var owningAdmin = getOwningDistrictAdmin(ss, row[0]);
+      managerString = owningAdmin ? owningAdmin.name : '';
+    }
+    attribute('department', [managerString, row[0]], countBusinessDaysExcludingSundays(row[21], now));
+  }
+
+  var advSheet = ss.getSheetByName(SHEET_TAB_NAME);
+  if (advSheet && advSheet.getLastRow() > 1) {
+    var advRows = advSheet.getRange(2, 1, advSheet.getLastRow() - 1, HEADERS.length).getValues();
+    for (var j = 0; j < advRows.length; j++) {
+      var arow = advRows[j];
+      if (String(arow[34] || '').trim() === 'YES') continue; // Archived
+      var status = String(arow[23] || 'Open').trim();
+      if (status === 'Resolved' || status === 'Closed') continue;
+
+      var aOwningAdmin = getOwningDistrictAdmin(ss, arow[8]);
+      attribute('advance', [aOwningAdmin ? aOwningAdmin.name : '', arow[8]],
+                countBusinessDaysExcludingSundays(arow[19] || arow[1], now));
+    }
+  }
+
+  // District-office rollup = sum of that office's branches.
+  var officeAgg = {};
+  structure.offices.forEach(function(o) {
+    officeAgg[o.id] = {
+      districtOfficeId: o.id, name: o.name, code: o.code, status: o.status,
+      department: { '0-2': 0, '3-5': 0, '6+': 0 },
+      advance: { '0-2': 0, '3-5': 0, '6+': 0 }
+    };
+  });
+  Object.keys(branchAgg).forEach(function(bid) {
+    var b = branchAgg[bid];
+    var office = officeAgg[b.districtOfficeId];
+    if (!office) return;
+    ['0-2', '3-5', '6+'].forEach(function(k) {
+      office.department[k] += b.department[k];
+      office.advance[k] += b.advance[k];
+    });
+  });
+
+  return {
+    pendency: pendency,
+    branches: Object.keys(branchAgg).map(function(id) { return branchAgg[id]; }),
+    districtOffices: Object.keys(officeAgg).map(function(id) { return officeAgg[id]; }),
+    unmapped: {
+      department: unmapped.department,
+      advance: unmapped.advance,
+      strings: Object.keys(unmapped.strings).map(function(k) {
+        return { text: k, count: unmapped.strings[k] };
+      }).sort(function(a, b) { return b.count - a.count; })
+    }
+  };
+}
+
+
+// ═══════════════ BRANCH / DISTRICT OFFICE MANAGEMENT ═══════════════
+
+function getOrCreateTab(ss, name, headers) {
+  var sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.getRange(1, 1, 1, headers.length)
+         .setBackground('#1a56db').setFontColor('#ffffff').setFontWeight('bold').setFontSize(10);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+function normalizeAlias(s) {
+  return String(s || '').trim().toUpperCase().replace(/\s+/g, ' ');
+}
+
+function requireImportKey(data) {
+  var expectedKey = PropertiesService.getScriptProperties().getProperty('IMPORT_KEY');
+  if (!expectedKey || data.importKey !== expectedKey) {
+    return { status: 'error', message: 'Invalid or missing importKey' };
+  }
+  return null;
+}
+
+// Per-request cache of the whole branch structure; every mutator resets it.
+var _branchStructureCache = null;
+function invalidateBranchCache() { _branchStructureCache = null; }
+
+function loadBranchStructure(ss) {
+  if (_branchStructureCache) return _branchStructureCache;
+  var offices = [], branches = [], aliases = [];
+
+  var doSheet = ss.getSheetByName(DO_SHEET_TAB_NAME);
+  if (doSheet && doSheet.getLastRow() > 1) {
+    var doRows = doSheet.getRange(2, 1, doSheet.getLastRow() - 1, DO_HEADERS.length).getValues();
+    for (var i = 0; i < doRows.length; i++) {
+      if (!String(doRows[i][0]).trim()) continue;
+      offices.push({
+        id: String(doRows[i][0]), name: String(doRows[i][1]), code: String(doRows[i][2]),
+        region: String(doRows[i][3] || ''), contactPerson: String(doRows[i][4] || ''),
+        contactNumber: String(doRows[i][5] || ''), status: String(doRows[i][6] || 'Active'),
+        createdDate: doRows[i][7], rowNumber: i + 2
+      });
+    }
+  }
+
+  var brSheet = ss.getSheetByName(BR_SHEET_TAB_NAME);
+  if (brSheet && brSheet.getLastRow() > 1) {
+    var brRows = brSheet.getRange(2, 1, brSheet.getLastRow() - 1, BR_HEADERS.length).getValues();
+    for (var j = 0; j < brRows.length; j++) {
+      if (!String(brRows[j][0]).trim()) continue;
+      branches.push({
+        id: String(brRows[j][0]), name: String(brRows[j][1]), code: String(brRows[j][2]),
+        districtOfficeId: String(brRows[j][3]), managerName: String(brRows[j][4] || ''),
+        managerContact: String(brRows[j][5] || ''), status: String(brRows[j][6] || 'Active'),
+        createdDate: brRows[j][7], rowNumber: j + 2
+      });
+    }
+  }
+
+  var alSheet = ss.getSheetByName(ALIAS_SHEET_TAB_NAME);
+  if (alSheet && alSheet.getLastRow() > 1) {
+    var alRows = alSheet.getRange(2, 1, alSheet.getLastRow() - 1, ALIAS_HEADERS.length).getValues();
+    for (var k = 0; k < alRows.length; k++) {
+      if (!String(alRows[k][0]).trim()) continue;
+      aliases.push({
+        aliasText: String(alRows[k][0]), branchId: String(alRows[k][1]),
+        mappedBy: String(alRows[k][2] || ''), mappedDate: alRows[k][3], rowNumber: k + 2
+      });
+    }
+  }
+
+  var officeById = {}, branchById = {}, aliasMap = {};
+  offices.forEach(function(o) { officeById[o.id] = o; });
+  branches.forEach(function(b) { branchById[b.id] = b; });
+  aliases.forEach(function(a) { aliasMap[normalizeAlias(a.aliasText)] = a.branchId; });
+
+  _branchStructureCache = {
+    offices: offices, branches: branches, aliases: aliases,
+    officeById: officeById, branchById: branchById, aliasMap: aliasMap
+  };
+  return _branchStructureCache;
+}
+
+/**
+ * Resolve a complaint to a BranchID by trying each candidate string (manager
+ * name first, then district) against the alias map. Returns null if unmapped.
+ */
+function resolveBranchId(structure, candidates) {
+  for (var i = 0; i < candidates.length; i++) {
+    var norm = normalizeAlias(candidates[i]);
+    if (!norm) continue;
+    var branchId = structure.aliasMap[norm];
+    if (branchId && structure.branchById[branchId]) {
+      return { branchId: branchId, matched: candidates[i] };
+    }
+  }
+  return null;
+}
+
+function nextStructureId(list, prefix) {
+  var max = 0;
+  list.forEach(function(item) {
+    var m = String(item.id).match(new RegExp('^' + prefix + '-(\\d+)$'));
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  });
+  var n = max + 1;
+  return prefix + '-' + (n < 10 ? '0' + n : String(n));
+}
+
+/**
+ * Creates the three structure tabs and seeds the 13 district offices, each with
+ * one branch of the same name (manager left blank until mapped in the admin
+ * panel). Idempotent: only seeds a sheet that is empty.
+ */
+function seedBranchStructure() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var doSheet = getOrCreateTab(ss, DO_SHEET_TAB_NAME, DO_HEADERS);
+  var brSheet = getOrCreateTab(ss, BR_SHEET_TAB_NAME, BR_HEADERS);
+  getOrCreateTab(ss, ALIAS_SHEET_TAB_NAME, ALIAS_HEADERS);
+
+  var now = new Date().toISOString();
+  var seededOffices = 0, seededBranches = 0;
+
+  if (doSheet.getLastRow() <= 1) {
+    var doRows = BRANCH_STRUCTURE_SEED.map(function(entry, i) {
+      var n = i + 1;
+      var id = 'DO-' + (n < 10 ? '0' + n : String(n));
+      return [id, entry[0], entry[1], '', '', '', 'Active', now];
+    });
+    doSheet.getRange(2, 1, doRows.length, DO_HEADERS.length).setValues(doRows);
+    seededOffices = doRows.length;
+  }
+
+  if (brSheet.getLastRow() <= 1) {
+    var brRows = BRANCH_STRUCTURE_SEED.map(function(entry, i) {
+      var n = i + 1;
+      var pad = n < 10 ? '0' + n : String(n);
+      return ['BR-' + pad, entry[0], entry[1] + '-01', 'DO-' + pad, '', '', 'Active', now];
+    });
+    brSheet.getRange(2, 1, brRows.length, BR_HEADERS.length).setValues(brRows);
+    seededBranches = brRows.length;
+  }
+
+  invalidateBranchCache();
+  Logger.log('Seed complete: ' + seededOffices + ' district offices, ' + seededBranches +
+             ' branches added (0 means the sheet already had data and was left untouched).');
+  return { offices: seededOffices, branches: seededBranches };
+}
+
+// ── District Office CRUD ──────────────────────────────
+
+function createDistrictOffice(ss, data) {
+  var name = String(data.name || '').trim();
+  var code = String(data.code || '').trim().toUpperCase();
+  if (!name || !code) return { status: 'error', message: 'name and code are required' };
+
+  var s = loadBranchStructure(ss);
+  for (var i = 0; i < s.offices.length; i++) {
+    if (s.offices[i].code.toUpperCase() === code) {
+      return { status: 'error', message: 'Duplicate DistrictOfficeCode: ' + code + ' already used by ' + s.offices[i].name };
+    }
+  }
+
+  var id = nextStructureId(s.offices, 'DO');
+  var sheet = getOrCreateTab(ss, DO_SHEET_TAB_NAME, DO_HEADERS);
+  sheet.appendRow([id, name, code, data.region || '', data.contactPerson || '',
+                   data.contactNumber || '', 'Active', new Date().toISOString()]);
+  invalidateBranchCache();
+  return { status: 'ok', id: id };
+}
+
+function updateDistrictOffice(ss, data) {
+  var s = loadBranchStructure(ss);
+  var office = s.officeById[String(data.id || '')];
+  if (!office) return { status: 'error', message: 'District office not found: ' + data.id };
+
+  if (data.code !== undefined) {
+    var code = String(data.code).trim().toUpperCase();
+    for (var i = 0; i < s.offices.length; i++) {
+      if (s.offices[i].id !== office.id && s.offices[i].code.toUpperCase() === code) {
+        return { status: 'error', message: 'Duplicate DistrictOfficeCode: ' + code };
+      }
+    }
+  }
+
+  var sheet = ss.getSheetByName(DO_SHEET_TAB_NAME);
+  var updates = { name: 2, code: 3, region: 4, contactPerson: 5, contactNumber: 6, status: 7 };
+  for (var field in updates) {
+    if (data[field] !== undefined) {
+      var val = field === 'code' ? String(data[field]).trim().toUpperCase() : data[field];
+      sheet.getRange(office.rowNumber, updates[field]).setValue(val);
+    }
+  }
+  invalidateBranchCache();
+  return { status: 'ok' };
+}
+
+/**
+ * Soft delete (Status=Inactive). Blocked while any ACTIVE branch still points at
+ * this office — those must be reassigned or removed first, so nothing is orphaned.
+ */
+function deleteDistrictOffice(ss, data) {
+  var s = loadBranchStructure(ss);
+  var office = s.officeById[String(data.id || '')];
+  if (!office) return { status: 'error', message: 'District office not found: ' + data.id };
+
+  var linked = s.branches.filter(function(b) {
+    return b.districtOfficeId === office.id && b.status === 'Active';
+  });
+  if (linked.length > 0) {
+    return {
+      status: 'blocked',
+      message: linked.length + ' active branch(es) still belong to this district office. Reassign or remove them first.',
+      branches: linked.map(function(b) { return b.name + ' (' + b.id + ')'; })
+    };
+  }
+
+  ss.getSheetByName(DO_SHEET_TAB_NAME).getRange(office.rowNumber, 7).setValue('Inactive');
+  invalidateBranchCache();
+  return { status: 'ok', softDeleted: true };
+}
+
+// ── Branch CRUD ──────────────────────────────
+
+function createBranch(ss, data) {
+  var name = String(data.name || '').trim();
+  var code = String(data.code || '').trim().toUpperCase();
+  var districtOfficeId = String(data.districtOfficeId || '').trim();
+  if (!name || !code || !districtOfficeId) {
+    return { status: 'error', message: 'name, code and districtOfficeId are required' };
+  }
+
+  var s = loadBranchStructure(ss);
+  var office = s.officeById[districtOfficeId];
+  if (!office || office.status !== 'Active') {
+    return { status: 'error', message: 'District office not found or inactive: ' + districtOfficeId };
+  }
+  for (var i = 0; i < s.branches.length; i++) {
+    if (s.branches[i].code.toUpperCase() === code) {
+      return { status: 'error', message: 'Duplicate BranchCode: ' + code + ' already used by ' + s.branches[i].name };
+    }
+  }
+
+  var id = nextStructureId(s.branches, 'BR');
+  var sheet = getOrCreateTab(ss, BR_SHEET_TAB_NAME, BR_HEADERS);
+  sheet.appendRow([id, name, code, districtOfficeId, data.managerName || '',
+                   data.managerContact || '', 'Active', new Date().toISOString()]);
+  invalidateBranchCache();
+  return { status: 'ok', id: id };
+}
+
+function updateBranch(ss, data) {
+  var s = loadBranchStructure(ss);
+  var branch = s.branchById[String(data.id || '')];
+  if (!branch) return { status: 'error', message: 'Branch not found: ' + data.id };
+
+  if (data.code !== undefined) {
+    var code = String(data.code).trim().toUpperCase();
+    for (var i = 0; i < s.branches.length; i++) {
+      if (s.branches[i].id !== branch.id && s.branches[i].code.toUpperCase() === code) {
+        return { status: 'error', message: 'Duplicate BranchCode: ' + code };
+      }
+    }
+  }
+  if (data.districtOfficeId !== undefined) {
+    var office = s.officeById[String(data.districtOfficeId)];
+    if (!office || office.status !== 'Active') {
+      return { status: 'error', message: 'District office not found or inactive: ' + data.districtOfficeId };
+    }
+  }
+
+  var sheet = ss.getSheetByName(BR_SHEET_TAB_NAME);
+  var updates = { name: 2, code: 3, districtOfficeId: 4, managerName: 5, managerContact: 6, status: 7 };
+  for (var field in updates) {
+    if (data[field] !== undefined) {
+      var val = field === 'code' ? String(data[field]).trim().toUpperCase() : data[field];
+      sheet.getRange(branch.rowNumber, updates[field]).setValue(val);
+    }
+  }
+  invalidateBranchCache();
+  return { status: 'ok' };
+}
+
+/** Counts every record that resolves to this branch, for delete blocking. */
+function countBranchReferences(ss, branchId) {
+  var s = loadBranchStructure(ss);
+  var aliasCount = s.aliases.filter(function(a) { return a.branchId === branchId; }).length;
+
+  var deptCount = 0;
+  var deptSheet = ss.getSheetByName(DEPT_SHEET_TAB_NAME);
+  if (deptSheet && deptSheet.getLastRow() > 1) {
+    var resolutions = getResolutionsMap(ss);
+    var rows = deptSheet.getRange(2, 1, deptSheet.getLastRow() - 1, DEPT_HEADERS.length).getValues();
+    for (var i = 0; i < rows.length; i++) {
+      var ticketId = String(rows[i][9] || '').trim();
+      var res = resolutions[ticketId] || { owningDistrictAdmin: '' };
+      var hit = resolveBranchId(s, [res.owningDistrictAdmin, rows[i][0]]);
+      if (hit && hit.branchId === branchId) deptCount++;
+    }
+  }
+
+  var advCount = 0;
+  var advSheet = ss.getSheetByName(SHEET_TAB_NAME);
+  if (advSheet && advSheet.getLastRow() > 1) {
+    var advRows = advSheet.getRange(2, 1, advSheet.getLastRow() - 1, HEADERS.length).getValues();
+    for (var j = 0; j < advRows.length; j++) {
+      if (String(advRows[j][34] || '').trim() === 'YES') continue;
+      var admin = getOwningDistrictAdmin(ss, advRows[j][8]);
+      var hit2 = resolveBranchId(s, [admin ? admin.name : '', advRows[j][8]]);
+      if (hit2 && hit2.branchId === branchId) advCount++;
+    }
+  }
+
+  return { aliases: aliasCount, departmentComplaints: deptCount, advanceComplaints: advCount };
+}
+
+/**
+ * Soft delete (Status=Inactive). Blocked while complaints or alias mappings
+ * still resolve to this branch — the caller sees the exact counts.
+ */
+function deleteBranch(ss, data) {
+  var s = loadBranchStructure(ss);
+  var branch = s.branchById[String(data.id || '')];
+  if (!branch) return { status: 'error', message: 'Branch not found: ' + data.id };
+
+  var refs = countBranchReferences(ss, branch.id);
+  var total = refs.aliases + refs.departmentComplaints + refs.advanceComplaints;
+  if (total > 0) {
+    return {
+      status: 'blocked',
+      message: refs.departmentComplaints + ' department complaint(s), ' + refs.advanceComplaints +
+               ' advance complaint(s) and ' + refs.aliases + ' alias mapping(s) reference this branch. ' +
+               'Remap or remove them first.',
+      references: refs
+    };
+  }
+
+  ss.getSheetByName(BR_SHEET_TAB_NAME).getRange(branch.rowNumber, 7).setValue('Inactive');
+  invalidateBranchCache();
+  return { status: 'ok', softDeleted: true };
+}
+
+// ── Alias mapping ──────────────────────────────
+
+/** Upserts an alias -> branch link (editing an alias is a re-map through here). */
+function mapAlias(ss, data) {
+  var aliasText = String(data.aliasText || '').trim();
+  var branchId = String(data.branchId || '').trim();
+  if (!aliasText || !branchId) return { status: 'error', message: 'aliasText and branchId are required' };
+
+  var s = loadBranchStructure(ss);
+  if (!s.branchById[branchId]) return { status: 'error', message: 'Branch not found: ' + branchId };
+
+  var sheet = getOrCreateTab(ss, ALIAS_SHEET_TAB_NAME, ALIAS_HEADERS);
+  var norm = normalizeAlias(aliasText);
+  var now = new Date().toISOString();
+  var existing = null;
+  for (var i = 0; i < s.aliases.length; i++) {
+    if (normalizeAlias(s.aliases[i].aliasText) === norm) { existing = s.aliases[i]; break; }
+  }
+
+  if (existing) {
+    sheet.getRange(existing.rowNumber, 1, 1, ALIAS_HEADERS.length)
+         .setValues([[aliasText, branchId, data.mappedBy || '', now]]);
+  } else {
+    sheet.appendRow([aliasText, branchId, data.mappedBy || '', now]);
+  }
+  invalidateBranchCache();
+  return { status: 'ok', updated: !!existing };
+}
+
+function deleteAliasMapping(ss, data) {
+  var s = loadBranchStructure(ss);
+  var norm = normalizeAlias(data.aliasText);
+  for (var i = 0; i < s.aliases.length; i++) {
+    if (normalizeAlias(s.aliases[i].aliasText) === norm) {
+      ss.getSheetByName(ALIAS_SHEET_TAB_NAME).deleteRow(s.aliases[i].rowNumber);
+      invalidateBranchCache();
+      return { status: 'ok' };
+    }
+  }
+  return { status: 'error', message: 'Alias not found: ' + data.aliasText };
+}
+
+/**
+ * The admin panel's mapping queue: distinct manager/district strings taken only
+ * from complaints that FAIL to resolve to any branch. A complaint that already
+ * resolves (e.g. via its district) does not surface its manager name here — the
+ * queue empties itself as mappings are added.
+ */
+function getUnmappedAliases(ss) {
+  var s = loadBranchStructure(ss);
+  var candidates = {}; // norm -> { alias, source, count }
+
+  function addCandidate(raw, source) {
+    var norm = normalizeAlias(raw);
+    if (!norm || s.aliasMap[norm]) return;
+    if (!candidates[norm]) candidates[norm] = { alias: String(raw).trim(), source: source, count: 0 };
+    candidates[norm].count++;
+    if (source === 'manager') candidates[norm].source = 'manager'; // manager wins over district
+  }
+
+  var deptSheet = ss.getSheetByName(DEPT_SHEET_TAB_NAME);
+  if (deptSheet && deptSheet.getLastRow() > 1) {
+    var resolutions = getResolutionsMap(ss);
+    var rows = deptSheet.getRange(2, 1, deptSheet.getLastRow() - 1, DEPT_HEADERS.length).getValues();
+    for (var i = 0; i < rows.length; i++) {
+      var ticketId = String(rows[i][9] || '').trim();
+      var res = resolutions[ticketId] || { owningDistrictAdmin: '' };
+      if (resolveBranchId(s, [res.owningDistrictAdmin, rows[i][0]])) continue;
+      if (res.owningDistrictAdmin) addCandidate(res.owningDistrictAdmin, 'manager');
+      addCandidate(rows[i][0], 'district');
+    }
+  }
+
+  var advSheet = ss.getSheetByName(SHEET_TAB_NAME);
+  if (advSheet && advSheet.getLastRow() > 1) {
+    var advRows = advSheet.getRange(2, 1, advSheet.getLastRow() - 1, HEADERS.length).getValues();
+    for (var j = 0; j < advRows.length; j++) {
+      if (String(advRows[j][34] || '').trim() === 'YES') continue;
+      var status = String(advRows[j][23] || 'Open').trim();
+      if (status === 'Resolved' || status === 'Closed') continue;
+      var admin = getOwningDistrictAdmin(ss, advRows[j][8]);
+      if (resolveBranchId(s, [admin ? admin.name : '', advRows[j][8]])) continue;
+      if (admin) addCandidate(admin.name, 'manager');
+      addCandidate(advRows[j][8], 'district');
+    }
+  }
+
+  var list = Object.keys(candidates).map(function(k) { return candidates[k]; });
+  list.sort(function(a, b) {
+    if (a.source !== b.source) return a.source === 'manager' ? -1 : 1;
+    return b.count - a.count;
+  });
+  return list;
+}
+
+/**
+ * One-time application of the district -> branch mapping confirmed by Jignesh on
+ * 2026-07-04 (geographic attribution; Mahisagar -> Godhra; BR-05 renamed Baroda).
+ * Safe to re-run: mapAlias upserts. Future changes go through the admin panel's
+ * Branch Management tab or map_alias/delete_alias_mapping.
+ */
+function applyInitialBranchMappings() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+
+  var rename = updateBranch(ss, { id: 'BR-05', name: 'Baroda' });
+  Logger.log('Rename BR-05 to Baroda: ' + JSON.stringify(rename));
+
+  var mappings = {
+    'BR-01': ['AHMEDABAD', 'AMC', 'GANDHINAGAR'],                              // Ahmedabad
+    'BR-02': ['ARAVALLI', 'ARVALLI', 'BANASKANTHA', 'MAHESANA', 'PATAN', 'SABAR KANTHA'], // Mehsana (ARVALLI = variant seen in advance data)
+    'BR-03': ['BHARUCH'],                                                      // Bharuch
+    'BR-04': ['ANAND', 'KHEDA'],                                               // Anand
+    'BR-05': ['CHHOTAUDEPUR', 'NARMADA', 'VADODARA', 'VMC', 'BARODA'],         // Baroda
+    'BR-06': ['DAHOD', 'DOHAD', 'MAHISAGAR', 'PANCH MAHALS'],                  // Godhra (DOHAD = spelling variant in data)
+    'BR-07': ['KACHCHH'],                                                      // Bhuj
+    'BR-08': ['AMRELI', 'BHAVNAGAR', 'BOTAD'],                                 // Bhavnagar
+    'BR-09': ['DEVBHOOMI DWARKA', 'JAMNAGAR'],                                 // Jamnagar
+    'BR-10': ['MORBI', 'RAJKOT', 'RMC', 'XRMC', 'SURENDRANAGAR'],              // Rajkot (xRMC = variant seen in advance data)
+    'BR-11': ['GIR SOMNATH', 'JUNAGADH', 'PORBANDAR'],                         // Junagadh
+    'BR-12': ['VALSAD'],                                                       // Vapi
+    'BR-13': ['NAVSARI', 'SMC', 'SURAT', 'TAPI', 'THE DANGS']                  // Surat
+  };
+
+  var applied = 0, failed = 0;
+  for (var branchId in mappings) {
+    for (var i = 0; i < mappings[branchId].length; i++) {
+      var r = mapAlias(ss, { aliasText: mappings[branchId][i], branchId: branchId, mappedBy: 'initial-mapping-2026-07-04' });
+      if (r.status === 'ok') applied++;
+      else { failed++; Logger.log('Mapping FAILED for ' + mappings[branchId][i] + ': ' + r.message); }
+    }
+  }
+  Logger.log('Applied ' + applied + ' alias mapping(s), ' + failed + ' failed.');
+
+  var stillUnmapped = getUnmappedAliases(ss);
+  Logger.log('Unmapped queue after mapping: ' + stillUnmapped.length + ' string(s)');
+  stillUnmapped.forEach(function(u) { Logger.log('  [' + u.source + '] "' + u.alias + '" (' + u.count + ' records)'); });
+}
+
+/**
+ * Full department complaint list joined with internal status and resolved
+ * branch — the admin dashboard loads this once and filters client-side.
+ */
+function getDepartmentComplaintsList(ss) {
+  var s = loadBranchStructure(ss);
+  var resolutions = getResolutionsMap(ss);
+  var now = new Date();
+  var out = [];
+  var deptSheet = ss.getSheetByName(DEPT_SHEET_TAB_NAME);
+  if (!deptSheet || deptSheet.getLastRow() < 2) return out;
+
+  var rows = deptSheet.getRange(2, 1, deptSheet.getLastRow() - 1, DEPT_HEADERS.length).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i];
+    var ticketId = String(row[9] || '').trim();
+    if (!ticketId) continue;
+    var res = resolutions[ticketId] || { internalStatus: 'Pending', closureType: '', owningDistrictAdmin: '' };
+    var hit = resolveBranchId(s, [res.owningDistrictAdmin, row[0]]);
+    var br = hit ? s.branchById[hit.branchId] : null;
+    out.push({
+      ticketId: ticketId, district: row[0], school: row[8], schoolId: row[7],
+      assetType: row[11], deviceType: row[12], issueType: row[13],
+      contactName: row[16], phoneNumber: row[17], ticketStatus: row[19],
+      createdDate: row[21], businessDays: countBusinessDaysExcludingSundays(row[21], now),
+      internalStatus: res.internalStatus, closureType: res.closureType,
+      branchId: hit ? hit.branchId : '', branchName: br ? br.name : 'Unmapped'
+    });
+  }
+  return out;
+}
+
+/** Open complaints (department + advance) that resolve to one branch — drill-down. */
+function getBranchComplaints(ss, branchId) {
+  var s = loadBranchStructure(ss);
+  var result = { branchId: branchId, department: [], advance: [] };
+  if (!s.branchById[branchId]) return result;
+
+  var deptSheet = ss.getSheetByName(DEPT_SHEET_TAB_NAME);
+  if (deptSheet && deptSheet.getLastRow() > 1) {
+    var resolutions = getResolutionsMap(ss);
+    var rows = deptSheet.getRange(2, 1, deptSheet.getLastRow() - 1, DEPT_HEADERS.length).getValues();
+    for (var i = 0; i < rows.length; i++) {
+      var ticketId = String(rows[i][9] || '').trim();
+      var res = resolutions[ticketId] || { internalStatus: 'Pending', owningDistrictAdmin: '' };
+      if (res.internalStatus === 'Closed') continue;
+      var hit = resolveBranchId(s, [res.owningDistrictAdmin, rows[i][0]]);
+      if (!hit || hit.branchId !== branchId) continue;
+      result.department.push({
+        ticketId: ticketId, district: rows[i][0], school: rows[i][8],
+        assetType: rows[i][11], deviceType: rows[i][12], issueType: rows[i][13],
+        createdDate: rows[i][21], internalStatus: res.internalStatus,
+        businessDays: countBusinessDaysExcludingSundays(rows[i][21], new Date())
+      });
+    }
+  }
+
+  var advSheet = ss.getSheetByName(SHEET_TAB_NAME);
+  if (advSheet && advSheet.getLastRow() > 1) {
+    var advRows = advSheet.getRange(2, 1, advSheet.getLastRow() - 1, HEADERS.length).getValues();
+    for (var j = 0; j < advRows.length; j++) {
+      if (String(advRows[j][34] || '').trim() === 'YES') continue;
+      var status = String(advRows[j][23] || 'Open').trim();
+      if (status === 'Resolved' || status === 'Closed') continue;
+      var admin = getOwningDistrictAdmin(ss, advRows[j][8]);
+      var hit2 = resolveBranchId(s, [admin ? admin.name : '', advRows[j][8]]);
+      if (!hit2 || hit2.branchId !== branchId) continue;
+      result.advance.push({
+        caseId: advRows[j][24], district: advRows[j][8], school: advRows[j][10],
+        equipment: advRows[j][15], status: status, complaintDate: advRows[j][19],
+        businessDays: countBusinessDaysExcludingSundays(advRows[j][19] || advRows[j][1], new Date())
+      });
+    }
+  }
+
+  result.department.sort(function(a, b) { return b.businessDays - a.businessDays; });
+  result.advance.sort(function(a, b) { return b.businessDays - a.businessDays; });
+  return result;
+}
+
+/**
+ * Self-check for branch management. Run from the editor; safe to re-run.
+ * Exercises: seeding, duplicate-code rejection, both blocked-delete scenarios
+ * (office with branches / branch with complaints+aliases), soft delete, and
+ * cleans up its test rows afterwards.
+ */
+function runBranchMgmtTests() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  Logger.log('========== BRANCH MANAGEMENT SELF-CHECK STARTING ==========');
+
+  var seeded = seedBranchStructure();
+  var s = loadBranchStructure(ss);
+  Logger.log('Step 1 - structure: ' + s.offices.length + ' offices, ' + s.branches.length + ' branches (seeded this run: ' + JSON.stringify(seeded) + ')');
+  if (s.offices.length < 13 || s.branches.length < 13) {
+    Logger.log('❌ FAIL: expected at least 13 offices and 13 branches after seeding.');
+    return;
+  }
+  Logger.log('✅ PASS: 13 district offices and 13 branches present.');
+
+  var dup = createDistrictOffice(ss, { name: 'Dup Test', code: 'AHM' });
+  Logger.log('Step 2 - duplicate code result: ' + JSON.stringify(dup));
+  Logger.log(dup.status === 'error' ? '✅ PASS: duplicate DistrictOfficeCode rejected.' : '❌ FAIL: duplicate code was accepted!');
+
+  var testDO = createDistrictOffice(ss, { name: 'ZZTEST OFFICE', code: 'ZZT' });
+  var testBR = createBranch(ss, { name: 'ZZTEST BRANCH', code: 'ZZT-01', districtOfficeId: testDO.id });
+  Logger.log('Step 3 - created test office ' + testDO.id + ' and test branch ' + testBR.id);
+
+  var blockedDO = deleteDistrictOffice(ss, { id: testDO.id });
+  Logger.log('Step 4 - delete office with active branch: ' + JSON.stringify(blockedDO));
+  Logger.log(blockedDO.status === 'blocked' ? '✅ PASS: office delete blocked while a branch is linked.' : '❌ FAIL: office delete was NOT blocked!');
+
+  mapAlias(ss, { aliasText: 'KACHCHH', branchId: testBR.id, mappedBy: 'selftest' });
+  var blockedBR = deleteBranch(ss, { id: testBR.id });
+  Logger.log('Step 5 - delete branch with complaints+alias: ' + JSON.stringify(blockedBR));
+  var refsOk = blockedBR.status === 'blocked' && blockedBR.references &&
+               blockedBR.references.aliases >= 1 && blockedBR.references.departmentComplaints > 0;
+  Logger.log(refsOk ? '✅ PASS: branch delete blocked with reference counts (complaints via temporary KACHCHH alias).' : '❌ FAIL: branch delete blocking did not work as expected!');
+
+  deleteAliasMapping(ss, { aliasText: 'KACHCHH' });
+  var softBR = deleteBranch(ss, { id: testBR.id });
+  Logger.log('Step 6 - delete branch after removing references: ' + JSON.stringify(softBR));
+  Logger.log(softBR.status === 'ok' && softBR.softDeleted ? '✅ PASS: branch soft-deleted (Status=Inactive).' : '❌ FAIL: branch soft delete failed!');
+
+  var softDO = deleteDistrictOffice(ss, { id: testDO.id });
+  Logger.log('Step 7 - delete office after branch inactive: ' + JSON.stringify(softDO));
+  Logger.log(softDO.status === 'ok' && softDO.softDeleted ? '✅ PASS: office soft-deleted once no active branches remain.' : '❌ FAIL: office soft delete failed!');
+
+  cleanupBranchTestRows(ss);
+
+  var unmapped = getUnmappedAliases(ss);
+  Logger.log('Step 8 - unmapped strings in real data: ' + unmapped.length);
+  unmapped.forEach(function(u) { Logger.log('  [' + u.source + '] "' + u.alias + '" (' + u.count + ' records)'); });
+
+  Logger.log('========== BRANCH MANAGEMENT SELF-CHECK FINISHED - check for ❌ FAIL lines ==========');
+}
+
+function cleanupBranchTestRows(ss) {
+  var removed = 0;
+  var brSheet = ss.getSheetByName(BR_SHEET_TAB_NAME);
+  if (brSheet && brSheet.getLastRow() > 1) {
+    for (var r = brSheet.getLastRow(); r >= 2; r--) {
+      if (String(brSheet.getRange(r, 2).getValue()).indexOf('ZZTEST') === 0) { brSheet.deleteRow(r); removed++; }
+    }
+  }
+  var doSheet = ss.getSheetByName(DO_SHEET_TAB_NAME);
+  if (doSheet && doSheet.getLastRow() > 1) {
+    for (var r2 = doSheet.getLastRow(); r2 >= 2; r2--) {
+      if (String(doSheet.getRange(r2, 2).getValue()).indexOf('ZZTEST') === 0) { doSheet.deleteRow(r2); removed++; }
+    }
+  }
+  var alSheet = ss.getSheetByName(ALIAS_SHEET_TAB_NAME);
+  if (alSheet && alSheet.getLastRow() > 1) {
+    for (var r3 = alSheet.getLastRow(); r3 >= 2; r3--) {
+      if (String(alSheet.getRange(r3, 3).getValue()) === 'selftest') { alSheet.deleteRow(r3); removed++; }
+    }
+  }
+  invalidateBranchCache();
+  Logger.log('Cleanup: removed ' + removed + ' test row(s) from the structure sheets.');
+}
+
+
 // ═══════════════ SHEET FORMATTING ═══════════════
 
 function setupHeaders(sheet) {
@@ -1304,4 +2563,158 @@ function testBackend() {
   Logger.log("   Tab Name: " + sheet.getName());
   
   Logger.log("🎉 Test completed successfully! Your permissions are set up correctly.");
+}
+
+/**
+ * Beginner-friendly self-check for the Phase 1 Department Complaint additions.
+ * Run this from the Apps Script editor (select "runPhase1Tests" in the function
+ * dropdown, then click Run). Open View > Logs (or Ctrl+Enter) afterward to read
+ * the results. It creates two throwaway test tickets and deletes them again at
+ * the end, so it is safe to run more than once.
+ */
+function runPhase1Tests() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var TEST_TICKET = 'TEST/0001';
+  var TEST_DISE = 'TESTDISE001';
+
+  Logger.log('========== PHASE 1 SELF-CHECK STARTING ==========');
+
+  // 0. Make sure an IMPORT_KEY exists so import_department_complaints can run.
+  var key = PropertiesService.getScriptProperties().getProperty('IMPORT_KEY');
+  if (!key) {
+    key = 'TEMP_TEST_KEY_' + new Date().getTime();
+    PropertiesService.getScriptProperties().setProperty('IMPORT_KEY', key);
+    Logger.log('No IMPORT_KEY was set yet, so a temporary one was created for this test: ' + key);
+    Logger.log('If you already meant to set a real one, run setImportKey("your-secret") afterwards to replace it.');
+  } else {
+    Logger.log('IMPORT_KEY already set. Using it for this test.');
+  }
+
+  // 1. Reject a bad key.
+  var badResult = importDepartmentComplaints(ss, { importKey: 'WRONG_KEY', rows: [] });
+  Logger.log('Step 1 - wrong importKey should be rejected: ' + JSON.stringify(badResult));
+  if (badResult.status !== 'error') {
+    Logger.log('❌ FAIL: a wrong importKey was NOT rejected. Stop and report this.');
+    return;
+  }
+  Logger.log('✅ PASS: wrong importKey correctly rejected.');
+
+  // 2. Import one Pending row (should insert) and one Completed row (should be skipped).
+  var importResult = importDepartmentComplaints(ss, {
+    importKey: key,
+    importSource: 'PHASE1_SELFTEST',
+    rows: [
+      {
+        District: 'ZZTESTDISTRICT', SchoolId: TEST_DISE, School: 'Self-Test School',
+        TicketId: TEST_TICKET, Asset_Type: 'ICT Lab', Device_Type: 'Monitor',
+        Issue_Type: 'Display Issues', Contact_Name: 'Test Contact',
+        Phone_Number: '9999999999', Ticket_Status: 'Pending',
+        CreatedDate: new Date().toISOString(), TotalDaysOfTicket: 1
+      },
+      {
+        District: 'ZZTESTDISTRICT', SchoolId: 'TESTDISE002', School: 'Ignore Me',
+        TicketId: 'TEST/0002', Ticket_Status: 'Completed'
+      }
+    ]
+  });
+  Logger.log('Step 2 - import result (expect inserted:1, updated:0): ' + JSON.stringify(importResult));
+  if (importResult.inserted !== 1 || importResult.updated !== 0) {
+    Logger.log('❌ FAIL: expected exactly 1 inserted and 0 updated.');
+  } else {
+    Logger.log('✅ PASS: only the Pending row was inserted; the Completed row was correctly skipped.');
+  }
+
+  // 3. Re-import the same Pending row - should now be an update, not a new insert.
+  var importAgain = importDepartmentComplaints(ss, {
+    importKey: key,
+    importSource: 'PHASE1_SELFTEST',
+    rows: [{
+      District: 'ZZTESTDISTRICT', SchoolId: TEST_DISE, School: 'Self-Test School',
+      TicketId: TEST_TICKET, Ticket_Status: 'InProgress', TotalDaysOfTicket: 2
+    }]
+  });
+  Logger.log('Step 3 - re-import result (expect inserted:0, updated:1): ' + JSON.stringify(importAgain));
+  if (importAgain.inserted !== 0 || importAgain.updated !== 1) {
+    Logger.log('❌ FAIL: the second import should have updated the existing row, not inserted a new one.');
+  } else {
+    Logger.log('✅ PASS: duplicate TicketId correctly updated the existing row instead of duplicating it.');
+  }
+
+  // 4. Look the ticket up by DISE code - should be open, status Pending.
+  var lookup = getDepartmentComplaintsForSchool(ss, TEST_DISE);
+  Logger.log('Step 4 - get_department_complaint result: ' + JSON.stringify(lookup));
+  if (lookup.length !== 1 || lookup[0].internalStatus !== 'Pending') {
+    Logger.log('❌ FAIL: expected exactly one open ticket with internalStatus Pending.');
+  } else {
+    Logger.log('✅ PASS: ticket found and open, with the expected internal status.');
+  }
+
+  // 5. Resolve it via the "closed without OTP -> finalize" path.
+  var closeWithoutOtp = resolveDepartmentComplaint(ss, {
+    ticketId: TEST_TICKET, resolutionAction: 'closed_without_otp',
+    resolvedBy: 'Self-Test Technician', technicianName: 'Self-Test Technician',
+    diagnosisNotes: 'Self-test diagnosis'
+  });
+  Logger.log('Step 5a - closed_without_otp result (expect internalStatus PendingOTP): ' + JSON.stringify(closeWithoutOtp));
+
+  var finalize = resolveDepartmentComplaint(ss, {
+    ticketId: TEST_TICKET, resolutionAction: 'finalize_otp',
+    otp: '123456', resolvedBy: 'Self-Test Ops'
+  });
+  Logger.log('Step 5b - finalize_otp result (expect internalStatus Closed): ' + JSON.stringify(finalize));
+  if (finalize.status !== 'ok' || finalize.internalStatus !== 'Closed') {
+    Logger.log('❌ FAIL: finalize_otp should have closed the ticket.');
+  } else {
+    Logger.log('✅ PASS: closed-without-OTP -> finalize-OTP flow works correctly.');
+  }
+
+  // 6. Confirm the closed ticket no longer shows up as "open" for that school.
+  var lookupAfterClose = getDepartmentComplaintsForSchool(ss, TEST_DISE);
+  Logger.log('Step 6 - lookup after closing (expect empty array): ' + JSON.stringify(lookupAfterClose));
+  if (lookupAfterClose.length !== 0) {
+    Logger.log('❌ FAIL: a Closed ticket should not appear in the open-tickets lookup.');
+  } else {
+    Logger.log('✅ PASS: closed ticket correctly excluded from open lookups.');
+  }
+
+  // 7. Dashboard should at least run without errors and report a closedWithoutOTP count.
+  var dashboard = getDepartmentDashboard(ss);
+  Logger.log('Step 7 - dashboard pendency: ' + JSON.stringify(dashboard.pendency));
+  Logger.log('Step 7 - dashboard branches: ' + JSON.stringify(dashboard.branches));
+  if (!dashboard.pendency || dashboard.pendency.closedWithoutOTP < 1) {
+    Logger.log('❌ FAIL: expected at least 1 closedWithoutOTP ticket counted in the dashboard.');
+  } else {
+    Logger.log('✅ PASS: dashboard aggregation includes the test ticket correctly.');
+  }
+
+  // 8. Cleanup: remove the test rows from both new tabs so they don't pollute real data.
+  cleanupPhase1TestRows(ss, [TEST_TICKET, 'TEST/0002']);
+
+  Logger.log('========== PHASE 1 SELF-CHECK FINISHED - scroll up and check for any ❌ FAIL lines ==========');
+}
+
+function cleanupPhase1TestRows(ss, ticketIds) {
+  var deptSheet = ss.getSheetByName(DEPT_SHEET_TAB_NAME);
+  var resSheet = ss.getSheetByName(RES_SHEET_TAB_NAME);
+  var removedDept = 0, removedRes = 0;
+
+  if (deptSheet && deptSheet.getLastRow() > 1) {
+    for (var r = deptSheet.getLastRow(); r >= 2; r--) {
+      var tid = String(deptSheet.getRange(r, 10).getValue()).trim(); // col 10 = TicketId
+      if (ticketIds.indexOf(tid) !== -1) {
+        deptSheet.deleteRow(r);
+        removedDept++;
+      }
+    }
+  }
+  if (resSheet && resSheet.getLastRow() > 1) {
+    for (var r2 = resSheet.getLastRow(); r2 >= 2; r2--) {
+      var tid2 = String(resSheet.getRange(r2, 1).getValue()).trim(); // col 1 = TicketId
+      if (ticketIds.indexOf(tid2) !== -1) {
+        resSheet.deleteRow(r2);
+        removedRes++;
+      }
+    }
+  }
+  Logger.log('Cleanup: removed ' + removedDept + ' row(s) from DepartmentComplaints and ' + removedRes + ' row(s) from DepartmentResolutions.');
 }

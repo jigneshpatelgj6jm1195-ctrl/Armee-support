@@ -5,3 +5,23 @@ __pycache__/
 .git/
 .vscode/
 .idea/
+
+.vercel
+.env*
+
+# Local mock database files
+dash.json
+dash2.json
+deptlist.json
+dl.json
+reg.json
+
+# Backup folders
+backup_local_edits/
+.claude/
+
+# Node.js dependencies and scraper downloads
+node_modules/
+scraper/node_modules/
+scraper/downloads/
+

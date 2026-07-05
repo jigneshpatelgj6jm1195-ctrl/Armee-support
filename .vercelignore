@@ -1,0 +1,8 @@
+backup_local_edits
+scraper
+__pycache__
+.claude
+*.bat
+google_apps_script_backend.js
+export_and_launch.py
+School complaint format 23.6.25.xlsx

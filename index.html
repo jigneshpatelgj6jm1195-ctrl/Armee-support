@@ -545,6 +545,56 @@ textarea { resize: none; min-height: 80px; }
   </div>
 </div>
 
+<!-- SEGMENT SELECTION SCREEN (engineers only) -->
+<div id="segmentScreen" style="display:none; overflow-y:auto; padding:24px 16px;">
+  <div style="width:100%; max-width:400px; margin:0 auto; display:flex; flex-direction:column; align-items:center;">
+    <img src="armee_logo.png" alt="ArMee Logo" style="height:72px; width:auto; margin-bottom:12px; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.15));" />
+    <h2 style="font-size:1.1rem; font-weight:800; color:var(--primary); margin-bottom:2px; text-align:center;" id="segGreeting">Welcome!</h2>
+    <div style="font-size:0.75rem; font-weight:700; color:var(--muted); margin-bottom:24px; text-align:center;">What would you like to work on?</div>
+
+    <button onclick="enterAdvance()" style="width:100%; background:white; border:2px solid var(--border); border-radius:16px; padding:18px 16px; margin-bottom:14px; cursor:pointer; text-align:left; display:flex; align-items:center; gap:14px; box-shadow:0 2px 8px rgba(0,0,0,0.05);">
+      <div style="font-size:2rem;">📝</div>
+      <div>
+        <div style="font-size:0.95rem; font-weight:800; color:var(--text);">Advance Complaint</div>
+        <div style="font-size:0.72rem; color:var(--muted); margin-top:2px;">Register a new school equipment complaint (DISE lookup, photos, serial number)</div>
+      </div>
+    </button>
+
+    <button onclick="enterDepartment()" style="width:100%; background:white; border:2px solid var(--border); border-radius:16px; padding:18px 16px; cursor:pointer; text-align:left; display:flex; align-items:center; gap:14px; box-shadow:0 2px 8px rgba(0,0,0,0.05);">
+      <div style="font-size:2rem;">🏛️</div>
+      <div>
+        <div style="font-size:0.95rem; font-weight:800; color:var(--text);">Department Complaint</div>
+        <div style="font-size:0.72rem; color:var(--muted); margin-top:2px;">Resolve government portal tickets on site (OTP closure / part request)</div>
+      </div>
+    </button>
+  </div>
+</div>
+
+<!-- DEPARTMENT COMPLAINT SCREEN -->
+<div id="departmentScreen" style="display:none; overflow-y:auto; padding:16px;">
+  <div style="width:100%; max-width:480px; margin:0 auto;">
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+      <button onclick="backToSegment()" style="background:white; border:1.5px solid var(--border); border-radius:10px; padding:8px 12px; cursor:pointer; font-weight:700;">←</button>
+      <div>
+        <div style="font-size:1rem; font-weight:800; color:var(--primary);">🏛️ Department Complaints</div>
+        <div style="font-size:0.7rem; color:var(--muted);">Government portal tickets for a school</div>
+      </div>
+    </div>
+
+    <div style="background:white; border:1.5px solid var(--border); border-radius:14px; padding:14px; margin-bottom:14px;">
+      <label style="font-size:0.75rem; font-weight:700; display:block; margin-bottom:6px;">School DISE Code</label>
+      <div style="display:flex; gap:8px;">
+        <input type="tel" id="deptDiseInput" placeholder="e.g. 24010102801" inputmode="numeric" maxlength="13"
+               style="flex:1; padding:11px 12px; border:2px solid var(--border); border-radius:10px; font-size:0.9rem; outline:none;"
+               onkeydown="if(event.key==='Enter')searchDeptTickets()" />
+        <button id="deptSearchBtn" onclick="searchDeptTickets()" style="background:var(--primary); color:white; border:none; border-radius:10px; padding:0 18px; font-weight:800; cursor:pointer;">Search</button>
+      </div>
+    </div>
+
+    <div id="deptResults"></div>
+  </div>
+</div>
+
 <!-- MAIN APP -->
 <div id="app" style="display:none;">
 
@@ -1090,7 +1140,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   startMasterDataPolling(); // cross-device real-time sync
 
   const user = getUser();
-  if (!user) { showSetupScreen(); } else { startApp(user); }
+  if (!user) { showSetupScreen(); } else { showSegmentScreen(user); }
 
   document.getElementById('lookupDise').addEventListener('keydown', e => {
     if (e.key === 'Enter') triggerLookup();
@@ -1468,7 +1518,159 @@ function saveUser() {
   
   localStorage.setItem('complainant', JSON.stringify({ name, phone, role }));
   document.getElementById('setupScreen').style.display = 'none';
-  startApp({ name, phone, role });
+  showSegmentScreen({ name, phone, role });
+}
+
+/* ─────────────── SEGMENT MENU + DEPARTMENT COMPLAINTS ─────────────── */
+// Teachers go straight into the normal complaint form; only engineers get the
+// Advance/Department choice, since department tickets are engineer work.
+function showSegmentScreen(user) {
+  if ((user.role || '').toLowerCase().trim() !== 'engineer') { startApp(user); return; }
+  document.getElementById('loadingScreen').style.display = 'none';
+  document.getElementById('setupScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('departmentScreen').style.display = 'none';
+  document.getElementById('segGreeting').textContent = 'Welcome, ' + (user.name || '').split(' ')[0] + '!';
+  document.getElementById('segmentScreen').style.display = 'flex';
+}
+function enterAdvance() {
+  document.getElementById('segmentScreen').style.display = 'none';
+  startApp(getUser());
+}
+function enterDepartment() {
+  document.getElementById('segmentScreen').style.display = 'none';
+  document.getElementById('departmentScreen').style.display = 'flex';
+  setTimeout(() => document.getElementById('deptDiseInput').focus(), 100);
+}
+function backToSegment() {
+  document.getElementById('departmentScreen').style.display = 'none';
+  showSegmentScreen(getUser());
+}
+
+let deptTickets = [];
+
+async function searchDeptTickets() {
+  const dise = document.getElementById('deptDiseInput').value.trim();
+  if (!/^\d{8,13}$/.test(dise)) { showToast('Enter a valid DISE code (numbers only)', 'warn'); return; }
+  const btn = document.getElementById('deptSearchBtn');
+  const results = document.getElementById('deptResults');
+  btn.disabled = true; btn.textContent = '…';
+  results.innerHTML = '<div style="text-align:center; color:var(--muted); padding:20px; font-size:0.8rem;">Searching…</div>';
+  try {
+    const res = await fetch(GOOGLE_SCRIPT_URL + '?action=get_department_complaint&dise=' + encodeURIComponent(dise) + '&t=' + Date.now());
+    deptTickets = await res.json();
+    renderDeptTickets();
+  } catch (e) {
+    results.innerHTML = '';
+    showToast('Network error: ' + e.message, 'danger');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Search';
+  }
+}
+
+function deptStatusChip(status) {
+  const map = {
+    'Pending':     ['#fef2f2', '#b91c1c', 'Pending'],
+    'InProgress':  ['#fefce8', '#a16207', 'In Progress'],
+    'PartRequest': ['#f5f3ff', '#6d28d9', 'Part Requested'],
+    'PendingOTP':  ['#fff7ed', '#c2410c', 'Awaiting OTP (office)'],
+  };
+  const m = map[status] || map['Pending'];
+  return '<span style="background:' + m[0] + '; color:' + m[1] + '; padding:2px 10px; border-radius:10px; font-size:0.68rem; font-weight:800;">' + m[2] + '</span>';
+}
+
+function escDept(str) {
+  return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function renderDeptTickets() {
+  const results = document.getElementById('deptResults');
+  if (!Array.isArray(deptTickets) || !deptTickets.length) {
+    results.innerHTML = '<div style="background:white; border:1.5px solid var(--border); border-radius:14px; padding:24px; text-align:center; color:var(--muted); font-size:0.85rem;">✅ No open department tickets for this school.</div>';
+    return;
+  }
+  const t0 = deptTickets[0];
+  results.innerHTML =
+    '<div style="background:#f0f4ff; border:1.5px solid var(--border); border-radius:14px; padding:12px 14px; margin-bottom:12px;">' +
+      '<div style="font-weight:800; font-size:0.88rem;">' + escDept(t0.school) + '</div>' +
+      '<div style="font-size:0.7rem; color:var(--muted);">' + escDept(t0.district) + ' · ' + escDept(t0.block) + ' · ' + escDept(t0.village) + ' — ' + deptTickets.length + ' open ticket(s)</div>' +
+    '</div>' +
+    deptTickets.map((t, i) =>
+      '<div style="background:white; border:1.5px solid var(--border); border-radius:14px; padding:14px; margin-bottom:12px;">' +
+        '<div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;">' +
+          '<div style="font-weight:800; font-size:0.85rem;">🎫 ' + escDept(t.ticketId) + '</div>' + deptStatusChip(t.internalStatus) +
+        '</div>' +
+        '<div style="font-size:0.78rem; margin-bottom:4px;"><b>' + escDept(t.deviceType) + '</b> — ' + escDept(t.issueType) + '</div>' +
+        '<div style="font-size:0.74rem; color:var(--muted); margin-bottom:6px;">' + escDept(t.issueDetails) + '</div>' +
+        '<div style="font-size:0.72rem; color:var(--muted); margin-bottom:10px;">👤 ' + escDept(t.contactName) + ' · 📞 ' + escDept(t.phoneNumber) + ' · ' + (t.totalDaysOfTicket || 0) + ' days old</div>' +
+        (t.internalStatus === 'PendingOTP'
+          ? '<div style="font-size:0.74rem; background:#fff7ed; color:#c2410c; border-radius:10px; padding:8px 10px;">This ticket was closed on site without OTP. The back office will finalize it once the OTP is collected.</div>'
+          : '<div style="display:flex; gap:6px; flex-wrap:wrap;">' +
+              '<button onclick="deptAction(' + i + ', \'closed_with_otp\')" style="flex:1; min-width:110px; background:#16a34a; color:white; border:none; border-radius:10px; padding:9px 6px; font-size:0.72rem; font-weight:800; cursor:pointer;">✅ Close with OTP</button>' +
+              '<button onclick="deptAction(' + i + ', \'closed_without_otp\')" style="flex:1; min-width:110px; background:#f59e0b; color:white; border:none; border-radius:10px; padding:9px 6px; font-size:0.72rem; font-weight:800; cursor:pointer;">📩 Close without OTP</button>' +
+              '<button onclick="deptAction(' + i + ', \'part_request\')" style="flex:1; min-width:110px; background:#7c3aed; color:white; border:none; border-radius:10px; padding:9px 6px; font-size:0.72rem; font-weight:800; cursor:pointer;">🔧 Part Request</button>' +
+            '</div>' +
+            '<div id="deptForm' + i + '" style="display:none; margin-top:10px; border-top:1.5px dashed var(--border); padding-top:10px;"></div>'
+        ) +
+      '</div>'
+    ).join('');
+}
+
+function deptAction(i, action) {
+  // Close any other open forms first
+  deptTickets.forEach((_, j) => { const f = document.getElementById('deptForm' + j); if (f && j !== i) f.style.display = 'none'; });
+  const form = document.getElementById('deptForm' + i);
+  const titles = {
+    'closed_with_otp': ['✅ Close with OTP', 'Ask the school contact for the OTP and enter it below.'],
+    'closed_without_otp': ['📩 Close without OTP', 'The ticket will wait for the back office to enter the OTP later.'],
+    'part_request': ['🔧 Part Request', 'Marks this ticket as waiting for a spare part.'],
+  };
+  form.innerHTML =
+    '<div style="font-weight:800; font-size:0.78rem; margin-bottom:4px;">' + titles[action][0] + '</div>' +
+    '<div style="font-size:0.7rem; color:var(--muted); margin-bottom:8px;">' + titles[action][1] + '</div>' +
+    (action === 'closed_with_otp'
+      ? '<input type="tel" id="deptOtp' + i + '" placeholder="OTP from school contact" inputmode="numeric" maxlength="8" style="width:100%; padding:10px 12px; border:2px solid var(--border); border-radius:10px; font-size:0.85rem; margin-bottom:8px; outline:none;" />'
+      : '') +
+    '<textarea id="deptNotes' + i + '" placeholder="Diagnosis / work done (optional)" rows="2" style="width:100%; padding:10px 12px; border:2px solid var(--border); border-radius:10px; font-size:0.8rem; margin-bottom:8px; outline:none; resize:vertical; font-family:inherit;"></textarea>' +
+    '<div style="display:flex; gap:8px;">' +
+      '<button onclick="this.closest(\'div\').parentElement.style.display=\'none\'" style="flex:1; background:white; border:1.5px solid var(--border); border-radius:10px; padding:10px; font-size:0.75rem; font-weight:700; cursor:pointer;">Cancel</button>' +
+      '<button id="deptSubmit' + i + '" onclick="submitDeptResolution(' + i + ', \'' + action + '\')" style="flex:2; background:var(--primary); color:white; border:none; border-radius:10px; padding:10px; font-size:0.75rem; font-weight:800; cursor:pointer;">Confirm</button>' +
+    '</div>';
+  form.style.display = 'block';
+}
+
+async function submitDeptResolution(i, action) {
+  const t = deptTickets[i];
+  const user = getUser() || {};
+  const otpField = document.getElementById('deptOtp' + i);
+  const otp = otpField ? otpField.value.trim() : '';
+  if (action === 'closed_with_otp' && !otp) { showToast('Enter the OTP first', 'warn'); return; }
+  const notes = (document.getElementById('deptNotes' + i) || { value: '' }).value.trim();
+
+  const btn = document.getElementById('deptSubmit' + i);
+  btn.disabled = true; btn.textContent = '⏳ Sending…';
+  try {
+    const res = await fetch(GOOGLE_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'resolve_department_complaint',
+        ticketId: t.ticketId,
+        resolutionAction: action,
+        otp: otp,
+        resolvedBy: (user.name || '') + ' (' + (user.phone || '') + ')',
+        technicianName: user.name || '',
+        diagnosisNotes: notes,
+      }),
+    });
+    const out = await res.json();
+    if (out.status !== 'ok') throw new Error(out.message || 'Server rejected the update');
+    showToast('✅ Ticket ' + t.ticketId + ' updated!', 'success');
+    searchDeptTickets(); // refresh the list
+  } catch (e) {
+    showToast('❌ ' + e.message, 'danger');
+    btn.disabled = false; btn.textContent = 'Confirm';
+  }
 }
 function startApp(user) {
   document.getElementById('loadingScreen').style.display = 'none';
