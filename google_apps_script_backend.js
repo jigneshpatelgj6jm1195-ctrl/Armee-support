@@ -86,7 +86,8 @@ const DEPT_HEADERS = [
 // Our internal resolution/tracking layer, keyed by TicketId. Never blended into DEPT_HEADERS.
 const RES_HEADERS = [
   'TicketId', 'InternalStatus', 'ClosureType', 'OtpValue', 'ResolvedBy', 'TechnicianName',
-  'DiagnosisNotes', 'ResolvedAt', 'OwningDistrictAdmin'
+  'DiagnosisNotes', 'ResolvedAt', 'OwningDistrictAdmin',
+  'Equipment', 'NatureOfComplaint', 'Quantity', 'ResolutionDate', 'SerialNumber', 'SerialPhotoURL', 'SuspectedPart'
 ];
 
 // -- BRANCH / DISTRICT OFFICE STRUCTURE --
@@ -1385,6 +1386,13 @@ function getResolutionsMap(ss) {
       diagnosisNotes: row[6] || '',
       resolvedAt: row[7] || '',
       owningDistrictAdmin: row[8] || '',
+      equipment: row[9] || '',
+      natureOfComplaint: row[10] || '',
+      quantity: row[11] || 1,
+      resolutionDate: row[12] || '',
+      serialNumber: row[13] || '',
+      serialPhotoUrl: row[14] || '',
+      suspectedPart: row[15] || '',
       rowNumber: i + 2
     };
   }
@@ -1434,6 +1442,8 @@ function resolveDepartmentComplaint(ss, data) {
   if (!ticketId) return { status: 'error', message: 'ticketId is required' };
 
   var resSheet = getOrCreateResSheet(ss);
+  setupResHeaders(resSheet); // Ensure headers are migrated automatically
+
   var map = getResolutionsMap(ss);
   var existing = map[ticketId];
   var now = new Date().toISOString();
@@ -1461,12 +1471,40 @@ function resolveDepartmentComplaint(ss, data) {
     return { status: 'error', message: 'Unknown resolutionAction: ' + action };
   }
 
+  // Handle Serial Number Photo upload to Google Drive if provided
+  var serialPhotoUrl = '';
+  if (data.serialPhoto) {
+    try {
+      var folder = getPhotoFolder("Department", now);
+      var sfname = ticketId + '_' + new Date().getTime() + '_serial.jpg';
+      var sresult = uploadPhotoToDrive(data.serialPhoto, sfname, folder);
+      if (sresult) {
+        serialPhotoUrl = sresult.openUrl;
+      }
+    } catch (e) {
+      Logger.log('Error uploading serial photo for department resolution: ' + e.toString());
+    }
+  } else if (existing && existing.serialPhotoUrl) {
+    serialPhotoUrl = existing.serialPhotoUrl;
+  }
+
   var newRow = [
-    ticketId, internalStatus, closureType,
+    ticketId, 
+    internalStatus, 
+    closureType,
     action === 'closed_with_otp' ? (data.otp || '') : '',
-    data.resolvedBy || '', data.technicianName || '', data.diagnosisNotes || '',
+    data.resolvedBy || '', 
+    data.technicianName || '', 
+    data.diagnosisNotes || '',
     internalStatus === 'PartRequest' ? '' : now,
-    existing ? existing.owningDistrictAdmin : ''
+    existing ? existing.owningDistrictAdmin : '',
+    data.equipment || '',
+    data.natureOfComplaint || '',
+    data.quantity || 1,
+    data.resolutionDate || '',
+    data.serialNumber || '',
+    serialPhotoUrl,
+    data.suspectedPart || ''
   ];
 
   if (existing) {

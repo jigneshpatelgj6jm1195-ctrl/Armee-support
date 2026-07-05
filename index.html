@@ -1616,6 +1616,8 @@ function renderDeptTickets() {
     ).join('');
 }
 
+let deptSerialPhotos = {};
+
 function deptAction(i, action) {
   // Close any other open forms first
   deptTickets.forEach((_, j) => { const f = document.getElementById('deptForm' + j); if (f && j !== i) f.style.display = 'none'; });
@@ -1625,29 +1627,241 @@ function deptAction(i, action) {
     'closed_without_otp': ['📩 Close without OTP', 'The ticket will wait for the back office to enter the OTP later.'],
     'part_request': ['🔧 Part Request', 'Marks this ticket as waiting for a spare part.'],
   };
+
   form.innerHTML =
-    '<div style="font-weight:800; font-size:0.78rem; margin-bottom:4px;">' + titles[action][0] + '</div>' +
-    '<div style="font-size:0.7rem; color:var(--muted); margin-bottom:8px;">' + titles[action][1] + '</div>' +
+    '<div style="font-weight:800; font-size:0.82rem; margin-bottom:12px; color:var(--primary);">' + titles[action][0] + '</div>' +
+    
+    // ── Equipment Selection ──
+    '<div class="field" style="margin-bottom:12px;">' +
+      '<label style="font-size:0.75rem; font-weight:700;">Equipment <span class="req">*</span></label>' +
+      '<select id="deptEquip_' + i + '" onchange="onDeptEquipChange(' + i + ')" style="padding:10px 12px; border-radius:10px; font-size:0.85rem;">' +
+        '<option value="">— Select Equipment —</option>' +
+      '</select>' +
+    '</div>' +
+
+    // ── Nature of Complaint ──
+    '<div class="field" style="margin-bottom:12px;">' +
+      '<label style="font-size:0.75rem; font-weight:700;">Nature of Complaint <span class="req">*</span></label>' +
+      '<select id="deptNature_' + i + '" style="padding:10px 12px; border-radius:10px; font-size:0.85rem;">' +
+        '<option value="">— Select Equipment First —</option>' +
+      '</select>' +
+    '</div>' +
+
+    // ── Quantity & Date ──
+    '<div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">' +
+      '<div class="field" style="margin-bottom:0;">' +
+        '<label style="font-size:0.75rem; font-weight:700;">Quantity <span class="req">*</span></label>' +
+        '<input type="number" id="deptQty_' + i + '" min="1" max="99" value="1" inputmode="numeric" placeholder="1" style="padding:10px 12px; border-radius:10px; font-size:0.85rem;" />' +
+      '</div>' +
+      '<div class="field" style="margin-bottom:0;">' +
+        '<label style="font-size:0.75rem; font-weight:700;">Date <span class="req">*</span></label>' +
+        '<input type="date" id="deptDate_' + i + '" style="padding:10px 12px; border-radius:10px; font-size:0.85rem;" />' +
+      '</div>' +
+    '</div>' +
+
+    // ── Serial Number & Scan Button ──
+    '<div class="field" style="margin-bottom:12px;">' +
+      '<label style="font-size:0.75rem; font-weight:700;">Serial Number <span class="req">*</span></label>' +
+      '<div style="display:flex; gap:4px; align-items:center;">' +
+        '<input type="text" id="deptSerial_' + i + '" placeholder="e.g. SN20240001" autocapitalize="characters" style="flex:1; margin-bottom:0; padding:10px 12px; border-radius:10px; font-size:0.85rem;" />' +
+        '<button type="button" class="btn-cam" style="flex-shrink:0; width:auto; padding:0 14px; height:43px; margin:0; border-radius:10px; font-size:0.82rem; border:none; background:var(--primary); color:white; font-weight:700; cursor:pointer;" onclick="startScanner(\'deptSerial_' + i + '\')">📷 Scan</button>' +
+      '</div>' +
+    '</div>' +
+
+    // ── Serial Number Photo Capture ──
+    '<div class="field" style="margin-bottom:12px;">' +
+      '<label style="display:flex; justify-content:space-between; align-items:center; font-size:0.75rem; font-weight:700;">' +
+        '<span>Serial Number Photo <span class="req">*</span></span>' +
+        '<span style="font-size:0.7rem; font-weight:normal; color:var(--muted);">For verification</span>' +
+      '</label>' +
+      '<div style="display:flex; gap:8px; margin-bottom:8px;">' +
+        '<button type="button" class="btn-cam" onclick="document.getElementById(\'deptSerialCamera_' + i + '\').click()" style="flex:1; justify-content:center; padding:10px; margin:0; font-size:0.8rem; border-radius:10px; cursor:pointer;">📷 Camera</button>' +
+        '<button type="button" class="btn-gal" onclick="document.getElementById(\'deptSerialGallery_' + i + '\').click()" style="flex:1; justify-content:center; padding:10px; margin:0; font-size:0.8rem; border-radius:10px; cursor:pointer;">🖼️ Gallery</button>' +
+      '</div>' +
+      '<input type="file" id="deptSerialCamera_' + i + '" accept="image/*" capture="environment" style="display:none" onchange="addDeptSerialPhoto(event, ' + i + ')" />' +
+      '<input type="file" id="deptSerialGallery_' + i + '" accept="image/*" style="display:none" onchange="addDeptSerialPhoto(event, ' + i + ')" />' +
+      '<div class="photo-grid" id="deptSerialPhotoGrid_' + i + '" style="margin-bottom:6px;"></div>' +
+      '<div id="noDeptSerialPhotoMsg_' + i + '" style="text-align:center;padding:12px;color:var(--muted);font-size:0.8rem;font-weight:700;border:1px dashed rgba(0,0,0,0.1);border-radius:10px;background:#fafafa;">' +
+        '📷 Attach 1 photo of the serial number sticker/plate.' +
+      '</div>' +
+    '</div>' +
+
+    // ── Suspected Part Dropdown ──
+    '<div class="field" style="margin-bottom:12px;">' +
+      '<label style="color:#ef4444; font-weight:600; font-size:0.75rem;">Suspected Part <span style="font-size:0.72rem; font-weight:normal; color:#ef4444;">(if having a part issue)</span></label>' +
+      '<select id="deptSuspectedPart_' + i + '" style="padding:10px 12px; border-radius:10px; font-size:0.85rem;">' +
+        '<option value="">— Select Suspected Part —</option>' +
+      '</select>' +
+    '</div>' +
+
+    // ── Description / Diagnosis Notes ──
+    '<div class="field" style="margin-bottom:12px;">' +
+      '<label style="font-size:0.75rem; font-weight:700;">Diagnosis / work done (optional)</label>' +
+      '<textarea id="deptNotes_' + i + '" placeholder="Diagnosis / work done (optional)" rows="2" style="width:100%; padding:10px 12px; border:2px solid var(--border); border-radius:10px; font-size:0.8rem; outline:none; resize:vertical; font-family:inherit;"></textarea>' +
+    '</div>' +
+
+    // ── OTP verification field (only if closed with OTP) ──
     (action === 'closed_with_otp'
-      ? '<input type="tel" id="deptOtp' + i + '" placeholder="OTP from school contact" inputmode="numeric" maxlength="8" style="width:100%; padding:10px 12px; border:2px solid var(--border); border-radius:10px; font-size:0.85rem; margin-bottom:8px; outline:none;" />'
+      ? '<div class="field" style="margin-bottom:12px;">' +
+          '<label style="font-size:0.75rem; font-weight:700;">OTP from school contact <span class="req">*</span></label>' +
+          '<input type="tel" id="deptOtp_' + i + '" placeholder="OTP from school contact" inputmode="numeric" maxlength="8" style="width:100%; padding:10px 12px; border:2px solid var(--border); border-radius:10px; font-size:0.85rem; outline:none;" />' +
+        '</div>'
       : '') +
-    '<textarea id="deptNotes' + i + '" placeholder="Diagnosis / work done (optional)" rows="2" style="width:100%; padding:10px 12px; border:2px solid var(--border); border-radius:10px; font-size:0.8rem; margin-bottom:8px; outline:none; resize:vertical; font-family:inherit;"></textarea>' +
+
+    // ── Confirmation and Cancel Buttons ──
+    '<div style="font-size:0.7rem; color:var(--muted); margin-bottom:8px;">' + titles[action][1] + '</div>' +
     '<div style="display:flex; gap:8px;">' +
       '<button onclick="this.closest(\'div\').parentElement.style.display=\'none\'" style="flex:1; background:white; border:1.5px solid var(--border); border-radius:10px; padding:10px; font-size:0.75rem; font-weight:700; cursor:pointer;">Cancel</button>' +
-      '<button id="deptSubmit' + i + '" onclick="submitDeptResolution(' + i + ', \'' + action + '\')" style="flex:2; background:var(--primary); color:white; border:none; border-radius:10px; padding:10px; font-size:0.75rem; font-weight:800; cursor:pointer;">Confirm</button>' +
+      '<button id="deptSubmit_' + i + '" onclick="submitDeptResolution(' + i + ', \'' + action + '\')" style="flex:2; background:var(--primary); color:white; border:none; border-radius:10px; padding:10px; font-size:0.75rem; font-weight:800; cursor:pointer;">Confirm</button>' +
     '</div>';
+
   form.style.display = 'block';
+
+  // Pre-fill Date
+  document.getElementById('deptDate_' + i).value = todayDate();
+
+  // Populate dynamic lists
+  populateDeptDropdowns(i);
+}
+
+function populateDeptDropdowns(i) {
+  const eqSel = document.getElementById('deptEquip_' + i);
+  if (eqSel) {
+    eqSel.innerHTML = '<option value="">— Select Equipment —</option>';
+    const eqList = (MASTER_DB.equipment || []).filter(e => e.status === 'active');
+    eqList.forEach(eq => {
+      const opt = document.createElement('option');
+      opt.value = eq.name;
+      opt.textContent = eq.name;
+      eqSel.appendChild(opt);
+    });
+  }
+
+  const susSel = document.getElementById('deptSuspectedPart_' + i);
+  if (susSel) {
+    susSel.innerHTML = '<option value="">— Select Suspected Part —</option>';
+    const parts = (MASTER_DB.suspectedParts || []).filter(p => p.status === 'active');
+    parts.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.name;
+      opt.textContent = p.name;
+      susSel.appendChild(opt);
+    });
+  }
+}
+
+function onDeptEquipChange(i) {
+  const equipName = document.getElementById('deptEquip_' + i).value;
+  const natSel = document.getElementById('deptNature_' + i);
+  if (!equipName) {
+    natSel.innerHTML = '<option value="">— Select Equipment First —</option>';
+    return;
+  }
+  const eq = (MASTER_DB.equipment || []).find(e => e.name === equipName && e.status === 'active');
+  if (!eq || !eq.complaints?.length) {
+    natSel.innerHTML = '<option value="">— No types defined —</option>';
+    return;
+  }
+  natSel.innerHTML = '<option value="">— Select Nature —</option>';
+  eq.complaints.filter(c => c.status === 'active').forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.name;
+    opt.textContent = c.name;
+    natSel.appendChild(opt);
+  });
+}
+
+async function addDeptSerialPhoto(event, i) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  renderDeptSerialPlaceholder(i);
+
+  try {
+    const base64Data = await compressPhoto(file);
+    deptSerialPhotos[i] = base64Data;
+    updateDeptSerialPhotoThumb(base64Data, i);
+  } catch (err) {
+    console.error(err);
+    showToast('Error processing serial photo', 'error');
+    removeDeptSerialPhoto(i);
+  }
+
+  event.target.value = '';
+}
+
+function renderDeptSerialPlaceholder(i) {
+  const grid = document.getElementById('deptSerialPhotoGrid_' + i);
+  grid.innerHTML = '';
+  document.getElementById('noDeptSerialPhotoMsg_' + i).style.display = 'none';
+  const div = document.createElement('div');
+  div.className = 'photo-thumb placeholder';
+  div.style.width = '80px';
+  div.style.height = '80px';
+  div.innerHTML = `<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f1f5fd;font-size:0.7rem;color:var(--muted);">
+    <span style="font-size:1.2rem;animation:spin 1s linear infinite;">⏳</span>
+    <span>Processing…</span>
+  </div>`;
+  grid.appendChild(div);
+}
+
+function updateDeptSerialPhotoThumb(base64Data, i) {
+  const grid = document.getElementById('deptSerialPhotoGrid_' + i);
+  grid.innerHTML = '';
+
+  const div = document.createElement('div');
+  div.className = 'photo-thumb';
+  div.style.width = '100px';
+  div.style.height = '100px';
+  div.style.position = 'relative';
+
+  div.innerHTML = `
+    <img src="${base64Data}" alt="Serial Photo" onclick="viewFullscreen('${base64Data}')" style="width:100%;height:100%;object-fit:cover;border-radius:8px;" />
+    <button class="del-btn" type="button" onclick="removeDeptSerialPhoto(${i})" style="top:-6px;right:-6px;width:20px;height:20px;font-size:0.7rem;position:absolute;background:#ef4444;color:white;border:none;border-radius:50%;cursor:pointer;">✕</button>
+    <div class="photo-actions" style="font-size:0.7rem;padding:2px;display:flex;gap:4px;justify-content:center;margin-top:4px;">
+      <button type="button" onclick="viewFullscreen('${base64Data}')" style="padding:2px 4px;font-size:0.65rem;border:1px solid #ddd;border-radius:4px;background:white;cursor:pointer;">🔍 View</button>
+      <button type="button" onclick="triggerDeptSerialRetake(${i})" style="padding:2px 4px;font-size:0.65rem;border:1px solid #ddd;border-radius:4px;background:white;cursor:pointer;">🔄 Retake</button>
+    </div>
+  `;
+  grid.appendChild(div);
+  document.getElementById('noDeptSerialPhotoMsg_' + i).style.display = 'none';
+}
+
+function removeDeptSerialPhoto(i) {
+  deptSerialPhotos[i] = null;
+  document.getElementById('deptSerialPhotoGrid_' + i).innerHTML = '';
+  document.getElementById('noDeptSerialPhotoMsg_' + i).style.display = 'block';
+}
+
+function triggerDeptSerialRetake(i) {
+  document.getElementById('deptSerialCamera_' + i).click();
 }
 
 async function submitDeptResolution(i, action) {
   const t = deptTickets[i];
   const user = getUser() || {};
+
+  const equip = document.getElementById('deptEquip_' + i).value;
+  const nature = document.getElementById('deptNature_' + i).value;
+  const qty = document.getElementById('deptQty_' + i).value.trim();
+  const date = document.getElementById('deptDate_' + i).value;
+  const serial = document.getElementById('deptSerial_' + i).value.trim();
+  const serialPhoto = deptSerialPhotos[i];
+  const suspectedPart = document.getElementById('deptSuspectedPart_' + i).value;
+
+  if (!equip) { showToast('Select Equipment', 'warn'); return; }
+  if (!nature) { showToast('Select Nature of Complaint', 'warn'); return; }
+  if (!qty || parseInt(qty) < 1) { showToast('Enter valid quantity', 'warn'); return; }
+  if (!date) { showToast('Select Date', 'warn'); return; }
+  if (!serial) { showToast('Enter Serial Number', 'warn'); return; }
+  if (!serialPhoto) { showToast('Please attach Serial Number Photo', 'warn'); return; }
+
   const otpField = document.getElementById('deptOtp' + i);
   const otp = otpField ? otpField.value.trim() : '';
   if (action === 'closed_with_otp' && !otp) { showToast('Enter the OTP first', 'warn'); return; }
-  const notes = (document.getElementById('deptNotes' + i) || { value: '' }).value.trim();
+  const notes = (document.getElementById('deptNotes_' + i) || { value: '' }).value.trim();
 
-  const btn = document.getElementById('deptSubmit' + i);
+  const btn = document.getElementById('deptSubmit_' + i);
   btn.disabled = true; btn.textContent = '⏳ Sending…';
   try {
     const res = await fetch(GOOGLE_SCRIPT_URL, {
@@ -1661,6 +1875,13 @@ async function submitDeptResolution(i, action) {
         resolvedBy: (user.name || '') + ' (' + (user.phone || '') + ')',
         technicianName: user.name || '',
         diagnosisNotes: notes,
+        equipment: equip,
+        natureOfComplaint: nature,
+        quantity: parseInt(qty) || 1,
+        resolutionDate: date,
+        serialNumber: serial,
+        serialPhoto: serialPhoto,
+        suspectedPart: suspectedPart
       }),
     });
     const out = await res.json();
