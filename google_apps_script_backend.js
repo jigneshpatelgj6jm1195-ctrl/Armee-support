@@ -1635,6 +1635,8 @@ function getDepartmentDashboard(ss) {
     attribute('department', [managerString, row[0]], countBusinessDaysExcludingSundays(row[21], now));
   }
 
+  // Advance complaints are not included in the department complaints tab anymore
+  /*
   var advSheet = ss.getSheetByName(SHEET_TAB_NAME);
   if (advSheet && advSheet.getLastRow() > 1) {
     var advRows = advSheet.getRange(2, 1, advSheet.getLastRow() - 1, HEADERS.length).getValues();
@@ -1649,6 +1651,7 @@ function getDepartmentDashboard(ss) {
                 countBusinessDaysExcludingSundays(arow[19] || arow[1], now));
     }
   }
+  */
 
   // District-office rollup = sum of that office's branches.
   var officeAgg = {};
