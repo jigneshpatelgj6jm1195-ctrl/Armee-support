@@ -4,7 +4,7 @@
    Offline queue: submissions stored in IndexedDB
 ═══════════════════════════════════════════════════════ */
 
-const CACHE_NAME = 'school-form-v35'; // v35: fixed department screen scroll layout
+const CACHE_NAME = 'school-form-v36'; // v36: conditional suspected part details on resolution action
 const STATIC_ASSETS = [
   './index.html',
   './school_data.json',

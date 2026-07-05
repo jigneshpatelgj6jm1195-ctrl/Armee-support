@@ -1623,6 +1623,7 @@ function renderDeptTickets() {
 }
 
 let deptSerialPhotos = {};
+let deptSuspectedPhotos = {};
 
 function deptAction(i, action) {
   // Close any other open forms first
@@ -1692,13 +1693,31 @@ function deptAction(i, action) {
       '</div>' +
     '</div>' +
 
-    // ── Suspected Part Dropdown ──
-    '<div class="field" style="margin-bottom:12px;">' +
-      '<label style="color:#ef4444; font-weight:600; font-size:0.75rem;">Suspected Part <span style="font-size:0.72rem; font-weight:normal; color:#ef4444;">(if having a part issue)</span></label>' +
-      '<select id="deptSuspectedPart_' + i + '" style="padding:10px 12px; border-radius:10px; font-size:0.85rem;">' +
-        '<option value="">— Select Suspected Part —</option>' +
-      '</select>' +
-    '</div>' +
+    // ── Suspected Part Dropdown & Photo Capture (Only for Part Request) ──
+    (action === 'part_request'
+      ? '<div class="field" style="margin-bottom:12px;">' +
+          '<label style="color:#ef4444; font-weight:600; font-size:0.75rem;">Suspected Part <span class="req">*</span></label>' +
+          '<select id="deptSuspectedPart_' + i + '" style="padding:10px 12px; border-radius:10px; font-size:0.85rem;">' +
+            '<option value="">— Select Suspected Part —</option>' +
+          '</select>' +
+        '</div>' +
+        '<div class="field" style="margin-bottom:12px;">' +
+          '<label style="display:flex; justify-content:space-between; align-items:center; font-size:0.75rem; font-weight:700;">' +
+            '<span>Suspected Part Photo <span class="req">*</span></span>' +
+            '<span style="font-size:0.7rem; font-weight:normal; color:var(--muted);">For verification</span>' +
+          '</label>' +
+          '<div style="display:flex; gap:8px; margin-bottom:8px;">' +
+            '<button type="button" class="btn-cam" onclick="document.getElementById(\'deptSuspectedCamera_' + i + '\').click()" style="flex:1; justify-content:center; padding:10px; margin:0; font-size:0.8rem; border-radius:10px; cursor:pointer;">📷 Camera</button>' +
+            '<button type="button" class="btn-gal" onclick="document.getElementById(\'deptSuspectedGallery_' + i + '\').click()" style="flex:1; justify-content:center; padding:10px; margin:0; font-size:0.8rem; border-radius:10px; cursor:pointer;">🖼️ Gallery</button>' +
+          '</div>' +
+          '<input type="file" id="deptSuspectedCamera_' + i + '" accept="image/*" capture="environment" style="display:none" onchange="addDeptSuspectedPhoto(event, ' + i + ')" />' +
+          '<input type="file" id="deptSuspectedGallery_' + i + '" accept="image/*" style="display:none" onchange="addDeptSuspectedPhoto(event, ' + i + ')" />' +
+          '<div class="photo-grid" id="deptSuspectedPhotoGrid_' + i + '" style="margin-bottom:6px;"></div>' +
+          '<div id="noDeptSuspectedPhotoMsg_' + i + '" style="text-align:center;padding:12px;color:var(--muted);font-size:0.8rem;font-weight:700;border:1px dashed rgba(0,0,0,0.1);border-radius:10px;background:#fafafa;">' +
+            '📷 Attach 1 photo of the suspected part.' +
+          '</div>' +
+        '</div>'
+      : '') +
 
     // ── Description / Diagnosis Notes ──
     '<div class="field" style="margin-bottom:12px;">' +
@@ -1843,6 +1862,79 @@ function triggerDeptSerialRetake(i) {
   document.getElementById('deptSerialCamera_' + i).click();
 }
 
+async function addDeptSuspectedPhoto(event, i) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  renderDeptSuspectedPlaceholder(i);
+
+  try {
+    const base64Data = await compressPhoto(file);
+    deptSuspectedPhotos[i] = base64Data;
+    updateDeptSuspectedPhotoThumb(base64Data, i);
+  } catch (err) {
+    console.error(err);
+    showToast('Error processing suspected part photo', 'error');
+    removeDeptSuspectedPhoto(i);
+  }
+
+  event.target.value = '';
+}
+
+function renderDeptSuspectedPlaceholder(i) {
+  const grid = document.getElementById('deptSuspectedPhotoGrid_' + i);
+  if (!grid) return;
+  grid.innerHTML = '';
+  const msg = document.getElementById('noDeptSuspectedPhotoMsg_' + i);
+  if (msg) msg.style.display = 'none';
+  const div = document.createElement('div');
+  div.className = 'photo-thumb placeholder';
+  div.style.width = '80px';
+  div.style.height = '80px';
+  div.innerHTML = `<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f1f5fd;font-size:0.7rem;color:var(--muted);">
+    <span style="font-size:1.2rem;animation:spin 1s linear infinite;">⏳</span>
+    <span>Processing…</span>
+  </div>`;
+  grid.appendChild(div);
+}
+
+function updateDeptSuspectedPhotoThumb(base64Data, i) {
+  const grid = document.getElementById('deptSuspectedPhotoGrid_' + i);
+  if (!grid) return;
+  grid.innerHTML = '';
+
+  const div = document.createElement('div');
+  div.className = 'photo-thumb';
+  div.style.width = '100px';
+  div.style.height = '100px';
+  div.style.position = 'relative';
+
+  div.innerHTML = `
+    <img src="${base64Data}" alt="Suspected Photo" onclick="viewFullscreen('${base64Data}')" style="width:100%;height:100%;object-fit:cover;border-radius:8px;" />
+    <button class="del-btn" type="button" onclick="removeDeptSuspectedPhoto(${i})" style="top:-6px;right:-6px;width:20px;height:20px;font-size:0.7rem;position:absolute;background:#ef4444;color:white;border:none;border-radius:50%;cursor:pointer;">✕</button>
+    <div class="photo-actions" style="font-size:0.7rem;padding:2px;display:flex;gap:4px;justify-content:center;margin-top:4px;">
+      <button type="button" onclick="viewFullscreen('${base64Data}')" style="padding:2px 4px;font-size:0.65rem;border:1px solid #ddd;border-radius:4px;background:white;cursor:pointer;">🔍 View</button>
+      <button type="button" onclick="triggerDeptSuspectedRetake(${i})" style="padding:2px 4px;font-size:0.65rem;border:1px solid #ddd;border-radius:4px;background:white;cursor:pointer;">🔄 Retake</button>
+    </div>
+  `;
+  grid.appendChild(div);
+  const msg = document.getElementById('noDeptSuspectedPhotoMsg_' + i);
+  if (msg) msg.style.display = 'none';
+}
+
+function removeDeptSuspectedPhoto(i) {
+  deptSuspectedPhotos[i] = null;
+  const grid = document.getElementById('deptSuspectedPhotoGrid_' + i);
+  if (grid) grid.innerHTML = '';
+  const msg = document.getElementById('noDeptSuspectedPhotoMsg_' + i);
+  if (msg) msg.style.display = 'block';
+}
+
+function triggerDeptSuspectedRetake(i) {
+  const input = document.getElementById('deptSuspectedCamera_' + i);
+  if (input) input.click();
+}
+
 async function submitDeptResolution(i, action) {
   const t = deptTickets[i];
   const user = getUser() || {};
@@ -1853,7 +1945,15 @@ async function submitDeptResolution(i, action) {
   const date = document.getElementById('deptDate_' + i).value;
   const serial = document.getElementById('deptSerial_' + i).value.trim();
   const serialPhoto = deptSerialPhotos[i];
-  const suspectedPart = document.getElementById('deptSuspectedPart_' + i).value;
+  
+  let suspectedPart = '';
+  let suspectedPartPhoto = '';
+
+  if (action === 'part_request') {
+    const susField = document.getElementById('deptSuspectedPart_' + i);
+    suspectedPart = susField ? susField.value : '';
+    suspectedPartPhoto = deptSuspectedPhotos[i];
+  }
 
   if (!equip) { showToast('Select Equipment', 'warn'); return; }
   if (!nature) { showToast('Select Nature of Complaint', 'warn'); return; }
@@ -1862,7 +1962,12 @@ async function submitDeptResolution(i, action) {
   if (!serial) { showToast('Enter Serial Number', 'warn'); return; }
   if (!serialPhoto) { showToast('Please attach Serial Number Photo', 'warn'); return; }
 
-  const otpField = document.getElementById('deptOtp' + i);
+  if (action === 'part_request') {
+    if (!suspectedPart) { showToast('Select Suspected Part', 'warn'); return; }
+    if (!suspectedPartPhoto) { showToast('Please attach Suspected Part Photo', 'warn'); return; }
+  }
+
+  const otpField = document.getElementById('deptOtp_' + i);
   const otp = otpField ? otpField.value.trim() : '';
   if (action === 'closed_with_otp' && !otp) { showToast('Enter the OTP first', 'warn'); return; }
   const notes = (document.getElementById('deptNotes_' + i) || { value: '' }).value.trim();
@@ -1887,7 +1992,8 @@ async function submitDeptResolution(i, action) {
         resolutionDate: date,
         serialNumber: serial,
         serialPhoto: serialPhoto,
-        suspectedPart: suspectedPart
+        suspectedPart: suspectedPart,
+        suspectedPartPhoto: suspectedPartPhoto
       }),
     });
     const out = await res.json();

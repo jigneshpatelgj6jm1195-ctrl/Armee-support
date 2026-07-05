@@ -87,7 +87,7 @@ const DEPT_HEADERS = [
 const RES_HEADERS = [
   'TicketId', 'InternalStatus', 'ClosureType', 'OtpValue', 'ResolvedBy', 'TechnicianName',
   'DiagnosisNotes', 'ResolvedAt', 'OwningDistrictAdmin',
-  'Equipment', 'NatureOfComplaint', 'Quantity', 'ResolutionDate', 'SerialNumber', 'SerialPhotoURL', 'SuspectedPart'
+  'Equipment', 'NatureOfComplaint', 'Quantity', 'ResolutionDate', 'SerialNumber', 'SerialPhotoURL', 'SuspectedPart', 'SuspectedPartPhotoURL'
 ];
 
 // -- BRANCH / DISTRICT OFFICE STRUCTURE --
@@ -1393,6 +1393,7 @@ function getResolutionsMap(ss) {
       serialNumber: row[13] || '',
       serialPhotoUrl: row[14] || '',
       suspectedPart: row[15] || '',
+      suspectedPartPhotoUrl: row[16] || '',
       rowNumber: i + 2
     };
   }
@@ -1488,6 +1489,23 @@ function resolveDepartmentComplaint(ss, data) {
     serialPhotoUrl = existing.serialPhotoUrl;
   }
 
+  // Handle Suspected Part Photo upload to Google Drive if provided
+  var suspectedPartPhotoUrl = '';
+  if (data.suspectedPartPhoto) {
+    try {
+      var folder = getPhotoFolder("Department", now);
+      var sfname = ticketId + '_' + new Date().getTime() + '_suspected.jpg';
+      var sresult = uploadPhotoToDrive(data.suspectedPartPhoto, sfname, folder);
+      if (sresult) {
+        suspectedPartPhotoUrl = sresult.openUrl;
+      }
+    } catch (e) {
+      Logger.log('Error uploading suspected photo for department resolution: ' + e.toString());
+    }
+  } else if (existing && existing.suspectedPartPhotoUrl) {
+    suspectedPartPhotoUrl = existing.suspectedPartPhotoUrl;
+  }
+
   var newRow = [
     ticketId, 
     internalStatus, 
@@ -1504,7 +1522,8 @@ function resolveDepartmentComplaint(ss, data) {
     data.resolutionDate || '',
     data.serialNumber || '',
     serialPhotoUrl,
-    data.suspectedPart || ''
+    data.suspectedPart || '',
+    suspectedPartPhotoUrl
   ];
 
   if (existing) {
