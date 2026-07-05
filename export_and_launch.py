@@ -33,6 +33,15 @@ PORT        = 8765
 # ─────────────────────────────────────────────
 class FormHandler(http.server.SimpleHTTPRequestHandler):
 
+    def handle(self):
+        try:
+            super().handle()
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+            # Silently ignore client disconnections/aborts (e.g. refreshing or closing browser tab)
+            pass
+        except Exception as e:
+            print(f"  [ERROR] Socket exception: {e}")
+
     def log_message(self, format, *args):
         # Only log errors, not every GET request
         if args and str(args[1]) not in ('200', '304'):
