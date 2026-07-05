@@ -20,6 +20,7 @@
 require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const { chromium } = require('playwright');
 const { createWorker } = require('tesseract.js');
+const { execSync } = require('child_process');
 const XLSX = require('xlsx');
 const fs = require('fs');
 const path = require('path');
@@ -89,6 +90,40 @@ async function preprocessCaptcha(pngBuffer) {
 }
 
 async function ocrCaptcha(pngBuffer) {
+  // 1. Try solving via ddddocr Python helper first
+  const tempPath = path.join(__dirname, 'downloads', 'temp_captcha_' + Date.now() + '.png');
+  try {
+    fs.mkdirSync(path.dirname(tempPath), { recursive: true });
+    fs.writeFileSync(tempPath, pngBuffer);
+  } catch (err) {
+    log('Failed to write temp captcha file: ' + err.message);
+  }
+
+  let ddddocrResult = null;
+  if (fs.existsSync(tempPath)) {
+    for (const pyCmd of ['python3', 'python']) {
+      try {
+        const solverPath = path.join(__dirname, 'solve_captcha.py');
+        const stdout = execSync(`"${pyCmd}" "${solverPath}" "${tempPath}"`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+        if (stdout && stdout !== 'ddddocr_not_installed' && !stdout.startsWith('error_') && !stdout.includes('missing_image_path')) {
+          ddddocrResult = stdout.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+          log(`ddddocr guessed: "${ddddocrResult}"`);
+          break;
+        }
+      } catch (e) {
+        // Ignore and try next interpreter or fallback
+      }
+    }
+    try { fs.unlinkSync(tempPath); } catch (e) {}
+  }
+
+  if (ddddocrResult && ddddocrResult.length >= 4) {
+    return ddddocrResult;
+  }
+
+  log('ddddocr not available or failed. Falling back to Tesseract OCR...');
+
+  // 2. Fallback to Tesseract OCR
   if (!ocrWorker) {
     ocrWorker = await createWorker('eng');
     await ocrWorker.setParameters({
