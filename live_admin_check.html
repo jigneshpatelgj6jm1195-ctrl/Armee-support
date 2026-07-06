@@ -1026,6 +1026,10 @@ tr:hover td { background: #f8fafc; }
           <button class="btn btn-secondary btn-sm" onclick="downloadDeptReport()" style="display:flex; align-items:center; gap:6px;">📥 Export Excel</button>
         </div>
       </div>
+      <div style="margin-top:12px; margin-bottom:12px; max-width:320px;">
+        <label style="font-size:0.75rem; font-weight:700; color:var(--text); margin-bottom:4px; display:block;">Search text (School/DISE/SN)</label>
+        <input type="text" id="deptFilterText" placeholder="Type to search..." oninput="renderDeptList()" style="width:100%; padding:6px 12px; font-size:0.8rem; border:1px solid var(--border); border-radius:8px;" />
+      </div>
       <div class="table-responsive" style="margin-top:12px;">
         <table>
           <thead><tr><th style="width:40px; text-align:center;"><input type="checkbox" id="selectAllDept" onclick="toggleSelectAllDept(this)" style="transform: scale(1.25); cursor: pointer;" /></th><th>Ticket</th><th>School</th><th>District</th><th>Branch</th><th>Issue</th><th>Age (BD)</th><th id="deptStatusHeaderCol" style="min-width: 140px;">Status</th></tr></thead>
@@ -4990,6 +4994,26 @@ function renderDeptList() {
   }
 
   rows.sort((a, b) => b.businessDays - a.businessDays);
+
+  // Apply search filtering
+  const searchText = (document.getElementById('deptFilterText')?.value || '').toLowerCase().trim();
+  if (searchText) {
+    rows = rows.filter(r => {
+      const school = String(r.school || '').toLowerCase();
+      const schoolId = String(r.schoolId || '').toLowerCase();
+      const serialNumber = String(r.serialNumber || '').toLowerCase();
+      const ticketId = String(r.ticketId || '').toLowerCase();
+      const district = String(r.district || '').toLowerCase();
+      const block = String(r.block || '').toLowerCase();
+      return school.includes(searchText) || 
+             schoolId.includes(searchText) || 
+             serialNumber.includes(searchText) || 
+             ticketId.includes(searchText) ||
+             district.includes(searchText) ||
+             block.includes(searchText);
+    });
+  }
+
   label.textContent = labelText + ' · ' + rows.length + ' ticket(s)';
   clearBtn.style.display = deptDrillFilter ? '' : 'none';
 
@@ -5112,6 +5136,24 @@ function downloadDeptReport() {
         rows = rows.filter(r => r.internalStatus !== 'Closed');
       }
     }
+  }
+
+  const searchText = (document.getElementById('deptFilterText')?.value || '').toLowerCase().trim();
+  if (searchText) {
+    rows = rows.filter(r => {
+      const school = String(r.school || '').toLowerCase();
+      const schoolId = String(r.schoolId || '').toLowerCase();
+      const serialNumber = String(r.serialNumber || '').toLowerCase();
+      const ticketId = String(r.ticketId || '').toLowerCase();
+      const district = String(r.district || '').toLowerCase();
+      const block = String(r.block || '').toLowerCase();
+      return school.includes(searchText) || 
+             schoolId.includes(searchText) || 
+             serialNumber.includes(searchText) || 
+             ticketId.includes(searchText) ||
+             district.includes(searchText) ||
+             block.includes(searchText);
+    });
   }
 
   if (rows.length === 0) {
