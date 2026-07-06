@@ -784,13 +784,13 @@ textarea { resize: none; min-height: 80px; }
 
         <!-- Resolution status selector at the top of Step 3, visible to engineers only -->
         <div class="field" id="advStatusSelectorField" style="display:none; border-bottom: 1px dashed rgba(0,0,0,0.12); padding-bottom: 14.5px; margin-bottom: 14.5px;">
-          <label style="font-size:0.8rem; font-weight:800; color:var(--text); margin-bottom:8px; display:block;">Complaint Resolution Status (Optional)</label>
+          <label style="font-size:0.8rem; font-weight:800; color:var(--text); margin-bottom:8px; display:block;">Complaint Resolution Status</label>
           <div id="advStatusButtons" style="display:flex; gap:8px;">
-            <button type="button" class="adv-status-btn" data-status="Closed" onclick="toggleAdvanceStatus('Closed')" style="flex:1;">✅ Closed</button>
-            <button type="button" class="adv-status-btn" data-status="Part Request" onclick="toggleAdvanceStatus('Part Request')" style="flex:1;">🔧 Part Request</button>
+            <button type="button" class="adv-status-btn active" data-status="Closed" onclick="selectAdvanceStatus('Closed')" style="flex:1;">✅ Closed</button>
+            <button type="button" class="adv-status-btn" data-status="Part Request" onclick="selectAdvanceStatus('Part Request')" style="flex:1;">🔧 Part Request</button>
           </div>
           <div style="font-size:0.72rem; color:var(--muted); margin-top:8px; line-height:1.4;">
-            Select <b>Closed</b> if resolved on site, or <b>Part Request</b> if waiting for a spare part. Leave unselected for <b>Open</b>.
+            Select <b>Closed</b> if resolved on site, or <b>Part Request</b> if waiting for a spare part.
           </div>
         </div>
 
@@ -1145,16 +1145,11 @@ let photos      = [];
 let serialPhoto = null;
 let offlineQueue = JSON.parse(localStorage.getItem('offlineQueue') || '[]');
 let lastComplaint = null;
-let selectedAdvanceStatus = 'Open';
-function toggleAdvanceStatus(status) {
-  if (selectedAdvanceStatus === status) {
-    selectedAdvanceStatus = 'Open';
-  } else {
-    selectedAdvanceStatus = status;
-  }
-
+let selectedAdvanceStatus = 'Closed';
+function selectAdvanceStatus(status) {
+  selectedAdvanceStatus = status;
   document.querySelectorAll('#advStatusButtons .adv-status-btn').forEach(b => {
-    b.classList.toggle('active', b.dataset.status === selectedAdvanceStatus);
+    b.classList.toggle('active', b.dataset.status === status);
   });
   
   const suspectedPartField = document.getElementById('suspectedPartDropdownField');
@@ -1162,17 +1157,17 @@ function toggleAdvanceStatus(status) {
   const photoReq = document.getElementById('suspectedPhotoReq');
   const photoStatusText = document.getElementById('suspectedPhotoStatus');
   
-  if (selectedAdvanceStatus === 'Closed') {
+  if (status === 'Closed') {
     if (suspectedPartField) suspectedPartField.style.display = 'none';
     if (suspectedPhotoField) suspectedPhotoField.style.display = 'none';
     document.getElementById('fSuspectedPart').value = '';
-  } else if (selectedAdvanceStatus === 'Part Request') {
+  } else if (status === 'Part Request') {
     if (suspectedPartField) suspectedPartField.style.display = 'block';
     if (suspectedPhotoField) suspectedPhotoField.style.display = 'block';
     if (photoReq) photoReq.style.display = 'inline';
     if (photoStatusText) photoStatusText.textContent = 'Mandatory';
   } else {
-    // Open
+    // Open (for teachers)
     if (suspectedPartField) suspectedPartField.style.display = 'block';
     if (suspectedPhotoField) suspectedPhotoField.style.display = 'block';
     if (photoReq) photoReq.style.display = 'none';
@@ -2092,10 +2087,13 @@ function applyRoleVisibility(user) {
       fSus.value = '';
       onSuspectedPartChange();
     }
-    toggleAdvanceStatus('Open');
+    selectAdvanceStatus('Open');
   } else {
     if (statusSelectorField) statusSelectorField.style.display = 'block';
-    toggleAdvanceStatus(selectedAdvanceStatus);
+    if (selectedAdvanceStatus === 'Open') {
+      selectedAdvanceStatus = 'Closed';
+    }
+    selectAdvanceStatus(selectedAdvanceStatus);
   }
 }
 function showSetupScreen() {

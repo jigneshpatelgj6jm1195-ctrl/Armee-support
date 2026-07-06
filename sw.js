@@ -4,7 +4,7 @@
    Offline queue: submissions stored in IndexedDB
 ═══════════════════════════════════════════════════════ */
 
-const CACHE_NAME = 'school-form-v39'; // v39: advance complaint resolution status (Closed/Part Request only)
+const CACHE_NAME = 'school-form-v40'; // v40: advance complaint resolution status (Closed/Part Request radio, no Open option for engineers)
 const STATIC_ASSETS = [
   './index.html',
   './school_data.json',
