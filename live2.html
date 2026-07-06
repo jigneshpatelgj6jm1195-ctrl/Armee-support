@@ -791,11 +791,8 @@ tr:hover td { background: #f8fafc; }
           <label>Filter by Status</label>
           <select id="filterStatus" onchange="filterComplaints()">
             <option value="">All Statuses</option>
-            <option value="open">Open</option>
-            <option value="in progress">In Progress</option>
-            <option value="part request">Part Request</option>
-            <option value="resolved">Resolved</option>
-            <option value="closed">Closed</option>
+            <option value="Closed">Closed</option>
+            <option value="Part Request">Part Request</option>
           </select>
         </div>
         <div>
@@ -1479,9 +1476,8 @@ tr:hover td { background: #f8fafc; }
         <div class="field">
           <label for="editStatus">Status</label>
           <select id="editStatus">
-            <option value="Open">Open</option>
-            <option value="Part Request">Part Request</option>
             <option value="Closed">Closed</option>
+            <option value="Part Request">Part Request</option>
           </select>
         </div>
         <div class="field">
@@ -1818,6 +1814,19 @@ function getDefaultDistricts() {
   return names.map((name, i) => ({ id: "D" + (i + 1), name: name, status: "active" }));
 }
 
+function normalizeComplaintStatuses(list) {
+  if (!Array.isArray(list)) return [];
+  return list.map(c => {
+    const s = String(c.status || '').trim().toLowerCase();
+    if (s === 'part request' || s === 'partrequest') {
+      c.status = 'Part Request';
+    } else {
+      c.status = 'Closed';
+    }
+    return c;
+  });
+}
+
 async function loadComplaints() {
   const isLocalhost = isLocal();
   logToDebug(`loadComplaints() initiated (isLocalhost = ${isLocalhost}, onLine = ${navigator.onLine})`, 'info');
@@ -1837,7 +1846,7 @@ async function loadComplaints() {
         showToast('⚠️ Backend Error: ' + data.error, 'error');
         complaintsList = [];
       } else if (Array.isArray(data)) {
-        complaintsList = data;
+        complaintsList = normalizeComplaintStatuses(data);
         logToDebug(`Successfully parsed ${data.length} complaints from live sheet.`, 'success');
         showToast('📡 Loaded live complaints from Google Sheet', 'success');
       } else {
@@ -1854,7 +1863,7 @@ async function loadComplaints() {
       document.getElementById('debugResponseSize').textContent = sizeKB + ' KB';
       logToDebug(`Local complaints fetched. Size: ${sizeKB} KB`, 'api');
       const data = JSON.parse(text);
-      complaintsList = Array.isArray(data) ? data : [];
+      complaintsList = normalizeComplaintStatuses(data);
       logToDebug(`Loaded ${complaintsList.length} complaints from local JSON.`, 'success');
     }
   } catch (e) {
@@ -1870,7 +1879,7 @@ async function loadComplaints() {
         const sizeKB = (bytes / 1024).toFixed(2);
         document.getElementById('debugResponseSize').textContent = sizeKB + ' KB';
         const data = JSON.parse(text);
-        complaintsList = Array.isArray(data) ? data : [];
+        complaintsList = normalizeComplaintStatuses(data);
         logToDebug(`Fallback loaded ${complaintsList.length} complaints from local JSON.`, 'success');
       } else {
         throw new Error('HTTP ' + res.status);
@@ -3681,9 +3690,8 @@ function renderComplaintsTable() {
         </td>
         <td>
           <select onchange="updateComplaintStatus(${origIndex}, this.value)" style="padding:4px 8px; font-size:0.75rem; border-radius:6px; font-weight:700;">
-            <option value="Open" ${c.status === 'Open' || !c.status ? 'selected' : ''}>Open</option>
-            <option value="Part Request" ${c.status === 'Part Request' ? 'selected' : ''}>Part Request</option>
             <option value="Closed" ${c.status === 'Closed' ? 'selected' : ''}>Closed</option>
+            <option value="Part Request" ${c.status === 'Part Request' ? 'selected' : ''}>Part Request</option>
           </select>
         </td>
         <td>
