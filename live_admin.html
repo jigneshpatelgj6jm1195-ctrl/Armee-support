@@ -1000,8 +1000,8 @@ tr:hover td { background: #f8fafc; }
       </div>
       <div class="table-responsive" style="margin-top:12px;">
         <table>
-          <thead><tr><th>Ticket</th><th>School</th><th>District</th><th>Branch</th><th>Issue</th><th>Age (BD)</th><th>Status</th></tr></thead>
-          <tbody id="deptListBody"><tr><td colspan="7" style="text-align:center;color:var(--muted);">Loading…</td></tr></tbody>
+          <thead><tr><th style="width:40px; text-align:center;"><input type="checkbox" id="selectAllDept" onclick="toggleSelectAllDept(this)" style="transform: scale(1.25); cursor: pointer;" /></th><th>Ticket</th><th>School</th><th>District</th><th>Branch</th><th>Issue</th><th>Age (BD)</th><th id="deptStatusHeaderCol" style="min-width: 140px;">Status</th></tr></thead>
+          <tbody id="deptListBody"><tr><td colspan="8" style="text-align:center;color:var(--muted);">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -4589,15 +4589,22 @@ function toggleSelectAllDept(master) {
 
 function updateDeptSelectionUI() {
   const chks = document.querySelectorAll('.dept-select-chk:checked');
-  const bar = document.getElementById('deptMultiSelectBar');
-  const countSpan = document.getElementById('deptSelectedCount');
   const selectAll = document.getElementById('selectAllDept');
+  const headerCol = document.getElementById('deptStatusHeaderCol');
   
-  if (chks.length > 0) {
-    bar.style.display = 'flex';
-    countSpan.textContent = chks.length;
-  } else {
-    bar.style.display = 'none';
+  if (headerCol) {
+    if (chks.length > 0) {
+      headerCol.innerHTML = `
+        <select onchange="bulkUpdateDeptStatus(this.value); this.value='';" style="padding:4px; font-size:0.72rem; border-radius:4px; border:1px solid var(--border); font-weight:700; width:100%; cursor:pointer; background:#eff6ff; color:#1e40af;">
+          <option value="">- Update (${chks.length}) -</option>
+          <option value="closed_with_otp">✅ Close with OTP</option>
+          <option value="closed_without_otp">📩 Close without OTP</option>
+          <option value="part_request">🔧 Part Request</option>
+        </select>
+      `;
+    } else {
+      headerCol.innerHTML = 'Status';
+    }
   }
   
   const allChks = document.querySelectorAll('.dept-select-chk');
@@ -4607,6 +4614,7 @@ function updateDeptSelectionUI() {
 }
 
 async function bulkUpdateDeptStatus(action) {
+  if (!action) return;
   const chks = document.querySelectorAll('.dept-select-chk:checked');
   if (chks.length === 0) return;
   
@@ -4614,9 +4622,10 @@ async function bulkUpdateDeptStatus(action) {
   const confirmMsg = `Are you sure you want to update the status of ${ticketIds.length} selected ticket(s) to "${action.replace(/_/g, ' ').toUpperCase()}"?`;
   if (!confirm(confirmMsg)) return;
   
-  const bar = document.getElementById('deptMultiSelectBar');
-  const origHtml = bar.innerHTML;
-  bar.innerHTML = `<div style="font-weight:bold;color:var(--primary);font-size:0.8rem;text-align:center;width:100%;">⏳ Updating ${ticketIds.length} tickets... Please wait.</div>`;
+  const headerCol = document.getElementById('deptStatusHeaderCol');
+  if (headerCol) {
+    headerCol.innerHTML = `<span style="font-size:0.7rem; color:var(--primary); font-weight:bold;">⏳ Updating...</span>`;
+  }
   
   let successCount = 0;
   let failCount = 0;
@@ -4646,7 +4655,6 @@ async function bulkUpdateDeptStatus(action) {
   
   showToast(`✅ Bulk Update Complete: ${successCount} successful, ${failCount} failed.`, successCount > 0 ? 'success' : 'warn');
   
-  bar.innerHTML = origHtml;
   const selectAll = document.getElementById('selectAllDept');
   if (selectAll) selectAll.checked = false;
   toggleSelectAllDept(selectAll);
@@ -4692,8 +4700,8 @@ async function submitDeptStatusUpdate(action) {
 function renderDeptList() {
   const selectAll = document.getElementById('selectAllDept');
   if (selectAll) selectAll.checked = false;
-  const bar = document.getElementById('deptMultiSelectBar');
-  if (bar) bar.style.display = 'none';
+  const headerCol = document.getElementById('deptStatusHeaderCol');
+  if (headerCol) headerCol.innerHTML = 'Status';
 
   const body = document.getElementById('deptListBody');
   const label = document.getElementById('deptDrillLabel');
