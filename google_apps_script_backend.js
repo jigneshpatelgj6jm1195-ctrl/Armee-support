@@ -427,6 +427,22 @@ function doPost(e) {
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
+    if (data.action === 'send_test_email') {
+      var recipient = String(data.email || 'jignesh.patel@armeeinfotech.com').trim();
+      try {
+        MailApp.sendEmail({
+          to: recipient,
+          subject: '🧪 ICT Support System Test Email',
+          htmlBody: '<h3>Test Successful</h3><p>This test email was triggered successfully from Google Apps Script.</p>'
+        });
+        return ContentService.createTextOutput(JSON.stringify({ status: 'ok', message: 'Email sent successfully to ' + recipient }))
+                             .setMimeType(ContentService.MimeType.JSON);
+      } catch (e) {
+        return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: e.toString() }))
+                             .setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+
     if (data.action === 'delete_branch_email') {
       var sheet = getOrCreateBranchEmailsSheet(ss);
       var rowNum = Number(data.rowNumber);
