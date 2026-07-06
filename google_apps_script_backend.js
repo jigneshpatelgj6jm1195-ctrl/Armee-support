@@ -3021,3 +3021,8 @@ function cleanupPhase1TestRows(ss, ticketIds) {
   }
   Logger.log('Cleanup: removed ' + removedDept + ' row(s) from DepartmentComplaints and ' + removedRes + ' row(s) from DepartmentResolutions.');
 }
+
+function runTestEmailManual() {
+  MailApp.sendEmail("jignesh.patel@armeeinfotech.com", "Auth Test", "This is a manual authorization test.");
+  Logger.log("Test email sent!");
+}
