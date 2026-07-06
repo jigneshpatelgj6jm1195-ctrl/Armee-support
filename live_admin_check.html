@@ -1021,7 +1021,10 @@ tr:hover td { background: #f8fafc; }
     <div class="card" style="margin-bottom:20px;">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
         <div class="card-title" style="margin-bottom:0;">🎫 Department Tickets <span id="deptDrillLabel" style="font-size:0.75rem;color:var(--primary);font-weight:600;"></span></div>
-        <button class="btn btn-ghost btn-sm" id="deptDrillClear" style="display:none;" onclick="clearDeptDrill()">✖ Clear filter</button>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button class="btn btn-ghost btn-sm" id="deptDrillClear" style="display:none;" onclick="clearDeptDrill()">✖ Clear filter</button>
+          <button class="btn btn-secondary btn-sm" onclick="downloadDeptReport()" style="display:flex; align-items:center; gap:6px;">📥 Export Excel</button>
+        </div>
       </div>
       <div class="table-responsive" style="margin-top:12px;">
         <table>
@@ -5091,6 +5094,108 @@ function viewDeptDetails(ticketId) {
   photosArea.style.display = showPhotos ? 'block' : 'none';
   
   document.getElementById('deptDetailModal').classList.add('show');
+}
+
+function downloadDeptReport() {
+  let rows = deptList.slice();
+  if (deptDrillFilter) {
+    const f = deptDrillFilter;
+    if (f.type === 'status') {
+      if (f.val === 'total') { }
+      else if (f.val === 'ClosedWithOTP') { rows = rows.filter(r => r.internalStatus === 'Closed' && r.closureType === 'ClosedWithOTP'); }
+      else if (f.val === 'ClosedWithoutOTP') { rows = rows.filter(r => r.internalStatus === 'Closed' && r.closureType !== 'ClosedWithOTP'); }
+      else { rows = rows.filter(r => r.internalStatus === f.val); }
+    } else if (f.type === 'branch') {
+      if (f.val === 'UNMAPPED') { rows = rows.filter(r => !r.branchId); }
+      else {
+        rows = rows.filter(r => r.branchId === f.val);
+        rows = rows.filter(r => r.internalStatus !== 'Closed');
+      }
+    }
+  }
+
+  if (rows.length === 0) {
+    showToast('⚠️ No department complaints data available to download', 'warn');
+    return;
+  }
+
+  const csvHeaders = [
+    'Ticket ID',
+    'Logged Date',
+    'District',
+    'Taluka/Block',
+    'School Name',
+    'DISE Code',
+    'Contact Name',
+    'Phone Number',
+    'Asset Type',
+    'Device Type',
+    'Issue Type',
+    'Issue Details',
+    'Age (Business Days)',
+    'Status',
+    'Branch',
+    'Technician',
+    'Resolution Date',
+    'Serial Number',
+    'Suspected Part',
+    'OTP Code',
+    'Closure Type',
+    'Diagnosis Notes'
+  ];
+
+  const csvRows = rows.map(r => [
+    r.ticketId || '',
+    r.createdDate || '',
+    r.district || '',
+    r.block || '',
+    r.school || '',
+    r.schoolId || '',
+    r.contactName || '',
+    r.phoneNumber || '',
+    r.assetType || '',
+    r.deviceType || '',
+    r.issueType || '',
+    r.issueDetails || '',
+    r.businessDays || 0,
+    r.internalStatus || 'Pending',
+    r.branchName || 'Unmapped',
+    r.technicianName || '',
+    r.resolvedAt || '',
+    r.serialNumber || '',
+    r.suspectedPart || '',
+    r.otpValue || '',
+    r.closureType || '',
+    r.diagnosisNotes || ''
+  ]);
+
+  const escapeCSV = val => {
+    let str = String(val === null || val === undefined ? '' : val);
+    str = str.replace(/"/g, '""');
+    if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+      str = `"${str}"`;
+    }
+    return str;
+  };
+
+  const headerRow = csvHeaders.map(escapeCSV).join(',');
+  const dataRows = csvRows.map(row => row.map(escapeCSV).join(',')).join('\n');
+  const csvContent = '\uFEFF' + headerRow + '\n' + dataRows;
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const filename = `armee_department_complaints_${dateStr}.csv`;
+  
+  link.setAttribute('href', url);
+  link.setAttribute('download', filename);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  showToast(`📥 Department complaints report downloaded successfully!`, 'success');
 }
 
 let localDeptTrendData = [];
