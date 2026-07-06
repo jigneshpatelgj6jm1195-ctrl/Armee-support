@@ -4,7 +4,7 @@
    Offline queue: submissions stored in IndexedDB
 ═══════════════════════════════════════════════════════ */
 
-const CACHE_NAME = 'school-form-v36'; // v36: conditional suspected part details on resolution action
+const CACHE_NAME = 'school-form-v38'; // v38: advance complaint resolution status (Open, ClosedWithOTP, ClosedWithoutOTP, PartRequest)
 const STATIC_ASSETS = [
   './index.html',
   './school_data.json',

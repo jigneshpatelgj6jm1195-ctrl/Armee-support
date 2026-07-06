@@ -69,7 +69,9 @@ const HEADERS = [
   'Serial Photo Preview',
   'View Serial Photo',
   'Serial Photo URL',
-  'Archived'
+  'Archived',
+  'OtpValue',
+  'ClosureType'
 ];
 
 // Raw mirror of the ssgujarat.org "Export To Excel" columns, plus 3 tracking columns.
@@ -562,9 +564,13 @@ function getComplaintsList(ss) {
   // Run migration check dynamically
   try {
     var lastCol = sheet.getLastColumn();
-    var headerVal = lastCol >= 32 ? sheet.getRange(1, 32).getValue() : '';
-    if (headerVal !== 'Archived') {
+    if (lastCol < 32) {
       migrateSheetTo32Columns(sheet);
+      lastCol = sheet.getLastColumn();
+    }
+    if (lastCol < HEADERS.length) {
+      sheet.insertColumnsAfter(lastCol, HEADERS.length - lastCol);
+      setupHeaders(sheet);
     }
   } catch (e) {
     Logger.log("Migration error: " + e.toString());
@@ -853,7 +859,9 @@ function handleSubmitComplaint(ss, data) {
     serialPhotoViewUrl ? '=IMAGE("' + serialPhotoViewUrl + '")' : '',
     serialPhotoOpenUrl ? '=HYPERLINK("' + serialPhotoOpenUrl + '","' + '🔗 View Serial Photo' + '")' : '',
     serialPhotoViewUrl || '',
-    '' // Archived
+    '', // Archived
+    data.otp || '',
+    data.closureType || ''
   ];
 
   sheet.appendRow(row);

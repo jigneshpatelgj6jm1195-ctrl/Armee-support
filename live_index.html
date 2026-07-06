@@ -160,6 +160,19 @@ html, body {
 
 /* ═══════════════ FORM FIELDS ═══════════════ */
 .field { margin-bottom: 14px; }
+
+/* Advance complaint resolution-status pills */
+.adv-status-btn {
+  flex: 1 1 auto; min-width: 92px; min-height: 44px;
+  border: 2px solid var(--border, #e2e8f0); background: #fff;
+  border-radius: 12px; padding: 8px 10px;
+  font-size: 0.8rem; font-weight: 800; color: var(--muted, #64748b);
+  cursor: pointer; transition: all 0.15s; font-family: inherit;
+}
+.adv-status-btn.active[data-status="Open"]            { background:#eff6ff; border-color:#3b82f6; color:#1d4ed8; }
+.adv-status-btn.active[data-status="ClosedWithOTP"]    { background:#f0fdf4; border-color:#16a34a; color:#15803d; }
+.adv-status-btn.active[data-status="ClosedWithoutOTP"] { background:#fffbeb; border-color:#f59e0b; color:#b45309; }
+.adv-status-btn.active[data-status="PartRequest"]      { background:#f5f3ff; border-color:#7c3aed; color:#6d28d9; }
 .field:last-child { margin-bottom: 0; }
 
 label {
@@ -769,6 +782,20 @@ textarea { resize: none; min-height: 80px; }
           </div>
         </div>
 
+        <!-- Resolution status selector at the top of Step 3, visible to engineers only -->
+        <div class="field" id="advStatusSelectorField" style="display:none; border-bottom: 1px dashed rgba(0,0,0,0.12); padding-bottom: 14.5px; margin-bottom: 14.5px;">
+          <label style="font-size:0.8rem; font-weight:800; color:var(--text); margin-bottom:8px; display:block;">Complaint Resolution Status</label>
+          <div id="advStatusButtons" style="display:flex; flex-wrap:wrap; gap:8px;">
+            <button type="button" class="adv-status-btn active" data-status="Open" onclick="setAdvanceStatus('Open')">🕓 Open</button>
+            <button type="button" class="adv-status-btn" data-status="ClosedWithOTP" onclick="setAdvanceStatus('ClosedWithOTP')">✅ Close with OTP</button>
+            <button type="button" class="adv-status-btn" data-status="ClosedWithoutOTP" onclick="setAdvanceStatus('ClosedWithoutOTP')">📩 Close without OTP</button>
+            <button type="button" class="adv-status-btn" data-status="PartRequest" onclick="setAdvanceStatus('PartRequest')">🔧 Part Request</button>
+          </div>
+          <div style="font-size:0.72rem; color:var(--muted); margin-top:8px; line-height:1.4;">
+            Choose <b>Close with/without OTP</b> if resolved, or <b>Part Request</b> if waiting for a spare part. Default is <b>Open</b>.
+          </div>
+        </div>
+
         <!-- Equipment — dynamically populated from master_data.json -->
         <div class="field">
           <label for="fEquipment">Equipment <span class="req">*</span></label>
@@ -877,6 +904,11 @@ textarea { resize: none; min-height: 80px; }
           <label for="fDesc">Description (Optional)</label>
           <textarea id="fDesc" placeholder="Describe the issue in detail…" rows="3"></textarea>
         </div>
+
+        <div class="field mt-12" id="advOtpField" style="display:none;">
+          <label for="fAdvOtp">OTP Code <span class="req">*</span></label>
+          <input type="tel" id="fAdvOtp" placeholder="Enter 6-digit OTP from School" inputmode="numeric" maxlength="8" />
+        </div>
       </div>
     </div>
 
@@ -895,6 +927,7 @@ textarea { resize: none; min-height: 80px; }
           </div>
         </div>
         <div id="summaryContent" style="font-size:0.82rem;line-height:2;color:var(--text);"></div>
+
       </div>
     </div>
 
@@ -1118,6 +1151,40 @@ let photos      = [];
 let serialPhoto = null;
 let offlineQueue = JSON.parse(localStorage.getItem('offlineQueue') || '[]');
 let lastComplaint = null;
+let selectedAdvanceStatus = 'Open';
+function setAdvanceStatus(status) {
+  selectedAdvanceStatus = status;
+  document.querySelectorAll('#advStatusButtons .adv-status-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.status === status);
+  });
+  
+  const suspectedPartField = document.getElementById('suspectedPartDropdownField');
+  const suspectedPhotoField = document.getElementById('suspectedPartPhotoField');
+  const otpField = document.getElementById('advOtpField');
+  const photoReq = document.getElementById('suspectedPhotoReq');
+  const photoStatusText = document.getElementById('suspectedPhotoStatus');
+  
+  if (status === 'ClosedWithOTP' || status === 'ClosedWithoutOTP') {
+    if (suspectedPartField) suspectedPartField.style.display = 'none';
+    if (suspectedPhotoField) suspectedPhotoField.style.display = 'none';
+    document.getElementById('fSuspectedPart').value = '';
+    if (otpField) {
+      otpField.style.display = (status === 'ClosedWithOTP') ? 'block' : 'none';
+    }
+  } else if (status === 'PartRequest') {
+    if (suspectedPartField) suspectedPartField.style.display = 'block';
+    if (suspectedPhotoField) suspectedPhotoField.style.display = 'block';
+    if (photoReq) photoReq.style.display = 'inline';
+    if (photoStatusText) photoStatusText.textContent = 'Mandatory';
+    if (otpField) otpField.style.display = 'none';
+  } else {
+    if (suspectedPartField) suspectedPartField.style.display = 'block';
+    if (suspectedPhotoField) suspectedPhotoField.style.display = 'block';
+    if (photoReq) photoReq.style.display = 'none';
+    if (photoStatusText) photoStatusText.textContent = 'Optional';
+    if (otpField) otpField.style.display = 'none';
+  }
+}
 let editFieldKey  = ''; // 'principal' | 'contact'
 let html5QrCode   = null;
 let gpsLocation   = null;
@@ -1971,6 +2038,7 @@ async function submitDeptResolution(i, action) {
   const otp = otpField ? otpField.value.trim() : '';
   if (action === 'closed_with_otp' && !otp) { showToast('Enter the OTP first', 'warn'); return; }
   const notes = (document.getElementById('deptNotes_' + i) || { value: '' }).value.trim();
+  const resolutionStatus = document.getElementById('deptStatus_' + i)?.value || 'Open';
 
   const btn = document.getElementById('deptSubmit_' + i);
   btn.disabled = true; btn.textContent = '⏳ Sending…';
@@ -2019,8 +2087,10 @@ function applyRoleVisibility(user) {
   const role = (user.role || '').toLowerCase().trim();
   const dropdownField = document.getElementById('suspectedPartDropdownField');
   const photoField = document.getElementById('suspectedPartPhotoField');
+  const statusSelectorField = document.getElementById('advStatusSelectorField');
   
   if (role === 'teacher') {
+    if (statusSelectorField) statusSelectorField.style.display = 'none';
     if (dropdownField) dropdownField.style.display = 'none';
     if (photoField) photoField.style.display = 'none';
     const fSus = document.getElementById('fSuspectedPart');
@@ -2028,9 +2098,10 @@ function applyRoleVisibility(user) {
       fSus.value = '';
       onSuspectedPartChange();
     }
+    setAdvanceStatus('Open');
   } else {
-    if (dropdownField) dropdownField.style.display = 'block';
-    if (photoField) photoField.style.display = 'block';
+    if (statusSelectorField) statusSelectorField.style.display = 'block';
+    setAdvanceStatus(selectedAdvanceStatus);
   }
 }
 function showSetupScreen() {
@@ -2283,9 +2354,23 @@ function validateStep(step) {
     if (!date)      { showToast('⚠️ Select Complaint Date', 'warn'); return false; }
     if (!serial)    { showToast('⚠️ Enter or scan Serial Number', 'warn'); return false; }
     if (!serialPhoto) { showToast('⚠️ Please attach Serial Number Photo', 'warn'); return false; }
-    if (suspectedPart && photos.filter(Boolean).length === 0) {
-      showToast('⚠️ Photo is mandatory when a Suspected Part is selected. Please capture/upload a photo of the part!', 'warn');
-      return false;
+    
+    // Status-specific validations
+    if (selectedAdvanceStatus === 'ClosedWithOTP') {
+      const otpVal = document.getElementById('fAdvOtp').value.trim();
+      if (!otpVal) { showToast('⚠️ Please enter the OTP collected from the school contact', 'warn'); return false; }
+      if (otpVal.length < 4) { showToast('⚠️ Enter a valid OTP', 'warn'); return false; }
+    } else if (selectedAdvanceStatus === 'PartRequest') {
+      if (!suspectedPart) { showToast('⚠️ Please select a Suspected Part for Part Request', 'warn'); return false; }
+      if (photos.filter(Boolean).length === 0) {
+        showToast('⚠️ Photo is mandatory when a Suspected Part is selected. Please capture/upload a photo of the part!', 'warn');
+        return false;
+      }
+    } else if (selectedAdvanceStatus === 'Open') {
+      if (suspectedPart && photos.filter(Boolean).length === 0) {
+        showToast('⚠️ Photo is mandatory when a Suspected Part is selected. Please capture/upload a photo of the part!', 'warn');
+        return false;
+      }
     }
 
     // Check if serial is unique in the current group
@@ -2339,6 +2424,12 @@ function fillComplaintSummary() {
   const qtyDisplay = complaintGroup
     ? `${complaintGroup.current} of ${complaintGroup.total}`
     : (document.getElementById('fQty').value || '—');
+    
+  let statusText = 'Open';
+  if (selectedAdvanceStatus === 'ClosedWithOTP') statusText = 'Closed (with OTP)';
+  else if (selectedAdvanceStatus === 'ClosedWithoutOTP') statusText = 'Closed (without OTP)';
+  else if (selectedAdvanceStatus === 'PartRequest') statusText = 'Part Request';
+  
   const lines = [
     ['School',     r.school    || '—'],
     ['District',   r.district  || '—'],
@@ -2348,9 +2439,18 @@ function fillComplaintSummary() {
     ['Serial No.', document.getElementById('fSerial').value    || 'N/A'],
     ['Item No.',   qtyDisplay],
     ['Date',       document.getElementById('fDate').value      || '—'],
-    ['Suspected Part', document.getElementById('fSuspectedPart').value || '—'],
-    ['Photos',     `${photos.filter(Boolean).length} attached`],
+    ['Status',     statusText]
   ];
+  
+  if (selectedAdvanceStatus === 'ClosedWithOTP') {
+    lines.push(['OTP Code', document.getElementById('fAdvOtp').value || '—']);
+  }
+  
+  if (selectedAdvanceStatus === 'PartRequest' || selectedAdvanceStatus === 'Open') {
+    lines.push(['Suspected Part', document.getElementById('fSuspectedPart').value || '—']);
+    lines.push(['Photos', `${photos.filter(Boolean).length} attached`]);
+  }
+  
   if (complaintGroup) lines.push(['Group ID', complaintGroup.groupId]);
   document.getElementById('summaryContent').innerHTML = lines.map(([k, v]) =>
     `<div style="display:flex;gap:8px;"><span style="color:var(--muted);min-width:80px;flex-shrink:0;">${k}</span><b style="flex:1;">${v}</b></div>`
@@ -2744,6 +2844,21 @@ async function proceedWithSubmission() {
   const itemNum    = complaintGroup ? complaintGroup.current : 1;
   const totalItems = complaintGroup ? complaintGroup.total   : parseInt(document.getElementById('fQty').value) || 1;
 
+  let dbStatus = 'Open';
+  let closureType = '';
+  let otpVal = '';
+  
+  if (selectedAdvanceStatus === 'ClosedWithOTP') {
+    dbStatus = 'Closed';
+    closureType = 'ClosedWithOTP';
+    otpVal = document.getElementById('fAdvOtp') ? document.getElementById('fAdvOtp').value.trim() : '';
+  } else if (selectedAdvanceStatus === 'ClosedWithoutOTP') {
+    dbStatus = 'PendingOTP';
+    closureType = 'ClosedWithoutOTP';
+  } else if (selectedAdvanceStatus === 'PartRequest') {
+    dbStatus = 'PartRequest';
+  }
+
   const complaint = {
     submittedAt:       new Date().toISOString(),
     complainantName:   user.name  || '',
@@ -2769,6 +2884,9 @@ async function proceedWithSubmission() {
     suspectedPart:     document.getElementById('fSuspectedPart').value,
     medium:            document.getElementById('fSuspectedPart').value,
     description:       document.getElementById('fDesc').value,
+    status:            dbStatus,
+    closureType:       closureType,
+    otp:               otpVal,
     photos:            activePhotos,
     serialPhoto:       serialPhoto,
     latitude:          gpsLocation.latitude,
@@ -2964,6 +3082,7 @@ function resetAll() {
   document.getElementById('fSuspectedPart').value = '';
   onSuspectedPartChange();
   document.getElementById('fDesc').value   = '';
+  setAdvanceStatus('Open');
   document.getElementById('photoGrid').innerHTML = '';
   document.getElementById('noPhotosMsg').style.display = '';
   document.getElementById('qtyProgressBanner').style.display = 'none';
