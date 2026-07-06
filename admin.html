@@ -4581,8 +4581,9 @@ function deptDrill(type, val) {
 function clearDeptDrill() { deptDrillFilter = null; renderDeptList(); }
 
 function toggleSelectAllDept(master) {
+  const checked = master ? !!master.checked : false;
   const allChks = document.querySelectorAll('.dept-select-chk');
-  allChks.forEach(chk => chk.checked = master.checked);
+  allChks.forEach(chk => chk.checked = checked);
   updateDeptSelectionUI();
 }
 
@@ -4620,7 +4621,7 @@ async function bulkUpdateDeptStatus(action) {
   let successCount = 0;
   let failCount = 0;
   
-  const promises = ticketIds.map(async (ticketId) => {
+  for (const ticketId of ticketIds) {
     try {
       const res = await fetch(GOOGLE_SCRIPT_URL, {
         method: 'POST',
@@ -4641,16 +4642,14 @@ async function bulkUpdateDeptStatus(action) {
     } catch (e) {
       failCount++;
     }
-  });
-  
-  await Promise.all(promises);
+  }
   
   showToast(`✅ Bulk Update Complete: ${successCount} successful, ${failCount} failed.`, successCount > 0 ? 'success' : 'warn');
   
   bar.innerHTML = origHtml;
   const selectAll = document.getElementById('selectAllDept');
   if (selectAll) selectAll.checked = false;
-  toggleSelectAllDept(selectAll || { checked: false });
+  toggleSelectAllDept(selectAll);
   
   await loadDeptDashboard();
 }
