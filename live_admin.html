@@ -582,29 +582,53 @@ tr:hover td { background: #f8fafc; }
       </div>
     </div>
 
-    <!-- Recent Alerts Card -->
-    <div class="card">
-      <div class="card-title">🚨 Recent Complaint Activity</div>
-      <div class="table-responsive">
-        <table>
-          <thead>
-            <tr>
-              <th>Case ID</th>
-              <th>Date</th>
-              <th>School Name</th>
-              <th>DISE Code</th>
-              <th>Equipment</th>
-              <th>Nature of Complaint</th>
-              <th>Engineer</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody id="dashRecentComplaintsTable">
-            <tr>
-              <td colspan="8" style="text-align:center; color:var(--muted);">No complaints recorded yet.</td>
-            </tr>
-          </tbody>
-        </table>
+    <!-- Grid container for side-by-side layout on desktop -->
+    <div class="dept-grid">
+      <!-- Branch-wise Advance Summary Card -->
+      <div class="card" style="margin-bottom:20px;">
+        <div class="card-title">🏢 Branch-wise Advance Summary</div>
+        <p style="color:var(--muted);font-size:0.78rem;margin:6px 0 14px;">
+          Filtered complaints grouped by branch. Click a row to filter table by branch.
+        </p>
+        <div class="table-responsive">
+          <table class="table-compact">
+            <thead>
+              <tr>
+                <th>Branch</th>
+                <th style="text-align:center; width:120px;">Total</th>
+              </tr>
+            </thead>
+            <tbody id="dashBranchSummaryBody">
+              <tr><td colspan="2" style="text-align:center;color:var(--muted);">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Recent Alerts Card -->
+      <div class="card" style="margin-bottom:20px;">
+        <div class="card-title">🚨 Recent Complaint Activity</div>
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>Case ID</th>
+                <th>Date</th>
+                <th>School Name</th>
+                <th>DISE Code</th>
+                <th>Equipment</th>
+                <th>Nature of Complaint</th>
+                <th>Engineer</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="dashRecentComplaintsTable">
+              <tr>
+                <td colspan="8" style="text-align:center; color:var(--muted);">No complaints recorded yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
     
@@ -2143,6 +2167,113 @@ function renderChart(id, config) {
   charts[id] = new Chart(ctx, config);
 }
 
+let branchLoadingPromise = null;
+async function ensureBranchDataLoaded() {
+  if (bmBranches.length > 0 && bmAliases.length > 0) return;
+  if (branchLoadingPromise) return branchLoadingPromise;
+  
+  branchLoadingPromise = (async () => {
+    try {
+      const [branches, aliases] = await Promise.all([
+        fetch(GOOGLE_SCRIPT_URL + '?action=get_branches&t=' + Date.now()).then(r => r.json()),
+        fetch(GOOGLE_SCRIPT_URL + '?action=get_alias_mappings&t=' + Date.now()).then(r => r.json())
+      ]);
+      bmBranches = Array.isArray(branches) ? branches : [];
+      bmAliases = Array.isArray(aliases) ? aliases : [];
+      logToDebug(`Loaded ${bmBranches.length} branches and ${bmAliases.length} alias mappings for dashboard summary.`, 'success');
+    } catch (e) {
+      console.error('Failed to load branch mapping data:', e);
+    } finally {
+      branchLoadingPromise = null;
+    }
+  })();
+  return branchLoadingPromise;
+}
+
+function getMappedBranchForComplaint(c) {
+  const dist = String(c.district || '').toUpperCase().trim();
+  if (!dist) return 'Unmapped';
+  
+  if (Array.isArray(bmAliases)) {
+    const a = bmAliases.find(x => x.aliasText.toUpperCase().trim() === dist);
+    if (a) return a.branchName || 'Unmapped';
+  }
+  
+  if (Array.isArray(bmBranches)) {
+    const b = bmBranches.find(x => x.name.toUpperCase().trim() === dist);
+    if (b) return b.name;
+  }
+  
+  return 'Unmapped';
+}
+
+async function renderBranchSummary(complaints) {
+  const body = document.getElementById('dashBranchSummaryBody');
+  if (!body) return;
+  
+  await ensureBranchDataLoaded();
+  
+  const activeBranches = bmBranches.filter(b => b.status === 'Active');
+  if (activeBranches.length === 0) {
+    body.innerHTML = '<tr><td colspan="2" style="text-align:center;color:var(--muted);">No branch data loaded.</td></tr>';
+    return;
+  }
+  
+  const counts = {};
+  activeBranches.forEach(b => counts[b.name] = 0);
+  counts['Unmapped'] = 0;
+  
+  complaints.forEach(c => {
+    const branchName = getMappedBranchForComplaint(c);
+    if (counts[branchName] !== undefined) {
+      counts[branchName]++;
+    } else {
+      counts['Unmapped']++;
+    }
+  });
+  
+  const sorted = activeBranches.map(b => ({
+    name: b.name,
+    total: counts[b.name]
+  })).sort((a, b) => b.total - a.total);
+  
+  let html = sorted.map(b => `
+    <tr onclick="filterComplaintsByBranch('${esc(b.name)}')" style="cursor:pointer;">
+      <td><b>${esc(b.name)}</b></td>
+      <td style="text-align:center;font-weight:800;">${b.total}</td>
+    </tr>
+  `).join('');
+  
+  if (counts['Unmapped'] > 0) {
+    html += `
+      <tr onclick="filterComplaintsByBranch('Unmapped')" style="cursor:pointer;background:#fff7ed;">
+        <td><b>⚠️ Unmapped</b> <span style="font-size:0.7rem;color:var(--muted);">(fix in Branch Management)</span></td>
+        <td style="text-align:center;font-weight:800;">${counts['Unmapped']}</td>
+      </tr>
+    `;
+  }
+  
+  const grandTotal = sorted.reduce((s, b) => s + b.total, 0) + counts['Unmapped'];
+  
+  html += `
+    <tr style="background:#f8faff;font-weight:800;">
+      <td>Grand Total</td>
+      <td style="text-align:center;">${grandTotal}</td>
+    </tr>
+  `;
+  
+  body.innerHTML = html;
+}
+
+function filterComplaintsByBranch(branchName) {
+  switchTab('complaints');
+  const input = document.getElementById('filterText');
+  if (input) {
+    input.value = branchName;
+    filterComplaints();
+  }
+}
+
 function renderDashboard() {
   if (currentUser) {
     const roleStr = currentUser.role === 'super_admin' ? 'Super Admin' : 'District Admin';
@@ -2258,6 +2389,7 @@ function renderDashboard() {
   drawEquipChart(complaints);
   drawPartChart(complaints);
   drawNatureChart(complaints);
+  renderBranchSummary(complaints);
   drawDupTrendChart(complaints);
   drawTopSchoolsTable(complaints);
 }
@@ -3520,7 +3652,8 @@ function getFilteredComplaints() {
       const desc = String(c.description || '').toLowerCase();
       const nature = String(c.natureOfComplaint || '').toLowerCase();
       const equip = String(c.equipment || '').toLowerCase();
-      if (!school.includes(query) && !dise.includes(query) && !serial.includes(query) && !caseId.includes(query) && !desc.includes(query) && !nature.includes(query) && !equip.includes(query)) {
+      const mappedBranch = getMappedBranchForComplaint(c).toLowerCase();
+      if (!school.includes(query) && !dise.includes(query) && !serial.includes(query) && !caseId.includes(query) && !desc.includes(query) && !nature.includes(query) && !equip.includes(query) && !mappedBranch.includes(query)) {
         return false;
       }
     }
