@@ -388,25 +388,42 @@ function doPost(e) {
       var sheet = getOrCreateBranchEmailsSheet(ss);
       var bid = String(data.branchId || '').trim();
       var bname = String(data.branchName || '').trim();
-      var email = String(data.email || '').trim().toLowerCase();
-      if (!bid || !email) {
+      var rawEmail = String(data.email || '').trim().toLowerCase();
+      var type = String(data.type || 'TO').trim().toUpperCase();
+      if (type !== 'CC') type = 'TO';
+      
+      if (!bid || !rawEmail) {
         return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'branchId and email are required' }))
                              .setMimeType(ContentService.MimeType.JSON);
       }
-      var dup = false;
-      if (sheet.getLastRow() > 1) {
-        var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues();
-        for (var i = 0; i < rows.length; i++) {
-          if (String(rows[i][0]).trim() === bid && String(rows[i][2]).trim().toLowerCase() === email) {
-            dup = true;
-            break;
+      
+      // Support comma and semicolon separated emails
+      var emailsToAdd = rawEmail.split(/[,;]/).map(function(e) { return e.trim(); }).filter(Boolean);
+      var addedCount = 0;
+      
+      for (var k = 0; k < emailsToAdd.length; k++) {
+        var email = emailsToAdd[k];
+        var dup = false;
+        if (sheet.getLastRow() > 1) {
+          var lastCol = Math.max(3, sheet.getLastColumn());
+          var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, lastCol).getValues();
+          for (var i = 0; i < rows.length; i++) {
+            var rowBid = String(rows[i][0]).trim();
+            var rowEmail = String(rows[i][2]).trim().toLowerCase();
+            var rowType = lastCol >= 4 ? String(rows[i][3] || 'TO').trim().toUpperCase() : 'TO';
+            if (rowBid === bid && rowEmail === email && rowType === type) {
+              dup = true;
+              break;
+            }
           }
         }
+        if (!dup) {
+          sheet.appendRow([bid, bname, email, type]);
+          addedCount++;
+        }
       }
-      if (!dup) {
-        sheet.appendRow([bid, bname, email]);
-      }
-      return ContentService.createTextOutput(JSON.stringify({ status: 'ok' }))
+      
+      return ContentService.createTextOutput(JSON.stringify({ status: 'ok', addedCount: addedCount }))
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -568,13 +585,15 @@ function doGet(e) {
       var sheet = getOrCreateBranchEmailsSheet(ss);
       var list = [];
       if (sheet.getLastRow() > 1) {
-        var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues();
+        var lastCol = Math.max(3, sheet.getLastColumn());
+        var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, lastCol).getValues();
         for (var i = 0; i < rows.length; i++) {
           list.push({
             rowNumber: i + 2,
             branchId: String(rows[i][0] || '').trim(),
             branchName: String(rows[i][1] || '').trim(),
-            email: String(rows[i][2] || '').trim()
+            email: String(rows[i][2] || '').trim(),
+            type: lastCol >= 4 ? String(rows[i][3] || 'TO').trim().toUpperCase() : 'TO'
           });
         }
       }
@@ -1450,23 +1469,39 @@ function getOrCreateBranchEmailsSheet(ss) {
   var sheet = ss.getSheetByName('BranchEmails');
   if (!sheet) {
     sheet = ss.insertSheet('BranchEmails');
-    sheet.appendRow(['BranchID', 'BranchName', 'Email']);
-    sheet.getRange(1, 1, 1, 3).setFontWeight('bold');
+    sheet.appendRow(['BranchID', 'BranchName', 'Email', 'Type']);
+    sheet.getRange(1, 1, 1, 4).setFontWeight('bold');
+  } else {
+    if (sheet.getLastColumn() < 4) {
+      sheet.getRange(1, 4).setValue('Type').setFontWeight('bold');
+    }
   }
   return sheet;
 }
 
 function getBranchEmailsMap(ss) {
   var sheet = getOrCreateBranchEmailsSheet(ss);
-  var map = {};
+  var map = { to: {}, cc: {} };
   if (sheet.getLastRow() < 2) return map;
-  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues();
+  var lastCol = Math.max(3, sheet.getLastColumn());
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, lastCol).getValues();
   for (var i = 0; i < rows.length; i++) {
     var bid = String(rows[i][0] || '').trim();
     var email = String(rows[i][2] || '').trim();
+    var type = lastCol >= 4 ? String(rows[i][3] || 'TO').trim().toUpperCase() : 'TO';
+    if (type !== 'CC') type = 'TO';
+    
     if (bid && email) {
-      if (!map[bid]) map[bid] = [];
-      map[bid].push(email);
+      var emails = email.split(/[,;]/).map(function(e) { return e.trim(); }).filter(Boolean);
+      emails.forEach(function(singleEmail) {
+        if (type === 'CC') {
+          if (!map.cc[bid]) map.cc[bid] = [];
+          map.cc[bid].push(singleEmail);
+        } else {
+          if (!map.to[bid]) map.to[bid] = [];
+          map.to[bid].push(singleEmail);
+        }
+      });
     }
   }
   return map;
@@ -1487,10 +1522,17 @@ function sendBranchComplaintDigestEmails(ss, newByBranch) {
     var info = newByBranch[bid];
     if (!info.tickets.length) continue;
     
-    var emails = emailMap[bid] || [];
-    if (emails.length === 0) {
+    var toEmails = emailMap.to[bid] || [];
+    var ccEmails = emailMap.cc[bid] || [];
+    
+    if (toEmails.length === 0 && ccEmails.length === 0) {
       Logger.log('No emails configured for branch: ' + info.branchName + ' (' + bid + ')');
       continue;
+    }
+    
+    // Fallback if no TO is configured, but CC is
+    if (toEmails.length === 0 && ccEmails.length > 0) {
+      toEmails = [ccEmails.shift()];
     }
     
     var rowsHtml = info.tickets.map(function(t) {
@@ -1521,17 +1563,20 @@ function sendBranchComplaintDigestEmails(ss, newByBranch) {
       '</div><div class="footer" style="background-color: #f9fafb; padding: 15px; text-align: center; font-size: 11px; color: #9ca3af; border-top: 1px solid #e5e7eb;">This is an automated notification. Please do not reply directly to this email.</div>' +
       '</div></body></html>';
       
-    emails.forEach(function(email) {
-      try {
-        MailApp.sendEmail({
-          to: email,
-          subject: 'New Department Complaints - ' + info.tickets.length + ' ticket(s) - ' + info.branchName + ' Branch',
-          htmlBody: htmlBody
-        });
-      } catch (e) {
-        Logger.log('Error sending branch email to ' + email + ': ' + e.toString());
+    try {
+      var mailOptions = {
+        to: toEmails.join(','),
+        subject: 'New Department Complaints - ' + info.tickets.length + ' ticket(s) - ' + info.branchName + ' Branch',
+        htmlBody: htmlBody
+      };
+      if (ccEmails.length > 0) {
+        mailOptions.cc = ccEmails.join(',');
       }
-    });
+      MailApp.sendEmail(mailOptions);
+      Logger.log('Successfully sent consolidated email to: ' + mailOptions.to + (mailOptions.cc ? ' CC: ' + mailOptions.cc : ''));
+    } catch (e) {
+      Logger.log('Error sending consolidated email to ' + toEmails.join(',') + ': ' + e.toString());
+    }
   }
 }
 

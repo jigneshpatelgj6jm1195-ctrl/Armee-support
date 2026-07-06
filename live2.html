@@ -1142,9 +1142,16 @@ tr:hover td { background: #f8fafc; }
             <!-- Options dynamically loaded from bmBranches -->
           </select>
         </div>
-        <div style="flex:1; min-width:240px;">
-          <label style="font-size:0.75rem;margin-bottom:4px;font-weight:bold;">2. Email Address</label>
-          <input type="email" id="beEmailInput" placeholder="e.g. branch.manager@company.com" style="padding:8px 12px;font-size:0.8rem;margin:0;width:100%;" />
+        <div style="flex:2; min-width:240px;">
+          <label style="font-size:0.75rem;margin-bottom:4px;font-weight:bold;">2. Email Address(es) <span style="font-weight:normal;color:var(--muted);">(Comma separated for multiple)</span></label>
+          <input type="text" id="beEmailInput" placeholder="e.g. manager@armee.in, assistant@armee.in" style="padding:8px 12px;font-size:0.8rem;margin:0;width:100%;" />
+        </div>
+        <div style="width:100px;">
+          <label style="font-size:0.75rem;margin-bottom:4px;font-weight:bold;">3. Type</label>
+          <select id="beEmailType" style="padding:8px 12px;font-size:0.8rem;margin:0;width:100%;">
+            <option value="TO">TO</option>
+            <option value="CC">CC</option>
+          </select>
         </div>
         <button class="btn btn-primary" onclick="addBranchEmail()" style="height:38px;">➕ Add Email</button>
       </div>
@@ -1156,6 +1163,7 @@ tr:hover td { background: #f8fafc; }
               <th>Branch Code</th>
               <th>Branch Name</th>
               <th>Configured Email Address</th>
+              <th style="width:100px; text-align:center;">Type</th>
               <th style="width:100px; text-align:center;">Action</th>
             </tr>
           </thead>
@@ -5139,7 +5147,7 @@ async function loadBranchEmails() {
     `<option value="${esc(b.id)}" data-name="${esc(b.name)}">${esc(b.name)} (${esc(b.code)})</option>`
   ).join('');
 
-  tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted);">Loading branch emails…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);">Loading branch emails…</td></tr>';
 
   try {
     const res = await fetch(GOOGLE_SCRIPT_URL + '?action=get_branch_emails&t=' + Date.now());
@@ -5147,18 +5155,22 @@ async function loadBranchEmails() {
     branchEmailsList = Array.isArray(data) ? data : [];
     
     if (branchEmailsList.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted);">No emails configured yet. Use the form above to add branch emails.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);">No emails configured yet. Use the form above to add branch emails.</td></tr>';
       return;
     }
     
     tbody.innerHTML = branchEmailsList.map(item => {
       const br = activeBranches.find(b => b.id === item.branchId);
       const bcode = br ? br.code : 'N/A';
+      const typeBadge = item.type === 'CC' 
+        ? '<span style="padding:2px 8px;border-radius:12px;font-size:0.7rem;font-weight:700;background:#fef3c7;color:#d97706;border:1px solid #f59e0b;">CC</span>' 
+        : '<span style="padding:2px 8px;border-radius:12px;font-size:0.7rem;font-weight:700;background:#dbeafe;color:#2563eb;border:1px solid #3b82f6;">TO</span>';
       return `
         <tr>
           <td><code>${esc(bcode)}</code></td>
           <td><b>${esc(item.branchName)}</b></td>
           <td><a href="mailto:${esc(item.email)}">${esc(item.email)}</a></td>
+          <td style="text-align:center;">${typeBadge}</td>
           <td style="text-align:center;">
             <button class="btn btn-ghost btn-sm" onclick="deleteBranchEmail(${item.rowNumber})" style="color:#ef4444;font-weight:bold;">🗑️ Delete</button>
           </td>
@@ -5166,32 +5178,43 @@ async function loadBranchEmails() {
       `;
     }).join('');
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:#b91c1c;">❌ Error loading emails: ${esc(e.message)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#b91c1c;">❌ Error loading emails: ${esc(e.message)}</td></tr>`;
   }
 }
 
 async function addBranchEmail() {
   const select = document.getElementById('beSelBranch');
   const emailInput = document.getElementById('beEmailInput');
-  if (!select || !emailInput) return;
+  const typeSelect = document.getElementById('beEmailType');
+  if (!select || !emailInput || !typeSelect) return;
 
   const branchId = select.value;
   const branchOption = select.options[select.selectedIndex];
   const branchName = branchOption ? branchOption.getAttribute('data-name') : '';
-  const email = emailInput.value.trim().toLowerCase();
+  const rawEmail = emailInput.value.trim().toLowerCase();
+  const type = typeSelect.value;
 
-  if (!branchId || !email) {
-    showToast('⚠️ Please select a branch and enter a valid email address!', 'warn');
+  if (!branchId || !rawEmail) {
+    showToast('⚠️ Please select a branch and enter at least one email address!', 'warn');
+    return;
+  }
+
+  // Split and validate
+  const emails = rawEmail.split(/[,;]/).map(e => e.trim()).filter(Boolean);
+  if (emails.length === 0) {
+    showToast('⚠️ Please enter a valid email address!', 'warn');
     return;
   }
 
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
-    showToast('⚠️ Invalid email format!', 'warn');
-    return;
+  for (const email of emails) {
+    if (!emailRegex.test(email)) {
+      showToast('⚠️ Invalid email format: ' + email, 'warn');
+      return;
+    }
   }
 
-  showToast('⏳ Adding email...', 'info');
+  showToast('⏳ Adding email(s)...', 'info');
 
   try {
     const res = await fetch(GOOGLE_SCRIPT_URL, {
@@ -5201,13 +5224,14 @@ async function addBranchEmail() {
         action: 'add_branch_email',
         branchId: branchId,
         branchName: branchName,
-        email: email
+        email: emails.join(','),
+        type: type
       })
     });
     const out = await res.json();
     if (out.status !== 'ok') throw new Error(out.message || 'Server error');
     
-    showToast('✅ Branch email added successfully!', 'success');
+    showToast('✅ Branch email(s) added successfully!', 'success');
     emailInput.value = '';
     await loadBranchEmails();
   } catch (e) {
