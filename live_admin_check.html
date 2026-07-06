@@ -1480,9 +1480,7 @@ tr:hover td { background: #f8fafc; }
           <label for="editStatus">Status</label>
           <select id="editStatus">
             <option value="Open">Open</option>
-            <option value="In Progress">In Progress</option>
             <option value="Part Request">Part Request</option>
-            <option value="Resolved">Resolved</option>
             <option value="Closed">Closed</option>
           </select>
         </div>
@@ -3684,9 +3682,7 @@ function renderComplaintsTable() {
         <td>
           <select onchange="updateComplaintStatus(${origIndex}, this.value)" style="padding:4px 8px; font-size:0.75rem; border-radius:6px; font-weight:700;">
             <option value="Open" ${c.status === 'Open' || !c.status ? 'selected' : ''}>Open</option>
-            <option value="In Progress" ${c.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
             <option value="Part Request" ${c.status === 'Part Request' ? 'selected' : ''}>Part Request</option>
-            <option value="Resolved" ${c.status === 'Resolved' ? 'selected' : ''}>Resolved</option>
             <option value="Closed" ${c.status === 'Closed' ? 'selected' : ''}>Closed</option>
           </select>
         </td>
