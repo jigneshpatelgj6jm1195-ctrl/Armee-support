@@ -239,6 +239,7 @@ tr:hover td { background: #f8fafc; }
 .badge-active, .badge-open, .badge-resolved { background: #d1fae5; color: #065f46; }
 .badge-inactive, .badge-closed { background: #fee2e2; color: #7f1d1d; }
 .badge-pending, .badge-inprogress { background: #fef3c7; color: #78350f; }
+.badge-partreq { background: #ede9fe; color: #5b21b6; }
 
 /* ═══════════════ CHARTS ═══════════════ */
 .chart-container { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
@@ -792,6 +793,7 @@ tr:hover td { background: #f8fafc; }
             <option value="">All Statuses</option>
             <option value="open">Open</option>
             <option value="in progress">In Progress</option>
+            <option value="part request">Part Request</option>
             <option value="resolved">Resolved</option>
             <option value="closed">Closed</option>
           </select>
@@ -933,6 +935,72 @@ tr:hover td { background: #f8fafc; }
 
   <!-- ================= TAB: DEPARTMENT COMPLAINTS ================= -->
   <div class="tab-content" id="tab-dept">
+
+    <!-- Pendency panel -->
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-title">📊 Department Complaint Pendency</div>
+      <p style="color:var(--muted);font-size:0.78rem;margin:6px 0 14px;">Click any figure to see those tickets below.</p>
+      <div id="deptPendencyBoxes" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;">
+        <div style="grid-column:1/-1;text-align:center;color:var(--muted);">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Department Trend Chart panel -->
+    <div class="card" style="margin-bottom:20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+        <h4 style="font-size:0.8rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin:0;">📈 Department Ticket Trend</h4>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <input type="date" id="deptTrendFromDate" style="padding:4px 8px; font-size:0.75rem; border:1px solid var(--border); border-radius:6px;" onchange="updateDeptTrendChartFiltered()" />
+          <span style="font-size:0.7rem; color:var(--muted);">to</span>
+          <input type="date" id="deptTrendToDate" style="padding:4px 8px; font-size:0.75rem; border:1px solid var(--border); border-radius:6px;" onchange="updateDeptTrendChartFiltered()" />
+        </div>
+      </div>
+      <div style="position: relative; height: 180px; width: 100%;">
+        <canvas id="chartDeptTrend"></canvas>
+      </div>
+    </div>
+
+    <!-- Branch aging panel -->
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-title">🏢 Branch-wise Pending &amp; Aging (business days, Sundays excluded)</div>
+      <p style="color:var(--muted);font-size:0.78rem;margin:6px 0 14px;">
+        Department complaints grouped by branch. Click a row for that branch's department tickets, oldest first.
+      </p>
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th rowspan="2">Branch</th><th rowspan="2">Manager</th>
+              <th colspan="3" style="text-align:center;background:#eff6ff;">Pending &amp; Aging (Days)</th>
+              <th rowspan="2">Total open</th>
+            </tr>
+            <tr>
+              <th style="background:#eff6ff;">0–2</th><th style="background:#eff6ff;">3–5</th><th style="background:#eff6ff;">6+</th>
+            </tr>
+          </thead>
+          <tbody id="branchAgingBody"><tr><td colspan="6" style="text-align:center;color:var(--muted);">Loading…</td></tr></tbody>
+        </table>
+      </div>
+      <div style="margin-top:14px;">
+        <div style="font-weight:700;font-size:0.8rem;margin-bottom:6px;color:var(--muted);">District Office totals</div>
+        <div id="officeSummary" style="display:flex;flex-wrap:wrap;gap:8px;font-size:0.75rem;"></div>
+      </div>
+    </div>
+
+    <!-- Drill-down ticket list -->
+    <div class="card" style="margin-bottom:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+        <div class="card-title" style="margin-bottom:0;">🎫 Department Tickets <span id="deptDrillLabel" style="font-size:0.75rem;color:var(--primary);font-weight:600;"></span></div>
+        <button class="btn btn-ghost btn-sm" id="deptDrillClear" style="display:none;" onclick="clearDeptDrill()">✖ Clear filter</button>
+      </div>
+      <div class="table-responsive" style="margin-top:12px;">
+        <table>
+          <thead><tr><th>Ticket</th><th>School</th><th>District</th><th>Branch</th><th>Issue</th><th>Age (BD)</th><th>Status</th></tr></thead>
+          <tbody id="deptListBody"><tr><td colspan="7" style="text-align:center;color:var(--muted);">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
     <div class="card">
       <div class="card-title">🏛️ Department Complaints — Bulk Upload (ssgujarat.org export)</div>
       <p style="color:var(--muted);font-size:0.82rem;margin-bottom:16px;">
@@ -1088,6 +1156,66 @@ tr:hover td { background: #f8fafc; }
 </div>
 
 <!-- ================= MODALS ================= -->
+
+<!-- DEPARTMENT COMPLAINT DETAIL MODAL -->
+<div class="modal-bg" id="deptDetailModal">
+  <div class="modal" style="max-width: 600px; width: 95%; max-height: 85vh; overflow-y: auto; display: flex; flex-direction: column; gap: 16px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:10px;">
+      <h3 style="margin:0; font-size:1.1rem;" id="deptDetTitle">🎫 Ticket Details</h3>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('deptDetailModal')" style="padding:4px 8px; font-weight:bold;">✕</button>
+    </div>
+    
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; font-size:0.8rem;">
+      <div><b>School Name:</b> <span id="deptDetSchool"></span></div>
+      <div><b>DISE Code:</b> <span id="deptDetDise"></span></div>
+      <div><b>District:</b> <span id="deptDetDistrict"></span></div>
+      <div><b>Block:</b> <span id="deptDetBlock"></span></div>
+      <div><b>Contact Name:</b> <span id="deptDetContact"></span></div>
+      <div><b>Phone Number:</b> <span id="deptDetPhone"></span></div>
+      <div><b>Asset Type:</b> <span id="deptDetAsset"></span></div>
+      <div><b>Device Type:</b> <span id="deptDetDevice"></span></div>
+      <div><b>Issue Type:</b> <span id="deptDetIssue"></span></div>
+      <div><b>Logged Date:</b> <span id="deptDetCreated"></span></div>
+      <div style="grid-column:1/-1;"><b>Issue Details:</b> <div id="deptDetDetails" style="background:#fafafa; padding:8px; border-radius:6px; margin-top:4px;"></div></div>
+    </div>
+    
+    <div style="border-top:1px solid var(--border); padding-top:10px;">
+      <h4 style="margin:0 0 10px 0; font-size:0.9rem; color:var(--primary);">🔧 Resolution / Status Information</h4>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; font-size:0.8rem;">
+        <div><b>Internal Status:</b> <span id="deptDetStatus"></span></div>
+        <div><b>Closure Type:</b> <span id="deptDetClosure"></span></div>
+        <div><b>Resolved By:</b> <span id="deptDetResolvedBy"></span></div>
+        <div><b>Technician:</b> <span id="deptDetTechnician"></span></div>
+        <div><b>Resolved Date:</b> <span id="deptDetResolvedAt"></span></div>
+        <div><b>OTP Code:</b> <span id="deptDetOtp"></span></div>
+        <div><b>Equipment:</b> <span id="deptDetEquip"></span></div>
+        <div><b>Nature:</b> <span id="deptDetNature"></span></div>
+        <div><b>Quantity:</b> <span id="deptDetQty"></span></div>
+        <div><b>Serial Number:</b> <span id="deptDetSerial"></span></div>
+        <div style="grid-column:1/-1;"><b>Diagnosis / Notes:</b> <div id="deptDetNotes" style="background:#fafafa; padding:8px; border-radius:6px; margin-top:4px;"></div></div>
+      </div>
+    </div>
+
+    <!-- Photos Grid -->
+    <div id="deptDetPhotosArea" style="border-top:1px solid var(--border); padding-top:10px; display:none;">
+      <h4 style="margin:0 0 10px 0; font-size:0.9rem; color:var(--primary);">📷 Attached Photos</h4>
+      <div style="display:flex; gap:12px; flex-wrap:wrap;">
+        <div id="deptDetSerialPhotoContainer" style="display:none; text-align:center;">
+          <div style="font-size:0.7rem; font-weight:700; margin-bottom:4px;">Serial Number Photo</div>
+          <img id="deptDetSerialImg" src="" style="width:100px; height:100px; object-fit:cover; border-radius:8px; border:1px solid #ddd; cursor:pointer;" onclick="viewAdminSerialPhoto(this.src)" />
+        </div>
+        <div id="deptDetSuspectedPhotoContainer" style="display:none; text-align:center;">
+          <div style="font-size:0.7rem; font-weight:700; margin-bottom:4px;">Suspected Part Photo</div>
+          <img id="deptDetSuspectedImg" src="" style="width:100px; height:100px; object-fit:cover; border-radius:8px; border:1px solid #ddd; cursor:pointer;" onclick="viewAdminSerialPhoto(this.src)" />
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-actions" style="margin-top: 10px; border-top: 1px solid var(--border); padding-top: 15px;">
+      <button class="btn btn-ghost" onclick="closeModal('deptDetailModal')">Close</button>
+    </div>
+  </div>
+</div>
 
 <!-- ADD USER MODAL -->
 <div class="modal-bg" id="addUserModal">
@@ -1353,6 +1481,7 @@ tr:hover td { background: #f8fafc; }
           <select id="editStatus">
             <option value="Open">Open</option>
             <option value="In Progress">In Progress</option>
+            <option value="Part Request">Part Request</option>
             <option value="Resolved">Resolved</option>
             <option value="Closed">Closed</option>
           </select>
@@ -1971,6 +2100,8 @@ function switchTab(tabId) {
     renderComplaintsTable();
   } else if (tabId === 'branch') {
     loadBranchMgmt();
+  } else if (tabId === 'dept') {
+    loadDeptDashboard();
   }
 }
 
@@ -2109,6 +2240,7 @@ function renderDashboard() {
 function getBadgeClass(status) {
   const s = String(status || 'open').toLowerCase().trim();
   if (s === 'resolved' || s === 'closed') return 'resolved';
+  if (s === 'part request' || s === 'partrequest') return 'partreq';
   if (s === 'in progress' || s === 'pending' || s === 'inprogress') return 'pending';
   return 'open';
 }
@@ -3553,6 +3685,7 @@ function renderComplaintsTable() {
           <select onchange="updateComplaintStatus(${origIndex}, this.value)" style="padding:4px 8px; font-size:0.75rem; border-radius:6px; font-weight:700;">
             <option value="Open" ${c.status === 'Open' || !c.status ? 'selected' : ''}>Open</option>
             <option value="In Progress" ${c.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
+            <option value="Part Request" ${c.status === 'Part Request' ? 'selected' : ''}>Part Request</option>
             <option value="Resolved" ${c.status === 'Resolved' ? 'selected' : ''}>Resolved</option>
             <option value="Closed" ${c.status === 'Closed' ? 'selected' : ''}>Closed</option>
           </select>
@@ -4327,6 +4460,295 @@ document.addEventListener('DOMContentLoaded', () => {
   const field = document.getElementById('deptImportKey');
   if (saved && field) field.value = saved;
 });
+
+/* ─────────────── DEPARTMENT DASHBOARD (pendency + branch aging) ─────────────── */
+let deptDash = null, deptList = [], deptDrillFilter = null;
+
+async function loadDeptDashboard() {
+  try {
+    const [dash, list] = await Promise.all([
+      fetch(GOOGLE_SCRIPT_URL + '?action=get_department_dashboard&t=' + Date.now()).then(r => r.json()),
+      fetch(GOOGLE_SCRIPT_URL + '?action=get_department_complaints_list&t=' + Date.now()).then(r => r.json()),
+    ]);
+    deptDash = dash; deptList = Array.isArray(list) ? list : [];
+    renderDeptPendency(); renderBranchAging(); renderDeptList(); drawDeptTrendChart(deptList);
+  } catch (e) {
+    showToast('❌ Could not load department dashboard: ' + e.message, 'danger');
+  }
+}
+
+function deptStatBox(label, value, color, bg, filterKey) {
+  return '<div onclick="deptDrill(\'status\',\'' + filterKey + '\')" style="cursor:pointer;background:' + bg +
+    ';border-radius:12px;padding:14px 10px;text-align:center;border:1.5px solid transparent;" ' +
+    'onmouseover="this.style.borderColor=\'' + color + '\'" onmouseout="this.style.borderColor=\'transparent\'">' +
+    '<div style="font-size:1.5rem;font-weight:800;color:' + color + ';">' + value + '</div>' +
+    '<div style="font-size:0.7rem;font-weight:700;color:' + color + ';opacity:0.8;text-transform:uppercase;">' + label + '</div></div>';
+}
+
+function renderDeptPendency() {
+  const p = deptDash.pendency;
+  document.getElementById('deptPendencyBoxes').innerHTML =
+    deptStatBox('Total', p.total, '#0e7490', '#ecfeff', 'total') +
+    deptStatBox('Pending', p.pending, '#b91c1c', '#fef2f2', 'Pending') +
+    deptStatBox('In Progress', p.inProgress, '#a16207', '#fefce8', 'InProgress') +
+    deptStatBox('Part Request', p.partRequest, '#6d28d9', '#f5f3ff', 'PartRequest') +
+    deptStatBox('Pending OTP', p.pendingOtp, '#c2410c', '#fff7ed', 'PendingOTP') +
+    deptStatBox('Closed + OTP', p.closedWithOTP, '#15803d', '#f0fdf4', 'ClosedWithOTP') +
+    deptStatBox('Closed − OTP', p.closedWithoutOTP, '#334155', '#f8fafc', 'ClosedWithoutOTP');
+}
+
+function renderBranchAging() {
+  const body = document.getElementById('branchAgingBody');
+  const branches = (deptDash.branches || []).filter(b => b.status === 'Active');
+  branches.sort((a, b) => {
+    const tot = x => Object.values(x.department).reduce((s, v) => s + v, 0);
+    return tot(b) - tot(a);
+  });
+
+  const cell = (v, warn) => '<td style="text-align:center;' + (v > 0 && warn ? 'color:#b91c1c;font-weight:700;' : v === 0 ? 'color:#cbd5e1;' : '') + '">' + v + '</td>';
+  let totals = { d1: 0, d2: 0, d3: 0 };
+
+  body.innerHTML = branches.map(b => {
+    const d = b.department;
+    totals.d1 += d['0-2']; totals.d2 += d['3-5']; totals.d3 += d['6+'];
+    const total = d['0-2'] + d['3-5'] + d['6+'];
+    return '<tr onclick="deptDrill(\'branch\',\'' + esc(b.branchId) + '\')" style="cursor:pointer;">' +
+      '<td><b>' + esc(b.branchName) + '</b><br><span style="font-size:0.7rem;color:var(--muted);">' + esc(b.districtOfficeName) + ' · ' + esc(b.branchId) + '</span></td>' +
+      '<td>' + esc(b.managerName || '—') + '</td>' +
+      cell(d['0-2'], false) + cell(d['3-5'], false) + cell(d['6+'], true) +
+      '<td style="text-align:center;font-weight:800;">' + total + '</td></tr>';
+  }).join('') +
+  (function() {
+    const u = deptDash.unmapped;
+    const uTotal = Object.values(u.department).reduce((s, v) => s + v, 0);
+    if (!uTotal) return '';
+    return '<tr onclick="deptDrill(\'branch\',\'UNMAPPED\')" style="cursor:pointer;background:#fff7ed;">' +
+      '<td colspan="2"><b>⚠️ Unmapped</b> <span style="font-size:0.7rem;color:var(--muted);">(fix in Branch Management)</span></td>' +
+      cell(u.department['0-2'], false) + cell(u.department['3-5'], false) + cell(u.department['6+'], true) +
+      '<td style="text-align:center;font-weight:800;">' + uTotal + '</td></tr>';
+  })() +
+  '<tr style="background:#f8faff;font-weight:800;"><td colspan="2">TOTAL</td>' +
+  cell(totals.d1, false) + cell(totals.d2, false) + cell(totals.d3, true) +
+  '<td style="text-align:center;">' + (totals.d1 + totals.d2 + totals.d3) + '</td></tr>';
+
+  document.getElementById('officeSummary').innerHTML = (deptDash.districtOffices || [])
+    .map(o => {
+      const t = Object.values(o.department).reduce((s, v) => s + v, 0);
+      return t ? '<span style="background:#f0f4ff;border:1px solid var(--border);border-radius:10px;padding:4px 10px;">' +
+        '<b>' + esc(o.name) + '</b>: ' + t + '</span>' : '';
+    }).join('');
+}
+
+function deptStatusBadge(t) {
+  const map = {
+    'Pending': ['#fef2f2', '#b91c1c', 'Pending'],
+    'InProgress': ['#fefce8', '#a16207', 'In Progress'],
+    'PartRequest': ['#f5f3ff', '#6d28d9', 'Part Request'],
+    'PendingOTP': ['#fff7ed', '#c2410c', 'Pending OTP'],
+    'Closed': ['#f0fdf4', '#15803d', 'Closed'],
+  };
+  const m = map[t] || map['Pending'];
+  return '<span style="background:' + m[0] + ';color:' + m[1] + ';padding:2px 10px;border-radius:10px;font-size:0.7rem;font-weight:700;">' + m[2] + '</span>';
+}
+
+function deptDrill(type, val) {
+  deptDrillFilter = { type: type, val: val };
+  renderDeptList();
+  document.getElementById('deptListBody').closest('.card').scrollIntoView({ behavior: 'smooth' });
+}
+
+function clearDeptDrill() { deptDrillFilter = null; renderDeptList(); }
+
+function renderDeptList() {
+  const body = document.getElementById('deptListBody');
+  const label = document.getElementById('deptDrillLabel');
+  const clearBtn = document.getElementById('deptDrillClear');
+  let rows = deptList.slice();
+  let labelText = '— all tickets';
+
+  if (deptDrillFilter) {
+    const f = deptDrillFilter;
+    if (f.type === 'status') {
+      if (f.val === 'total') { labelText = '— all tickets'; }
+      else if (f.val === 'ClosedWithOTP') { rows = rows.filter(r => r.internalStatus === 'Closed' && r.closureType === 'ClosedWithOTP'); labelText = '— Closed with OTP'; }
+      else if (f.val === 'ClosedWithoutOTP') { rows = rows.filter(r => r.internalStatus === 'Closed' && r.closureType !== 'ClosedWithOTP'); labelText = '— Closed without OTP'; }
+      else { rows = rows.filter(r => r.internalStatus === f.val); labelText = '— ' + f.val; }
+    } else if (f.type === 'branch') {
+      if (f.val === 'UNMAPPED') { rows = rows.filter(r => !r.branchId); labelText = '— Unmapped'; }
+      else {
+        rows = rows.filter(r => r.branchId === f.val);
+        const b = (deptDash.branches || []).find(x => x.branchId === f.val);
+        labelText = '— ' + (b ? b.branchName : f.val) + ' branch (open, oldest first)';
+        rows = rows.filter(r => r.internalStatus !== 'Closed');
+      }
+    }
+  }
+
+  rows.sort((a, b) => b.businessDays - a.businessDays);
+  label.textContent = labelText + ' · ' + rows.length + ' ticket(s)';
+  clearBtn.style.display = deptDrillFilter ? '' : 'none';
+
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);">No tickets match.</td></tr>';
+    return;
+  }
+  body.innerHTML = rows.slice(0, 300).map(r =>
+    '<tr onclick="viewDeptDetails(\'' + esc(r.ticketId) + '\')" style="cursor:pointer;"><td><b>' + esc(r.ticketId) + '</b></td>' +
+    '<td>' + esc(r.school) + '<br><span style="font-size:0.7rem;color:var(--muted);">' + esc(r.schoolId) + '</span></td>' +
+    '<td>' + esc(r.district) + '</td>' +
+    '<td>' + esc(r.branchName) + '</td>' +
+    '<td>' + esc(r.deviceType) + ' — ' + esc(r.issueType) + '</td>' +
+    '<td style="text-align:center;' + (r.businessDays > 5 ? 'color:#b91c1c;font-weight:700;' : '') + '">' + r.businessDays + '</td>' +
+    '<td>' + deptStatusBadge(r.internalStatus) +
+      (r.internalStatus === 'PendingOTP'
+        ? ' <button class="btn btn-primary btn-sm" title="Enter the OTP collected from the school to close this ticket" onclick="event.stopPropagation(); finalizePendingOtp(\'' + esc(r.ticketId) + '\')">📩 Enter OTP</button>'
+        : '') +
+    '</td></tr>'
+  ).join('') + (rows.length > 300 ? '<tr><td colspan="7" style="text-align:center;color:var(--muted);">…and ' + (rows.length - 300) + ' more (use a narrower filter)</td></tr>' : '');
+}
+
+/** Finalize a ticket the engineer closed on site without OTP. */
+async function finalizePendingOtp(ticketId) {
+  const otp = (prompt('Ticket ' + ticketId + ' was closed on site without OTP.\n\nEnter the OTP collected from the school to finalize the closure:') || '').trim();
+  if (!otp) return;
+  try {
+    const res = await fetch(GOOGLE_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'resolve_department_complaint',
+        ticketId: ticketId,
+        resolutionAction: 'finalize_otp',
+        otp: otp,
+        resolvedBy: (currentUser && currentUser.name) || 'admin',
+      }),
+    });
+    const out = await res.json();
+    if (out.status !== 'ok') throw new Error(out.message || 'Server rejected the update');
+    showToast('✅ Ticket ' + ticketId + ' closed with OTP.', 'success');
+    loadDeptDashboard();
+  } catch (e) {
+    showToast('❌ ' + e.message, 'danger');
+  }
+}
+
+function viewDeptDetails(ticketId) {
+  const r = deptList.find(t => t.ticketId === ticketId);
+  if (!r) return;
+  
+  document.getElementById('deptDetTitle').innerHTML = '🎫 Ticket Details: ' + esc(r.ticketId);
+  document.getElementById('deptDetSchool').textContent = r.school || '—';
+  document.getElementById('deptDetDise').textContent = r.schoolId || '—';
+  document.getElementById('deptDetDistrict').textContent = r.district || '—';
+  document.getElementById('deptDetBlock').textContent = r.block || '—';
+  document.getElementById('deptDetContact').textContent = r.contactName || '—';
+  document.getElementById('deptDetPhone').textContent = r.phoneNumber || '—';
+  document.getElementById('deptDetAsset').textContent = r.assetType || '—';
+  document.getElementById('deptDetDevice').textContent = r.deviceType || '—';
+  document.getElementById('deptDetIssue').textContent = r.issueType || '—';
+  document.getElementById('deptDetCreated').textContent = r.createdDate || '—';
+  document.getElementById('deptDetDetails').textContent = r.issueDetails || '—';
+  
+  // Resolution details
+  document.getElementById('deptDetStatus').textContent = r.internalStatus || 'Pending';
+  document.getElementById('deptDetClosure').textContent = r.closureType || '—';
+  document.getElementById('deptDetResolvedBy').textContent = r.resolvedBy || '—';
+  document.getElementById('deptDetTechnician').textContent = r.technicianName || '—';
+  document.getElementById('deptDetResolvedAt').textContent = r.resolvedAt ? new Date(r.resolvedAt).toLocaleString() : '—';
+  document.getElementById('deptDetOtp').textContent = r.otpValue || '—';
+  document.getElementById('deptDetEquip').textContent = r.equipment || '—';
+  document.getElementById('deptDetNature').textContent = r.natureOfComplaint || '—';
+  document.getElementById('deptDetQty').textContent = r.quantity || '—';
+  document.getElementById('deptDetSerial').textContent = r.serialNumber || '—';
+  document.getElementById('deptDetNotes').textContent = r.diagnosisNotes || '—';
+  
+  // Photos
+  const photosArea = document.getElementById('deptDetPhotosArea');
+  const serialCont = document.getElementById('deptDetSerialPhotoContainer');
+  const suspectedCont = document.getElementById('deptDetSuspectedPhotoContainer');
+  
+  let showPhotos = false;
+  if (r.serialPhotoUrl) {
+    document.getElementById('deptDetSerialImg').src = r.serialPhotoUrl;
+    serialCont.style.display = 'block';
+    showPhotos = true;
+  } else {
+    serialCont.style.display = 'none';
+  }
+  
+  if (r.suspectedPartPhotoUrl) {
+    document.getElementById('deptDetSuspectedImg').src = r.suspectedPartPhotoUrl;
+    suspectedCont.style.display = 'block';
+    showPhotos = true;
+  } else {
+    suspectedCont.style.display = 'none';
+  }
+  
+  photosArea.style.display = showPhotos ? 'block' : 'none';
+  
+  document.getElementById('deptDetailModal').classList.add('show');
+}
+
+let localDeptTrendData = [];
+function drawDeptTrendChart(data) {
+  localDeptTrendData = data;
+  updateDeptTrendChartFiltered();
+}
+
+function updateDeptTrendChartFiltered() {
+  const fromVal = document.getElementById('deptTrendFromDate').value;
+  const toVal = document.getElementById('deptTrendToDate').value;
+
+  let filtered = localDeptTrendData;
+  if (fromVal || toVal) {
+    filtered = filtered.filter(r => {
+      const d = parseDateString(r.createdDate);
+      if (!d) return true;
+      const localDStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      if (fromVal && localDStr < fromVal) return false;
+      if (toVal && localDStr > toVal) return false;
+      return true;
+    });
+  }
+
+  // Count tickets per date
+  const counts = {};
+  filtered.forEach(r => {
+    const d = parseDateString(r.createdDate);
+    if (!d) return;
+    const dateStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    counts[dateStr] = (counts[dateStr] || 0) + 1;
+  });
+
+  // Sort dates
+  const sortedDates = Object.keys(counts).sort();
+  const sortedCounts = sortedDates.map(d => counts[d]);
+
+  renderChart('chartDeptTrend', {
+    type: 'line',
+    data: {
+      labels: sortedDates,
+      datasets: [{
+        label: 'Tickets Logged',
+        data: sortedCounts,
+        borderColor: '#0e7490',
+        backgroundColor: 'rgba(14, 116, 144, 0.1)',
+        borderWidth: 2,
+        fill: true,
+        tension: 0.3
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { font: { size: 9 } } },
+        y: { ticks: { stepSize: 1, font: { size: 9 } } }
+      }
+    }
+  });
+}
 
 /* ─────────────── BRANCH MANAGEMENT ─────────────── */
 let bmOffices = [], bmBranches = [], bmAliases = [], bmUnmapped = [];
