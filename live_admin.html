@@ -2098,8 +2098,8 @@ async function saveAll() {
 function checkTabAccess(tabId) {
   if (!currentUser) return tabId === 'dash';
   if (currentUser.role === 'super_admin') return true;
-  // Non-super admin (district_admin, viewer) can only access dash and complaints
-  const allowedTabs = ['dash', 'complaints'];
+  // Non-super admin (district_admin, viewer) can access dash, complaints, and dept
+  const allowedTabs = ['dash', 'complaints', 'dept'];
   return allowedTabs.includes(tabId);
 }
 
@@ -4675,15 +4675,87 @@ let deptDash = null, deptList = [], deptDrillFilter = null;
 
 async function loadDeptDashboard() {
   try {
-    const [dash, list] = await Promise.all([
-      fetch(GOOGLE_SCRIPT_URL + '?action=get_department_dashboard&t=' + Date.now()).then(r => r.json()),
-      fetch(GOOGLE_SCRIPT_URL + '?action=get_department_complaints_list&t=' + Date.now()).then(r => r.json()),
-    ]);
-    deptDash = dash; deptList = Array.isArray(list) ? list : [];
+    const list = await fetch(GOOGLE_SCRIPT_URL + '?action=get_department_complaints_list&t=' + Date.now()).then(r => r.json());
+    deptList = Array.isArray(list) ? filterByUserDistricts(list) : [];
+    deptDash = computeClientDeptDashboard(deptList);
     renderDeptPendency(); renderBranchAging(); renderDeptList(); drawDeptTrendChart(deptList);
   } catch (e) {
     showToast('❌ Could not load department dashboard: ' + e.message, 'danger');
   }
+}
+
+function computeClientDeptDashboard(list) {
+  var pendency = {
+    total: 0, pending: 0, inProgress: 0, partRequest: 0, pendingOtp: 0,
+    closedWithOTP: 0, closedWithoutOTP: 0
+  };
+
+  var branchMap = {};
+  var districtOfficesMap = {};
+
+  list.forEach(function(r) {
+    pendency.total++;
+    if (r.internalStatus === 'Closed') {
+      if (r.closureType === 'ClosedWithOTP') pendency.closedWithOTP++;
+      else pendency.closedWithoutOTP++;
+    } else if (r.internalStatus === 'PartRequest') {
+      pendency.partRequest++;
+    } else if (r.internalStatus === 'PendingOTP') {
+      pendency.pendingOtp++;
+    } else if (r.internalStatus === 'InProgress') {
+      pendency.inProgress++;
+    } else {
+      pendency.pending++;
+    }
+
+    if (r.internalStatus !== 'Closed') {
+      var bid = r.branchId || 'UNMAPPED';
+      var bname = r.branchName || 'Unmapped';
+      if (!branchMap[bid]) {
+        branchMap[bid] = {
+          branchId: bid,
+          branchName: bname,
+          status: 'Active',
+          department: { '0-2': 0, '3-5': 0, '6+': 0 }
+        };
+      }
+      var bucket = '0-2';
+      if (r.businessDays >= 6) bucket = '6+';
+      else if (r.businessDays >= 3) bucket = '3-5';
+      branchMap[bid].department[bucket]++;
+
+      var officeName = r.district || 'Unmapped';
+      if (!districtOfficesMap[officeName]) {
+        districtOfficesMap[officeName] = {
+          name: officeName,
+          department: { '0-2': 0, '3-5': 0, '6+': 0 }
+        };
+      }
+      districtOfficesMap[officeName].department[bucket]++;
+    }
+  });
+
+  var branches = [];
+  var unmapped = { department: { '0-2': 0, '3-5': 0, '6+': 0 } };
+  for (var bid in branchMap) {
+    if (bid === 'UNMAPPED') {
+      unmapped.department = branchMap[bid].department;
+    } else {
+      branches.push(branchMap[bid]);
+    }
+  }
+
+  var districtOffices = [];
+  for (var oName in districtOfficesMap) {
+    districtOffices.push(districtOfficesMap[oName]);
+  }
+
+  return {
+    pendency: pendency,
+    branches: branches,
+    unmapped: unmapped,
+    districtOffices: districtOffices
+  };
 }
 
 function deptStatBox(label, value, color, bg, filterKey) {
