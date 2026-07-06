@@ -1367,6 +1367,7 @@ function importDepartmentComplaints(ss, data) {
   var now = new Date();
   var insertedRows = [];
   var updatedCount = 0;
+  var syncTicketIds = [];
   var newByAdmin = {}; // email -> { name, tickets: [] }
   var newByBranch = {}; // branchId -> { branchName, tickets: [] }
   var structure = loadBranchStructure(ss);
@@ -1379,6 +1380,8 @@ function importDepartmentComplaints(ss, data) {
 
     var ticketId = String(r.TicketId || '').trim();
     if (!ticketId) continue;
+
+    syncTicketIds.push(ticketId);
 
     if (ticketRowNumber[ticketId]) {
       var rowNum = ticketRowNumber[ticketId];
@@ -1393,7 +1396,6 @@ function importDepartmentComplaints(ss, data) {
       sheet.getRange(rowNum, 30).setValue(r.TotalDaysOfTicket || '');
       sheet.getRange(rowNum, 32).setValue(status);                     // LastSeenStatus
       updatedCount++;
-      syncDepartmentToComplaints(ss, ticketId);
       continue;
     }
 
@@ -1436,9 +1438,11 @@ function importDepartmentComplaints(ss, data) {
 
   if (insertedRows.length > 0) {
     sheet.getRange(sheet.getLastRow() + 1, 1, insertedRows.length, DEPT_HEADERS.length).setValues(insertedRows);
-    for (var k = 0; k < insertedRows.length; k++) {
-      syncDepartmentToComplaints(ss, insertedRows[k][9]);
-    }
+  }
+
+  // Bulk sync all updated/inserted department complaints to the Complaints sheet
+  if (syncTicketIds.length > 0) {
+    syncAllDepartmentToComplaints(ss, syncTicketIds);
   }
 
   // sendEmails defaults to true (scraper behavior); manual backfills pass false
@@ -1668,6 +1672,150 @@ function syncDepartmentToComplaints(ss, ticketId) {
     ];
     mainSheet.appendRow(newRow);
     Logger.log('syncDepartmentToComplaints: Appended new ticket ' + ticketId + ' to Complaints sheet.');
+  }
+}
+
+function syncAllDepartmentToComplaints(ss, ticketIds) {
+  if (!ticketIds || ticketIds.length === 0) return;
+  
+  var deptSheet = ss.getSheetByName('DepartmentComplaints');
+  var resSheet = ss.getSheetByName('DepartmentResolutions');
+  var mainSheet = ss.getSheetByName('Complaints');
+  if (!deptSheet || !mainSheet) return;
+
+  var deptRows = deptSheet.getLastRow() > 1 
+    ? deptSheet.getRange(2, 1, deptSheet.getLastRow() - 1, deptSheet.getLastColumn()).getValues() 
+    : [];
+  var resRows = (resSheet && resSheet.getLastRow() > 1)
+    ? resSheet.getRange(2, 1, resSheet.getLastRow() - 1, resSheet.getLastColumn()).getValues()
+    : [];
+  var mainRows = mainSheet.getLastRow() > 1
+    ? mainSheet.getRange(2, 1, mainSheet.getLastRow() - 1, mainSheet.getLastColumn()).getValues()
+    : [];
+
+  var deptMap = {};
+  for (var i = 0; i < deptRows.length; i++) {
+    var tid = String(deptRows[i][9] || '').trim();
+    if (tid) deptMap[tid] = deptRows[i];
+  }
+
+  var resMap = {};
+  for (var j = 0; j < resRows.length; j++) {
+    var tid = String(resRows[j][0] || '').trim();
+    if (tid) resMap[tid] = { row: resRows[j], rowNumber: j + 2 };
+  }
+
+  var mainMap = {};
+  for (var k = 0; k < mainRows.length; k++) {
+    var cid = String(mainRows[k][24] || '').trim();
+    if (cid) mainMap[cid] = { row: mainRows[k], rowNumber: k + 2 };
+  }
+
+  for (var t = 0; t < ticketIds.length; t++) {
+    var ticketId = String(ticketIds[t]).trim();
+    if (!ticketId) continue;
+
+    var deptRow = deptMap[ticketId];
+    if (!deptRow) {
+      Logger.log('syncAllDepartmentToComplaints: ticketId ' + ticketId + ' not found in DepartmentComplaints.');
+      continue;
+    }
+
+    var resInfo = resMap[ticketId];
+    var resRow = resInfo ? resInfo.row : null;
+
+    var status = (resRow && String(resRow[1] || '').trim()) || String(deptRow[19] || '').trim() || 'Open';
+    var serialNumber = resRow ? String(resRow[13] || '').trim() : '';
+    var suspectedPart = resRow ? String(resRow[15] || '').trim() : '';
+    var equipment = resRow ? String(resRow[9] || '').trim() : String(deptRow[12] || '').trim();
+    var nature = resRow ? String(resRow[10] || '').trim() : String(deptRow[13] || '').trim();
+    var quantity = resRow ? Number(resRow[11] || 1) : 1;
+    var otp = resRow ? String(resRow[3] || '').trim() : '';
+    var closureType = resRow ? String(resRow[2] || '').trim() : '';
+    var serialPhotoUrl = resRow ? String(resRow[14] || '').trim() : '';
+    var partPhotoUrl = resRow ? String(resRow[16] || '').trim() : '';
+    var resolvedAt = resRow ? String(resRow[7] || '').trim() : '';
+
+    var photoPreview = partPhotoUrl ? '=IMAGE("' + partPhotoUrl + '")' : '';
+    var viewPhoto = partPhotoUrl ? '=HYPERLINK("' + partPhotoUrl + '", "🔗 View Photo")' : '';
+    var serialPhotoPreview = serialPhotoUrl ? '=IMAGE("' + serialPhotoUrl + '")' : '';
+    var viewSerialPhoto = serialPhotoUrl ? '=HYPERLINK("' + serialPhotoUrl + '", "🔗 View Serial Photo")' : '';
+
+    var mainInfo = mainMap[ticketId];
+    if (mainInfo) {
+      var rowNum = mainInfo.rowNumber;
+      mainSheet.getRange(rowNum, 24).setValue(status);
+      mainSheet.getRange(rowNum, 16).setValue(equipment);
+      mainSheet.getRange(rowNum, 17).setValue(nature);
+      mainSheet.getRange(rowNum, 18).setValue(serialNumber);
+      mainSheet.getRange(rowNum, 19).setValue(quantity);
+      mainSheet.getRange(rowNum, 21).setValue(suspectedPart);
+      
+      mainSheet.getRange(rowNum, 28).setValue(photoPreview); 
+      mainSheet.getRange(rowNum, 29).setValue(viewPhoto); 
+      mainSheet.getRange(rowNum, 30).setValue(partPhotoUrl); 
+      mainSheet.getRange(rowNum, 32).setValue(serialPhotoPreview); 
+      mainSheet.getRange(rowNum, 33).setValue(viewSerialPhoto); 
+      mainSheet.getRange(rowNum, 34).setValue(serialPhotoUrl); 
+      mainSheet.getRange(rowNum, 36).setValue(otp);
+      mainSheet.getRange(rowNum, 37).setValue(closureType);
+      if (resolvedAt) {
+        mainSheet.getRange(rowNum, 20).setValue(resolvedAt);
+      }
+    } else {
+      var complainantName = String(deptRow[16] || '').trim() || 'SSG Scraper';
+      var complainantPhone = String(deptRow[17] || '').trim();
+      var submittedAt = deptRow[21] || new Date();
+      var district = String(deptRow[0] || '').trim();
+      var block = String(deptRow[2] || '').trim();
+      var school = String(deptRow[8] || '').trim();
+      var dise = String(deptRow[7] || '').trim();
+      var description = String(deptRow[14] || '').trim();
+
+      var nextSr = mainSheet.getLastRow() + 1;
+      
+      var newRow = [
+        nextSr,                 // Index 0: SR No.
+        submittedAt,            // Index 1: Submitted At
+        complainantName,        // Index 2: Complainant Name
+        complainantPhone,       // Index 3: Complainant Phone
+        'Department',           // Index 4: Complainant Role
+        'ICT',                  // Index 5: Project
+        dise,                   // Index 6: DISE Code
+        dise,                   // Index 7: School Code
+        district,               // Index 8: District
+        block,                  // Index 9: Taluka
+        school,                 // Index 10: School Name
+        complainantName,        // Index 11: Principal Name
+        complainantPhone,       // Index 12: Principal Contact
+        String(deptRow[6] || '').trim(), // Index 13: Address (Village)
+        '',                     // Index 14: Pin Code
+        equipment,              // Index 15: Equipment
+        nature,                 // Index 16: Nature of Complaint
+        serialNumber,           // Index 17: Serial Number
+        quantity,               // Index 18: Quantity
+        resolvedAt || '',       // Index 19: Complaint Date
+        suspectedPart,          // Index 20: Suspected Part
+        description,            // Index 21: Description
+        0,                      // Index 22: Photo Count
+        status,                 // Index 23: Status
+        ticketId,               // Index 24: Case ID
+        '',                     // Index 25: Latitude
+        '',                     // Index 26: Longitude
+        photoPreview,           // Index 27: Photo Preview
+        viewPhoto,              // Index 28: View Photo
+        partPhotoUrl,           // Index 29: Photo URL
+        'NO',                   // Index 30: Duplicate Status
+        serialPhotoPreview,     // Index 31: Serial Photo Preview
+        viewSerialPhoto,        // Index 32: View Serial Photo
+        serialPhotoUrl,         // Index 33: Serial Photo URL
+        '',                     // Index 34: Archived
+        otp,                    // Index 35: OtpValue
+        closureType             // Index 36: ClosureType
+      ];
+      mainSheet.appendRow(newRow);
+      mainMap[ticketId] = { row: newRow, rowNumber: mainSheet.getLastRow() };
+    }
   }
 }
 
