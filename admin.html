@@ -4715,7 +4715,7 @@ function computeClientDeptDashboard(list) {
       pendency.pending++;
     }
 
-    if (r.internalStatus !== 'Closed') {
+    if (r.internalStatus !== 'Closed' && r.internalStatus !== 'PendingOTP') {
       var bid = r.branchId || 'UNMAPPED';
       var bname = r.branchName || 'Unmapped';
       if (!branchMap[bid]) {
@@ -4976,12 +4976,12 @@ function renderDeptList() {
   let labelText = '— active tickets';
 
   if (!deptDrillFilter) {
-    rows = rows.filter(r => r.internalStatus !== 'Closed');
+    rows = rows.filter(r => r.internalStatus !== 'Closed' && r.internalStatus !== 'PendingOTP');
   } else {
     const f = deptDrillFilter;
     if (f.type === 'status') {
       if (f.val === 'total') {
-        rows = rows.filter(r => r.internalStatus !== 'Closed');
+        rows = rows.filter(r => r.internalStatus !== 'Closed' && r.internalStatus !== 'PendingOTP');
         labelText = '— all active tickets';
       }
       else if (f.val === 'ClosedWithOTP') { rows = rows.filter(r => r.internalStatus === 'Closed' && r.closureType === 'ClosedWithOTP'); labelText = '— Closed with OTP'; }
@@ -4993,7 +4993,7 @@ function renderDeptList() {
         rows = rows.filter(r => r.branchId === f.val);
         const b = (deptDash.branches || []).find(x => x.branchId === f.val);
         labelText = '— ' + (b ? b.branchName : f.val) + ' branch (open, oldest first)';
-        rows = rows.filter(r => r.internalStatus !== 'Closed');
+        rows = rows.filter(r => r.internalStatus !== 'Closed' && r.internalStatus !== 'PendingOTP');
       }
     }
   }
@@ -5128,12 +5128,12 @@ function viewDeptDetails(ticketId) {
 function downloadDeptReport() {
   let rows = deptList.slice();
   if (!deptDrillFilter) {
-    rows = rows.filter(r => r.internalStatus !== 'Closed');
+    rows = rows.filter(r => r.internalStatus !== 'Closed' && r.internalStatus !== 'PendingOTP');
   } else {
     const f = deptDrillFilter;
     if (f.type === 'status') {
       if (f.val === 'total') {
-        rows = rows.filter(r => r.internalStatus !== 'Closed');
+        rows = rows.filter(r => r.internalStatus !== 'Closed' && r.internalStatus !== 'PendingOTP');
       }
       else if (f.val === 'ClosedWithOTP') { rows = rows.filter(r => r.internalStatus === 'Closed' && r.closureType === 'ClosedWithOTP'); }
       else if (f.val === 'ClosedWithoutOTP') { rows = rows.filter(r => r.internalStatus === 'Closed' && r.closureType !== 'ClosedWithOTP'); }
@@ -5142,7 +5142,7 @@ function downloadDeptReport() {
       if (f.val === 'UNMAPPED') { rows = rows.filter(r => !r.branchId); }
       else {
         rows = rows.filter(r => r.branchId === f.val);
-        rows = rows.filter(r => r.internalStatus !== 'Closed');
+        rows = rows.filter(r => r.internalStatus !== 'Closed' && r.internalStatus !== 'PendingOTP');
       }
     }
   }
