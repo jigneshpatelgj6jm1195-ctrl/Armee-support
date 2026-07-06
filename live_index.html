@@ -784,15 +784,13 @@ textarea { resize: none; min-height: 80px; }
 
         <!-- Resolution status selector at the top of Step 3, visible to engineers only -->
         <div class="field" id="advStatusSelectorField" style="display:none; border-bottom: 1px dashed rgba(0,0,0,0.12); padding-bottom: 14.5px; margin-bottom: 14.5px;">
-          <label style="font-size:0.8rem; font-weight:800; color:var(--text); margin-bottom:8px; display:block;">Complaint Resolution Status</label>
-          <div id="advStatusButtons" style="display:flex; flex-wrap:wrap; gap:8px;">
-            <button type="button" class="adv-status-btn active" data-status="Open" onclick="setAdvanceStatus('Open')">🕓 Open</button>
-            <button type="button" class="adv-status-btn" data-status="ClosedWithOTP" onclick="setAdvanceStatus('ClosedWithOTP')">✅ Close with OTP</button>
-            <button type="button" class="adv-status-btn" data-status="ClosedWithoutOTP" onclick="setAdvanceStatus('ClosedWithoutOTP')">📩 Close without OTP</button>
-            <button type="button" class="adv-status-btn" data-status="PartRequest" onclick="setAdvanceStatus('PartRequest')">🔧 Part Request</button>
+          <label style="font-size:0.8rem; font-weight:800; color:var(--text); margin-bottom:8px; display:block;">Complaint Resolution Status (Optional)</label>
+          <div id="advStatusButtons" style="display:flex; gap:8px;">
+            <button type="button" class="adv-status-btn" data-status="Closed" onclick="toggleAdvanceStatus('Closed')" style="flex:1;">✅ Closed</button>
+            <button type="button" class="adv-status-btn" data-status="Part Request" onclick="toggleAdvanceStatus('Part Request')" style="flex:1;">🔧 Part Request</button>
           </div>
           <div style="font-size:0.72rem; color:var(--muted); margin-top:8px; line-height:1.4;">
-            Choose <b>Close with/without OTP</b> if resolved, or <b>Part Request</b> if waiting for a spare part. Default is <b>Open</b>.
+            Select <b>Closed</b> if resolved on site, or <b>Part Request</b> if waiting for a spare part. Leave unselected for <b>Open</b>.
           </div>
         </div>
 
@@ -905,10 +903,6 @@ textarea { resize: none; min-height: 80px; }
           <textarea id="fDesc" placeholder="Describe the issue in detail…" rows="3"></textarea>
         </div>
 
-        <div class="field mt-12" id="advOtpField" style="display:none;">
-          <label for="fAdvOtp">OTP Code <span class="req">*</span></label>
-          <input type="tel" id="fAdvOtp" placeholder="Enter 6-digit OTP from School" inputmode="numeric" maxlength="8" />
-        </div>
       </div>
     </div>
 
@@ -1152,37 +1146,37 @@ let serialPhoto = null;
 let offlineQueue = JSON.parse(localStorage.getItem('offlineQueue') || '[]');
 let lastComplaint = null;
 let selectedAdvanceStatus = 'Open';
-function setAdvanceStatus(status) {
-  selectedAdvanceStatus = status;
+function toggleAdvanceStatus(status) {
+  if (selectedAdvanceStatus === status) {
+    selectedAdvanceStatus = 'Open';
+  } else {
+    selectedAdvanceStatus = status;
+  }
+
   document.querySelectorAll('#advStatusButtons .adv-status-btn').forEach(b => {
-    b.classList.toggle('active', b.dataset.status === status);
+    b.classList.toggle('active', b.dataset.status === selectedAdvanceStatus);
   });
   
   const suspectedPartField = document.getElementById('suspectedPartDropdownField');
   const suspectedPhotoField = document.getElementById('suspectedPartPhotoField');
-  const otpField = document.getElementById('advOtpField');
   const photoReq = document.getElementById('suspectedPhotoReq');
   const photoStatusText = document.getElementById('suspectedPhotoStatus');
   
-  if (status === 'ClosedWithOTP' || status === 'ClosedWithoutOTP') {
+  if (selectedAdvanceStatus === 'Closed') {
     if (suspectedPartField) suspectedPartField.style.display = 'none';
     if (suspectedPhotoField) suspectedPhotoField.style.display = 'none';
     document.getElementById('fSuspectedPart').value = '';
-    if (otpField) {
-      otpField.style.display = (status === 'ClosedWithOTP') ? 'block' : 'none';
-    }
-  } else if (status === 'PartRequest') {
+  } else if (selectedAdvanceStatus === 'Part Request') {
     if (suspectedPartField) suspectedPartField.style.display = 'block';
     if (suspectedPhotoField) suspectedPhotoField.style.display = 'block';
     if (photoReq) photoReq.style.display = 'inline';
     if (photoStatusText) photoStatusText.textContent = 'Mandatory';
-    if (otpField) otpField.style.display = 'none';
   } else {
+    // Open
     if (suspectedPartField) suspectedPartField.style.display = 'block';
     if (suspectedPhotoField) suspectedPhotoField.style.display = 'block';
     if (photoReq) photoReq.style.display = 'none';
     if (photoStatusText) photoStatusText.textContent = 'Optional';
-    if (otpField) otpField.style.display = 'none';
   }
 }
 let editFieldKey  = ''; // 'principal' | 'contact'
@@ -2098,10 +2092,10 @@ function applyRoleVisibility(user) {
       fSus.value = '';
       onSuspectedPartChange();
     }
-    setAdvanceStatus('Open');
+    toggleAdvanceStatus('Open');
   } else {
     if (statusSelectorField) statusSelectorField.style.display = 'block';
-    setAdvanceStatus(selectedAdvanceStatus);
+    toggleAdvanceStatus(selectedAdvanceStatus);
   }
 }
 function showSetupScreen() {
@@ -2356,11 +2350,7 @@ function validateStep(step) {
     if (!serialPhoto) { showToast('⚠️ Please attach Serial Number Photo', 'warn'); return false; }
     
     // Status-specific validations
-    if (selectedAdvanceStatus === 'ClosedWithOTP') {
-      const otpVal = document.getElementById('fAdvOtp').value.trim();
-      if (!otpVal) { showToast('⚠️ Please enter the OTP collected from the school contact', 'warn'); return false; }
-      if (otpVal.length < 4) { showToast('⚠️ Enter a valid OTP', 'warn'); return false; }
-    } else if (selectedAdvanceStatus === 'PartRequest') {
+    if (selectedAdvanceStatus === 'Part Request') {
       if (!suspectedPart) { showToast('⚠️ Please select a Suspected Part for Part Request', 'warn'); return false; }
       if (photos.filter(Boolean).length === 0) {
         showToast('⚠️ Photo is mandatory when a Suspected Part is selected. Please capture/upload a photo of the part!', 'warn');
@@ -2426,9 +2416,8 @@ function fillComplaintSummary() {
     : (document.getElementById('fQty').value || '—');
     
   let statusText = 'Open';
-  if (selectedAdvanceStatus === 'ClosedWithOTP') statusText = 'Closed (with OTP)';
-  else if (selectedAdvanceStatus === 'ClosedWithoutOTP') statusText = 'Closed (without OTP)';
-  else if (selectedAdvanceStatus === 'PartRequest') statusText = 'Part Request';
+  if (selectedAdvanceStatus === 'Closed') statusText = 'Closed';
+  else if (selectedAdvanceStatus === 'Part Request') statusText = 'Part Request';
   
   const lines = [
     ['School',     r.school    || '—'],
@@ -2442,11 +2431,7 @@ function fillComplaintSummary() {
     ['Status',     statusText]
   ];
   
-  if (selectedAdvanceStatus === 'ClosedWithOTP') {
-    lines.push(['OTP Code', document.getElementById('fAdvOtp').value || '—']);
-  }
-  
-  if (selectedAdvanceStatus === 'PartRequest' || selectedAdvanceStatus === 'Open') {
+  if (selectedAdvanceStatus === 'Part Request' || selectedAdvanceStatus === 'Open') {
     lines.push(['Suspected Part', document.getElementById('fSuspectedPart').value || '—']);
     lines.push(['Photos', `${photos.filter(Boolean).length} attached`]);
   }
@@ -2844,20 +2829,9 @@ async function proceedWithSubmission() {
   const itemNum    = complaintGroup ? complaintGroup.current : 1;
   const totalItems = complaintGroup ? complaintGroup.total   : parseInt(document.getElementById('fQty').value) || 1;
 
-  let dbStatus = 'Open';
+  let dbStatus = selectedAdvanceStatus || 'Open';
   let closureType = '';
   let otpVal = '';
-  
-  if (selectedAdvanceStatus === 'ClosedWithOTP') {
-    dbStatus = 'Closed';
-    closureType = 'ClosedWithOTP';
-    otpVal = document.getElementById('fAdvOtp') ? document.getElementById('fAdvOtp').value.trim() : '';
-  } else if (selectedAdvanceStatus === 'ClosedWithoutOTP') {
-    dbStatus = 'PendingOTP';
-    closureType = 'ClosedWithoutOTP';
-  } else if (selectedAdvanceStatus === 'PartRequest') {
-    dbStatus = 'PartRequest';
-  }
 
   const complaint = {
     submittedAt:       new Date().toISOString(),
