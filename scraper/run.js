@@ -33,7 +33,7 @@ const PORTAL_PASS = process.env.PORTAL_PASS;
 const SEND_EMAILS = (process.env.SEND_EMAILS || 'true').toLowerCase() !== 'false';
 const HEADLESS = (process.env.HEADLESS || 'true').toLowerCase() !== 'false';
 const CHUNK_SIZE = 150;
-const LOGIN_ATTEMPTS = 3;
+const LOGIN_ATTEMPTS = 10;
 
 const EXPORT_COLUMNS = [
   'District', 'BlockId', 'Block', 'ClusterId', 'Cluster', 'VillageId', 'Village',
@@ -136,34 +136,135 @@ async function ocrCaptcha(pngBuffer) {
   return (data.text || '').replace(/[^A-Z0-9]/gi, '').toUpperCase();
 }
 
+/**
+ * Grab the captcha screenshot. Returns null if the captcha image is broken/missing.
+ */
 async function grabCaptcha(page) {
   const img = page.locator('img[src*="CaptchaImage.axd"]');
   await img.waitFor({ state: 'visible', timeout: 15000 });
+
+  // Check if the captcha image actually loaded (naturalWidth > 0 means it loaded)
+  const loaded = await img.evaluate(el => el.naturalWidth > 0);
+  if (!loaded) {
+    log('Captcha image failed to load (broken image detected).');
+    return null;
+  }
   return img.screenshot();
 }
 
-/* ── Login (retries with fresh captcha) ── */
+/**
+ * Click the captcha refresh button (the ↻ / reload link next to the captcha).
+ * This refreshes ONLY the captcha image without reloading the whole page.
+ */
+async function refreshCaptchaButton(page) {
+  try {
+    // The refresh icon is typically an <a> tag or image next to the captcha
+    // Try multiple selectors that might match the refresh button
+    const selectors = [
+      'a[href*="javascript"][href*="captcha" i]',
+      'img[src*="refresh" i]',
+      'a:has(img[src*="refresh" i])',
+      '#imgRefresh',
+      'a[onclick*="captcha" i]',
+      'a[onclick*="Captcha" i]',
+      'img[id*="efresh"]',
+      // The ↻ refresh icon next to CaptchaImage - usually an anchor wrapping the reload icon
+      'img[src*="CaptchaImage"] + a',
+      'a[href*="#"] img + a',
+    ];
+    for (const sel of selectors) {
+      const el = page.locator(sel).first();
+      if (await el.count() > 0) {
+        await el.click();
+        await page.waitForTimeout(1000);
+        return true;
+      }
+    }
+    // Fallback: look for any clickable element immediately after the captcha image
+    // The portal uses a small link with a refresh icon character right after the img
+    const captchaImg = page.locator('img[src*="CaptchaImage.axd"]');
+    const refreshLink = captchaImg.locator('xpath=following-sibling::a[1]');
+    if (await refreshLink.count() > 0) {
+      await refreshLink.click();
+      await page.waitForTimeout(1000);
+      return true;
+    }
+  } catch (e) {
+    log('Captcha refresh button click failed: ' + e.message);
+  }
+  return false;
+}
+
+/* ── Login (smart retry: loads page once, refreshes only captcha between attempts) ── */
 async function login(page) {
+  // Load the portal page only once
+  await page.goto(PORTAL_URL, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(1000);
+
+  // Fill credentials only once (they persist across captcha retries)
+  await page.fill('#TxtUName', PORTAL_USER);
+  await page.fill('#TxtUPass', PORTAL_PASS);
+
+  // Listen for JS alert dialogs ("Please Enter Correct Captcha Code...!") and auto-dismiss them
+  let lastDialog = null;
+  page.on('dialog', async dialog => {
+    lastDialog = dialog.message();
+    log(`Portal dialog: "${dialog.message()}"`);
+    await dialog.accept();
+  });
+
   for (let attempt = 1; attempt <= LOGIN_ATTEMPTS; attempt++) {
-    await page.goto(PORTAL_URL, { waitUntil: 'domcontentloaded' });
-    const guess = await ocrCaptcha(await grabCaptcha(page));
+    lastDialog = null;
+
+    // If captcha image is broken, click refresh to get a new one
+    let captchaBuf = await grabCaptcha(page);
+    if (!captchaBuf) {
+      log(`Attempt ${attempt}: Captcha not loaded — clicking refresh button...`);
+      const refreshed = await refreshCaptchaButton(page);
+      if (!refreshed) {
+        log('Could not find captcha refresh button. Skipping attempt.');
+        await page.waitForTimeout(2000);
+        continue;
+      }
+      captchaBuf = await grabCaptcha(page);
+      if (!captchaBuf) {
+        log('Captcha still not loaded after refresh. Skipping attempt.');
+        await page.waitForTimeout(2000);
+        continue;
+      }
+    }
+
+    const guess = await ocrCaptcha(captchaBuf);
     log(`Login attempt ${attempt}: captcha OCR guess "${guess}"`);
-    if (guess.length < 4) { log('Guess too short, refreshing captcha.'); continue; }
 
-    await page.fill('#TxtUName', PORTAL_USER);
-    await page.fill('#TxtUPass', PORTAL_PASS);
+    if (guess.length < 4) {
+      log('Guess too short — refreshing captcha...');
+      await refreshCaptchaButton(page);
+      await page.waitForTimeout(1000);
+      continue;
+    }
+
+    // Fill captcha and submit
     await page.fill('#txtCaptcha', guess);
-    await Promise.all([
-      page.waitForLoadState('domcontentloaded'),
-      page.click('#ImgSubmit'),
-    ]);
-    await page.waitForTimeout(2000);
+    await page.click('#ImgSubmit');
+    await page.waitForTimeout(2500);
 
+    // Check if login succeeded (navigated away from login page)
     if (!page.url().includes('CALLogin')) {
       log('Login successful → ' + page.url());
       return true;
     }
-    log('Login attempt ' + attempt + ' failed (wrong captcha or credentials).');
+
+    // Login failed — could be wrong captcha or wrong credentials
+    if (lastDialog && lastDialog.toLowerCase().includes('captcha')) {
+      log(`Attempt ${attempt} failed (wrong captcha). Refreshing captcha...`);
+    } else {
+      log(`Attempt ${attempt} failed (wrong captcha or credentials).`);
+    }
+
+    // Refresh only the captcha image for next attempt
+    await refreshCaptchaButton(page);
+    await page.waitForTimeout(1000);
   }
   return false;
 }
