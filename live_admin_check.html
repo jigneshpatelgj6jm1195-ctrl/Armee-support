@@ -4973,12 +4973,17 @@ function renderDeptList() {
   const label = document.getElementById('deptDrillLabel');
   const clearBtn = document.getElementById('deptDrillClear');
   let rows = deptList.slice();
-  let labelText = '— all tickets';
+  let labelText = '— active tickets';
 
-  if (deptDrillFilter) {
+  if (!deptDrillFilter) {
+    rows = rows.filter(r => r.internalStatus !== 'Closed');
+  } else {
     const f = deptDrillFilter;
     if (f.type === 'status') {
-      if (f.val === 'total') { labelText = '— all tickets'; }
+      if (f.val === 'total') {
+        rows = rows.filter(r => r.internalStatus !== 'Closed');
+        labelText = '— all active tickets';
+      }
       else if (f.val === 'ClosedWithOTP') { rows = rows.filter(r => r.internalStatus === 'Closed' && r.closureType === 'ClosedWithOTP'); labelText = '— Closed with OTP'; }
       else if (f.val === 'ClosedWithoutOTP') { rows = rows.filter(r => r.internalStatus === 'Closed' && r.closureType !== 'ClosedWithOTP'); labelText = '— Closed without OTP'; }
       else { rows = rows.filter(r => r.internalStatus === f.val); labelText = '— ' + f.val; }
@@ -5122,10 +5127,14 @@ function viewDeptDetails(ticketId) {
 
 function downloadDeptReport() {
   let rows = deptList.slice();
-  if (deptDrillFilter) {
+  if (!deptDrillFilter) {
+    rows = rows.filter(r => r.internalStatus !== 'Closed');
+  } else {
     const f = deptDrillFilter;
     if (f.type === 'status') {
-      if (f.val === 'total') { }
+      if (f.val === 'total') {
+        rows = rows.filter(r => r.internalStatus !== 'Closed');
+      }
       else if (f.val === 'ClosedWithOTP') { rows = rows.filter(r => r.internalStatus === 'Closed' && r.closureType === 'ClosedWithOTP'); }
       else if (f.val === 'ClosedWithoutOTP') { rows = rows.filter(r => r.internalStatus === 'Closed' && r.closureType !== 'ClosedWithOTP'); }
       else { rows = rows.filter(r => r.internalStatus === f.val); }
