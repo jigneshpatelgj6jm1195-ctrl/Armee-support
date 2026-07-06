@@ -974,7 +974,7 @@ tr:hover td { background: #f8fafc; }
           <table class="table-compact">
             <thead>
               <tr>
-                <th rowspan="2">Branch</th>
+<th rowspan="2">Branch</th>
                 <th colspan="3" style="text-align:center;background:#eff6ff;">Pending Aging</th>
                 <th rowspan="2">Total</th>
               </tr>
@@ -1213,6 +1213,16 @@ tr:hover td { background: #f8fafc; }
           <div style="font-size:0.7rem; font-weight:700; margin-bottom:4px;">Suspected Part Photo</div>
           <img id="deptDetSuspectedImg" src="" style="width:100px; height:100px; object-fit:cover; border-radius:8px; border:1px solid #ddd; cursor:pointer;" onclick="viewAdminSerialPhoto(this.src)" />
         </div>
+      </div>
+    </div>
+
+    <!-- Update status buttons block -->
+    <div id="deptDetUpdateStatusBlock" style="border-top:1px solid var(--border); padding-top:15px; display:flex; flex-direction:column; gap:10px;">
+      <h4 style="margin:0; font-size:0.9rem; color:var(--primary);">✏️ Update Ticket Status</h4>
+      <div style="display:flex; gap:8px;">
+        <button type="button" class="btn btn-sm" onclick="submitDeptStatusUpdate('closed_with_otp')" style="flex:1; background:#10b981; color:white; font-weight:bold; height:40px; display:flex; align-items:center; justify-content:center; gap:6px; border:none; border-radius:8px; cursor:pointer;">✅ Close with OTP</button>
+        <button type="button" class="btn btn-sm" onclick="submitDeptStatusUpdate('closed_without_otp')" style="flex:1; background:#f59e0b; color:white; font-weight:bold; height:40px; display:flex; align-items:center; justify-content:center; gap:6px; border:none; border-radius:8px; cursor:pointer;">📩 Close without OTP</button>
+        <button type="button" class="btn btn-sm" onclick="submitDeptStatusUpdate('part_request')" style="flex:1; background:#7c3aed; color:white; font-weight:bold; height:40px; display:flex; align-items:center; justify-content:center; gap:6px; border:none; border-radius:8px; cursor:pointer;">🔧 Part Request</button>
       </div>
     </div>
 
@@ -4570,7 +4580,122 @@ function deptDrill(type, val) {
 
 function clearDeptDrill() { deptDrillFilter = null; renderDeptList(); }
 
+function toggleSelectAllDept(master) {
+  const allChks = document.querySelectorAll('.dept-select-chk');
+  allChks.forEach(chk => chk.checked = master.checked);
+  updateDeptSelectionUI();
+}
+
+function updateDeptSelectionUI() {
+  const chks = document.querySelectorAll('.dept-select-chk:checked');
+  const bar = document.getElementById('deptMultiSelectBar');
+  const countSpan = document.getElementById('deptSelectedCount');
+  const selectAll = document.getElementById('selectAllDept');
+  
+  if (chks.length > 0) {
+    bar.style.display = 'flex';
+    countSpan.textContent = chks.length;
+  } else {
+    bar.style.display = 'none';
+  }
+  
+  const allChks = document.querySelectorAll('.dept-select-chk');
+  if (allChks.length > 0 && selectAll) {
+    selectAll.checked = (chks.length === allChks.length);
+  }
+}
+
+async function bulkUpdateDeptStatus(action) {
+  const chks = document.querySelectorAll('.dept-select-chk:checked');
+  if (chks.length === 0) return;
+  
+  const ticketIds = Array.from(chks).map(chk => chk.getAttribute('data-ticket-id'));
+  const confirmMsg = `Are you sure you want to update the status of ${ticketIds.length} selected ticket(s) to "${action.replace(/_/g, ' ').toUpperCase()}"?`;
+  if (!confirm(confirmMsg)) return;
+  
+  const bar = document.getElementById('deptMultiSelectBar');
+  const origHtml = bar.innerHTML;
+  bar.innerHTML = `<div style="font-weight:bold;color:var(--primary);font-size:0.8rem;text-align:center;width:100%;">⏳ Updating ${ticketIds.length} tickets... Please wait.</div>`;
+  
+  let successCount = 0;
+  let failCount = 0;
+  
+  const promises = ticketIds.map(async (ticketId) => {
+    try {
+      const res = await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          action: 'resolve_department_complaint',
+          ticketId: ticketId,
+          resolutionAction: action,
+          resolvedBy: (currentUser && currentUser.name) || 'admin'
+        })
+      });
+      const out = await res.json();
+      if (out.status === 'ok') {
+        successCount++;
+      } else {
+        failCount++;
+      }
+    } catch (e) {
+      failCount++;
+    }
+  });
+  
+  await Promise.all(promises);
+  
+  showToast(`✅ Bulk Update Complete: ${successCount} successful, ${failCount} failed.`, successCount > 0 ? 'success' : 'warn');
+  
+  bar.innerHTML = origHtml;
+  const selectAll = document.getElementById('selectAllDept');
+  if (selectAll) selectAll.checked = false;
+  toggleSelectAllDept(selectAll || { checked: false });
+  
+  await loadDeptDashboard();
+}
+
+async function submitDeptStatusUpdate(action) {
+  const title = document.getElementById('deptDetTitle').textContent;
+  const ticketId = title.replace('🎫 Ticket Details: ', '').replace('🎫 Ticket Details:', '').trim();
+  if (!ticketId) return;
+  const confirmMsg = `Are you sure you want to update ticket ${ticketId} status to "${action.replace(/_/g, ' ').toUpperCase()}"?`;
+  if (!confirm(confirmMsg)) return;
+
+  const block = document.getElementById('deptDetUpdateStatusBlock');
+  const origHtml = block.innerHTML;
+  block.innerHTML = '<div style="text-align:center;color:var(--primary);font-weight:bold;padding:10px;width:100%;">⏳ Submitting update to Google Sheet...</div>';
+
+  try {
+    const res = await fetch(GOOGLE_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'resolve_department_complaint',
+        ticketId: ticketId,
+        resolutionAction: action,
+        resolvedBy: (currentUser && currentUser.name) || 'admin'
+      })
+    });
+    const out = await res.json();
+    if (out.status !== 'ok') throw new Error(out.message || 'Server rejected the update');
+    
+    showToast('✅ Ticket status updated successfully!', 'success');
+    closeModal('deptDetailModal');
+    await loadDeptDashboard();
+  } catch (e) {
+    showToast('❌ ' + e.message, 'danger');
+  } finally {
+    block.innerHTML = origHtml;
+  }
+}
+
 function renderDeptList() {
+  const selectAll = document.getElementById('selectAllDept');
+  if (selectAll) selectAll.checked = false;
+  const bar = document.getElementById('deptMultiSelectBar');
+  if (bar) bar.style.display = 'none';
+
   const body = document.getElementById('deptListBody');
   const label = document.getElementById('deptDrillLabel');
   const clearBtn = document.getElementById('deptDrillClear');
@@ -4600,11 +4725,13 @@ function renderDeptList() {
   clearBtn.style.display = deptDrillFilter ? '' : 'none';
 
   if (!rows.length) {
-    body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);">No tickets match.</td></tr>';
+    body.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);">No tickets match.</td></tr>';
     return;
   }
   body.innerHTML = rows.slice(0, 300).map(r =>
-    '<tr onclick="viewDeptDetails(\'' + esc(r.ticketId) + '\')" style="cursor:pointer;"><td><b>' + esc(r.ticketId) + '</b></td>' +
+    '<tr onclick="viewDeptDetails(\'' + esc(r.ticketId) + '\')" style="cursor:pointer;">' +
+    '<td style="text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" class="dept-select-chk" data-ticket-id="' + esc(r.ticketId) + '" onchange="updateDeptSelectionUI()" style="transform: scale(1.2); cursor: pointer;" /></td>' +
+    '<td><b>' + esc(r.ticketId) + '</b></td>' +
     '<td>' + esc(r.school) + '<br><span style="font-size:0.7rem;color:var(--muted);">' + esc(r.schoolId) + '</span></td>' +
     '<td>' + esc(r.district) + '</td>' +
     '<td>' + esc(r.branchName) + '</td>' +
@@ -4615,7 +4742,7 @@ function renderDeptList() {
         ? ' <button class="btn btn-primary btn-sm" title="Enter the OTP collected from the school to close this ticket" onclick="event.stopPropagation(); finalizePendingOtp(\'' + esc(r.ticketId) + '\')">📩 Enter OTP</button>'
         : '') +
     '</td></tr>'
-  ).join('') + (rows.length > 300 ? '<tr><td colspan="7" style="text-align:center;color:var(--muted);">…and ' + (rows.length - 300) + ' more (use a narrower filter)</td></tr>' : '');
+  ).join('') + (rows.length > 300 ? '<tr><td colspan="8" style="text-align:center;color:var(--muted);">…and ' + (rows.length - 300) + ' more (use a narrower filter)</td></tr>' : '');
 }
 
 /** Finalize a ticket the engineer closed on site without OTP. */
