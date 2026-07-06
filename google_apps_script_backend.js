@@ -443,6 +443,20 @@ function doPost(e) {
       }
     }
 
+    if (data.action === 'log_scraper_run') {
+      var sheet = getOrCreateScraperLogSheet(ss);
+      var status = String(data.status || 'UNKNOWN').trim().toUpperCase();
+      var duration = Number(data.duration || 0);
+      var parsed = Number(data.parsed || 0);
+      var newTickets = Number(data.newTickets || 0);
+      var updated = Number(data.updated || 0);
+      var msg = String(data.message || '').trim();
+      
+      sheet.appendRow([new Date(), status, duration, parsed, newTickets, updated, msg]);
+      return ContentService.createTextOutput(JSON.stringify({ status: 'ok' }))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
     if (data.action === 'delete_branch_email') {
       var sheet = getOrCreateBranchEmailsSheet(ss);
       var rowNum = Number(data.rowNumber);
@@ -1379,6 +1393,7 @@ function importDepartmentComplaints(ss, data) {
       sheet.getRange(rowNum, 30).setValue(r.TotalDaysOfTicket || '');
       sheet.getRange(rowNum, 32).setValue(status);                     // LastSeenStatus
       updatedCount++;
+      syncDepartmentToComplaints(ss, ticketId);
       continue;
     }
 
@@ -1421,6 +1436,9 @@ function importDepartmentComplaints(ss, data) {
 
   if (insertedRows.length > 0) {
     sheet.getRange(sheet.getLastRow() + 1, 1, insertedRows.length, DEPT_HEADERS.length).setValues(insertedRows);
+    for (var k = 0; k < insertedRows.length; k++) {
+      syncDepartmentToComplaints(ss, insertedRows[k][9]);
+    }
   }
 
   // sendEmails defaults to true (scraper behavior); manual backfills pass false
@@ -1493,6 +1511,164 @@ function getOrCreateBranchEmailsSheet(ss) {
     }
   }
   return sheet;
+}
+
+function getOrCreateScraperLogSheet(ss) {
+  var sheet = ss.getSheetByName('ScraperLog');
+  if (!sheet) {
+    sheet = ss.insertSheet('ScraperLog');
+    sheet.appendRow(['Timestamp', 'Status', 'Duration (s)', 'Parsed Rows', 'New Tickets', 'Updated Tickets', 'Message/Errors']);
+    sheet.getRange(1, 1, 1, 7).setFontWeight('bold');
+  }
+  return sheet;
+}
+
+function syncDepartmentToComplaints(ss, ticketId) {
+  ticketId = String(ticketId || '').trim();
+  if (!ticketId) return;
+
+  var deptSheet = ss.getSheetByName('DepartmentComplaints');
+  var resSheet = ss.getSheetByName('DepartmentResolutions');
+  var mainSheet = ss.getSheetByName('Complaints');
+  if (!deptSheet || !mainSheet) return;
+
+  // 1. Find the department complaint row
+  var deptRow = null;
+  if (deptSheet.getLastRow() > 1) {
+    var deptRows = deptSheet.getRange(2, 1, deptSheet.getLastRow() - 1, deptSheet.getLastColumn()).getValues();
+    for (var i = 0; i < deptRows.length; i++) {
+      if (String(deptRows[i][9] || '').trim() === ticketId) {
+        deptRow = deptRows[i];
+        break;
+      }
+    }
+  }
+  if (!deptRow) {
+    Logger.log('syncDepartmentToComplaints: ticketId ' + ticketId + ' not found in DepartmentComplaints.');
+    return;
+  }
+
+  // 2. Find the resolution row (if any)
+  var resRow = null;
+  if (resSheet && resSheet.getLastRow() > 1) {
+    var resRows = resSheet.getRange(2, 1, resSheet.getLastRow() - 1, resSheet.getLastColumn()).getValues();
+    for (var j = 0; j < resRows.length; j++) {
+      if (String(resRows[j][0] || '').trim() === ticketId) {
+        resRow = resRows[j];
+        break;
+      }
+    }
+  }
+
+  // Gather values
+  var status = (resRow && String(resRow[1] || '').trim()) || String(deptRow[19] || '').trim() || 'Open';
+  var serialNumber = resRow ? String(resRow[13] || '').trim() : '';
+  var suspectedPart = resRow ? String(resRow[15] || '').trim() : '';
+  var equipment = resRow ? String(resRow[9] || '').trim() : String(deptRow[12] || '').trim();
+  var nature = resRow ? String(resRow[10] || '').trim() : String(deptRow[13] || '').trim();
+  var quantity = resRow ? Number(resRow[11] || 1) : 1;
+  var otp = resRow ? String(resRow[3] || '').trim() : '';
+  var closureType = resRow ? String(resRow[2] || '').trim() : '';
+  var serialPhotoUrl = resRow ? String(resRow[14] || '').trim() : '';
+  var partPhotoUrl = resRow ? String(resRow[16] || '').trim() : '';
+  var resolvedAt = resRow ? String(resRow[7] || '').trim() : '';
+
+  // 3. Find if it already exists in the main Complaints sheet (Case ID is TicketId)
+  var mainRowIndex = -1;
+  var mainRows = [];
+  if (mainSheet.getLastRow() > 1) {
+    mainRows = mainSheet.getRange(2, 1, mainSheet.getLastRow() - 1, mainSheet.getLastColumn()).getValues();
+    for (var k = 0; k < mainRows.length; k++) {
+      if (String(mainRows[k][24] || '').trim() === ticketId) {
+        mainRowIndex = k + 2; // 2-indexed row number
+        break;
+      }
+    }
+  }
+
+  // Generate Photo Formulas
+  var photoPreview = partPhotoUrl ? '=IMAGE("' + partPhotoUrl + '")' : '';
+  var viewPhoto = partPhotoUrl ? '=HYPERLINK("' + partPhotoUrl + '", "🔗 View Photo")' : '';
+  var serialPhotoPreview = serialPhotoUrl ? '=IMAGE("' + serialPhotoUrl + '")' : '';
+  var viewSerialPhoto = serialPhotoUrl ? '=HYPERLINK("' + serialPhotoUrl + '", "🔗 View Serial Photo")' : '';
+
+  if (mainRowIndex !== -1) {
+    // Update existing row
+    mainSheet.getRange(mainRowIndex, 24).setValue(status); // Status
+    mainSheet.getRange(mainRowIndex, 16).setValue(equipment);
+    mainSheet.getRange(mainRowIndex, 17).setValue(nature);
+    mainSheet.getRange(mainRowIndex, 18).setValue(serialNumber);
+    mainSheet.getRange(mainRowIndex, 19).setValue(quantity);
+    mainSheet.getRange(mainRowIndex, 21).setValue(suspectedPart);
+    // Photos & Formulas
+    mainSheet.getRange(mainRowIndex, 28).setValue(photoPreview); 
+    mainSheet.getRange(mainRowIndex, 29).setValue(viewPhoto); 
+    mainSheet.getRange(mainRowIndex, 30).setValue(partPhotoUrl); 
+    mainSheet.getRange(mainRowIndex, 32).setValue(serialPhotoPreview); 
+    mainSheet.getRange(mainRowIndex, 33).setValue(viewSerialPhoto); 
+    mainSheet.getRange(mainRowIndex, 34).setValue(serialPhotoUrl); 
+    mainSheet.getRange(mainRowIndex, 36).setValue(otp);
+    mainSheet.getRange(mainRowIndex, 37).setValue(closureType);
+    if (resolvedAt) {
+      mainSheet.getRange(mainRowIndex, 20).setValue(resolvedAt);
+    }
+    
+    Logger.log('syncDepartmentToComplaints: Updated existing ticket ' + ticketId + ' in Complaints sheet.');
+  } else {
+    // Append new row
+    var complainantName = String(deptRow[16] || '').trim() || 'SSG Scraper';
+    var complainantPhone = String(deptRow[17] || '').trim();
+    var submittedAt = deptRow[21] || new Date();
+    var district = String(deptRow[0] || '').trim();
+    var block = String(deptRow[2] || '').trim();
+    var school = String(deptRow[8] || '').trim();
+    var dise = String(deptRow[7] || '').trim();
+    var description = String(deptRow[14] || '').trim();
+
+    var nextSr = mainSheet.getLastRow();
+    
+    var newRow = [
+      nextSr,                 // Index 0: SR No.
+      submittedAt,            // Index 1: Submitted At
+      complainantName,        // Index 2: Complainant Name
+      complainantPhone,       // Index 3: Complainant Phone
+      'Department',           // Index 4: Complainant Role
+      'ICT',                  // Index 5: Project
+      dise,                   // Index 6: DISE Code
+      dise,                   // Index 7: School Code
+      district,               // Index 8: District
+      block,                  // Index 9: Taluka
+      school,                 // Index 10: School Name
+      complainantName,        // Index 11: Principal Name
+      complainantPhone,       // Index 12: Principal Contact
+      String(deptRow[6] || '').trim(), // Index 13: Address (Village)
+      '',                     // Index 14: Pin Code
+      equipment,              // Index 15: Equipment
+      nature,                 // Index 16: Nature of Complaint
+      serialNumber,           // Index 17: Serial Number
+      quantity,               // Index 18: Quantity
+      resolvedAt || '',       // Index 19: Complaint Date (Resolution date if resolved)
+      suspectedPart,          // Index 20: Suspected Part
+      description,            // Index 21: Description
+      0,                      // Index 22: Photo Count
+      status,                 // Index 23: Status
+      ticketId,               // Index 24: Case ID (TicketId)
+      '',                     // Index 25: Latitude
+      '',                     // Index 26: Longitude
+      photoPreview,           // Index 27: Photo Preview
+      viewPhoto,              // Index 28: View Photo
+      partPhotoUrl,           // Index 29: Photo URL
+      'NO',                   // Index 30: Duplicate Status
+      serialPhotoPreview,     // Index 31: Serial Photo Preview
+      viewSerialPhoto,        // Index 32: View Serial Photo
+      serialPhotoUrl,         // Index 33: Serial Photo URL
+      '',                     // Index 34: Archived
+      otp,                    // Index 35: OtpValue
+      closureType             // Index 36: ClosureType
+    ];
+    mainSheet.appendRow(newRow);
+    Logger.log('syncDepartmentToComplaints: Appended new ticket ' + ticketId + ' to Complaints sheet.');
+  }
 }
 
 function getBranchEmailsMap(ss) {
@@ -1686,6 +1862,7 @@ function resolveDepartmentComplaint(ss, data) {
     resSheet.getRange(existing.rowNumber, 4).setValue(data.otp || '');
     resSheet.getRange(existing.rowNumber, 5).setValue(data.resolvedBy || existing.resolvedBy);
     resSheet.getRange(existing.rowNumber, 8).setValue(now);
+    syncDepartmentToComplaints(ss, ticketId);
     return { status: 'ok', internalStatus: 'Closed' };
   }
 
@@ -1759,6 +1936,7 @@ function resolveDepartmentComplaint(ss, data) {
   } else {
     resSheet.appendRow(newRow);
   }
+  syncDepartmentToComplaints(ss, ticketId);
 
   return { status: 'ok', internalStatus: internalStatus };
 }

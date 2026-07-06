@@ -298,7 +298,31 @@ async function testCaptchaMode() {
   if (ocrWorker) await ocrWorker.terminate();
 }
 
+async function logScraperRun(status, duration, parsedCount, newCount, updatedCount, errorMessage = '') {
+  try {
+    const out = await postJson({
+      action: 'log_scraper_run',
+      status: status,
+      duration: duration,
+      parsed: parsedCount,
+      newTickets: newCount,
+      updated: updatedCount,
+      message: errorMessage
+    });
+    log(`Scraper run log saved. Status: ${out.status}`);
+  } catch (e) {
+    log(`Failed to save scraper log: ${e.message}`);
+  }
+}
+
 async function main() {
+  const startTime = Date.now();
+  let parsedCount = 0;
+  let newCount = 0;
+  let updatedCount = 0;
+  let status = 'SUCCESS';
+  let errMsg = '';
+
   const args = process.argv.slice(2);
 
   if (args.includes('--test-captcha')) return testCaptchaMode();
@@ -310,9 +334,15 @@ async function main() {
     const filePath = args[fileArgIdx + 1];
     if (!filePath || !fs.existsSync(filePath)) throw new Error('--file: file not found: ' + filePath);
     const rows = parseExport(filePath);
+    parsedCount = rows.length;
     if (args.includes('--dry-run')) { log('Dry run — not pushing.'); return; }
     const result = await pushRows(rows);
+    newCount = result.inserted;
+    updatedCount = result.updated;
     log(`DONE (file mode): ${result.inserted} new ticket(s), ${result.updated} updated.`);
+    
+    const duration = Math.round((Date.now() - startTime) / 1000);
+    await logScraperRun(status, duration, parsedCount, newCount, updatedCount);
     return;
   }
 
@@ -326,14 +356,26 @@ async function main() {
 
     const filePath = await downloadExport(page);
     const rows = parseExport(filePath);
+    parsedCount = rows.length;
     if (args.includes('--dry-run')) { log('Dry run — not pushing.'); return; }
     const result = await pushRows(rows);
+    newCount = result.inserted;
+    updatedCount = result.updated;
     log(`DONE: ${result.inserted} new ticket(s), ${result.updated} updated.`);
 
     // keep only the 10 newest downloads
     const dir = path.join(__dirname, 'downloads');
     const files = fs.readdirSync(dir).filter(f => f.startsWith('export_')).sort();
     files.slice(0, -10).forEach(f => fs.unlinkSync(path.join(dir, f)));
+
+    const duration = Math.round((Date.now() - startTime) / 1000);
+    await logScraperRun(status, duration, parsedCount, newCount, updatedCount);
+  } catch (err) {
+    status = 'FAILED';
+    errMsg = err.message;
+    const duration = Math.round((Date.now() - startTime) / 1000);
+    await logScraperRun(status, duration, parsedCount, newCount, updatedCount, errMsg);
+    throw err;
   } finally {
     await browser.close();
     if (ocrWorker) await ocrWorker.terminate();
