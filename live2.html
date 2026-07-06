@@ -367,6 +367,7 @@ tr:hover td { background: #f8fafc; }
   <button class="tab-btn" id="btn-tab-complaints" onclick="switchTab('complaints')">📋 Complaints &amp; Reports</button>
   <button class="tab-btn" id="btn-tab-dept" onclick="switchTab('dept')">🏛️ Dept Complaints</button>
   <button class="tab-btn" id="btn-tab-branch" onclick="switchTab('branch')">🏢 Branch Management</button>
+  <button class="tab-btn" id="btn-tab-branchemails" onclick="switchTab('branchemails')">📧 Branch Emails</button>
   <button class="tab-btn" id="btn-tab-archive" onclick="switchTab('archive')">📦 Archive Manager</button>
 </div>
 
@@ -1120,6 +1121,47 @@ tr:hover td { background: #f8fafc; }
         <table>
           <thead><tr><th>Alias text</th><th>Mapped to branch</th><th>Mapped by</th><th>Date</th><th>Actions</th></tr></thead>
           <tbody id="aliasTableBody"><tr><td colspan="5" style="text-align:center;color:var(--muted);">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= TAB: BRANCH EMAILS ================= -->
+  <div class="tab-content" id="tab-branchemails">
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-title">📧 Branch Emails (Auto-Trigger Notifications)</div>
+      <p style="color:var(--muted);font-size:0.82rem;margin-bottom:16px;">
+        Manage email recipients for branch-wise automatic webscraping case notifications. When a new ticket is scraped, an HTML digest email will be auto-triggered to all emails configured for that branch.
+      </p>
+      
+      <!-- Add Email Row Form -->
+      <div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:24px;flex-wrap:wrap;background:#f8fafc;padding:16px;border-radius:12px;border:1px solid var(--border);">
+        <div style="flex:1; min-width:200px;">
+          <label style="font-size:0.75rem;margin-bottom:4px;font-weight:bold;">1. Select Branch</label>
+          <select id="beSelBranch" style="padding:8px 12px;font-size:0.8rem;margin:0;">
+            <!-- Options dynamically loaded from bmBranches -->
+          </select>
+        </div>
+        <div style="flex:1; min-width:240px;">
+          <label style="font-size:0.75rem;margin-bottom:4px;font-weight:bold;">2. Email Address</label>
+          <input type="email" id="beEmailInput" placeholder="e.g. branch.manager@company.com" style="padding:8px 12px;font-size:0.8rem;margin:0;width:100%;" />
+        </div>
+        <button class="btn btn-primary" onclick="addBranchEmail()" style="height:38px;">➕ Add Email</button>
+      </div>
+
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th>Branch Code</th>
+              <th>Branch Name</th>
+              <th>Configured Email Address</th>
+              <th style="width:100px; text-align:center;">Action</th>
+            </tr>
+          </thead>
+          <tbody id="beTableBody">
+            <tr><td colspan="4" style="text-align:center;color:var(--muted);">Loading branch emails…</td></tr>
+          </tbody>
         </table>
       </div>
     </div>
@@ -2063,6 +2105,7 @@ function renderNavigationMenu() {
     'access': document.getElementById('btn-tab-access'),
     'dept': document.getElementById('btn-tab-dept'),
     'branch': document.getElementById('btn-tab-branch'),
+    'branchemails': document.getElementById('btn-tab-branchemails'),
     'archive': document.getElementById('btn-tab-archive'),
   };
   
@@ -2136,6 +2179,7 @@ function switchTab(tabId) {
     'complaints': 'complaints',
     'dept': 'department',
     'branch': 'branchmanagement',
+    'branchemails': 'branchemails',
     'archive': 'archive'
   };
   const url = new URL(window.location);
@@ -2151,6 +2195,8 @@ function switchTab(tabId) {
     loadBranchMgmt();
   } else if (tabId === 'dept') {
     loadDeptDashboard();
+  } else if (tabId === 'branchemails') {
+    loadBranchEmails();
   }
 }
 
@@ -5077,6 +5123,119 @@ async function loadBranchMgmt() {
     renderDoTable(); renderBrTable(); renderUnmappedTable(); renderAliasTable();
   } catch (e) {
     showToast('❌ Could not load branch data: ' + e.message, 'danger');
+  }
+}
+
+let branchEmailsList = [];
+async function loadBranchEmails() {
+  const select = document.getElementById('beSelBranch');
+  const tbody = document.getElementById('beTableBody');
+  if (!select || !tbody) return;
+
+  await ensureBranchDataLoaded();
+  const activeBranches = bmBranches.filter(b => b.status === 'Active');
+  
+  select.innerHTML = activeBranches.map(b => 
+    `<option value="${esc(b.id)}" data-name="${esc(b.name)}">${esc(b.name)} (${esc(b.code)})</option>`
+  ).join('');
+
+  tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted);">Loading branch emails…</td></tr>';
+
+  try {
+    const res = await fetch(GOOGLE_SCRIPT_URL + '?action=get_branch_emails&t=' + Date.now());
+    const data = await res.json();
+    branchEmailsList = Array.isArray(data) ? data : [];
+    
+    if (branchEmailsList.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted);">No emails configured yet. Use the form above to add branch emails.</td></tr>';
+      return;
+    }
+    
+    tbody.innerHTML = branchEmailsList.map(item => {
+      const br = activeBranches.find(b => b.id === item.branchId);
+      const bcode = br ? br.code : 'N/A';
+      return `
+        <tr>
+          <td><code>${esc(bcode)}</code></td>
+          <td><b>${esc(item.branchName)}</b></td>
+          <td><a href="mailto:${esc(item.email)}">${esc(item.email)}</a></td>
+          <td style="text-align:center;">
+            <button class="btn btn-ghost btn-sm" onclick="deleteBranchEmail(${item.rowNumber})" style="color:#ef4444;font-weight:bold;">🗑️ Delete</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:#b91c1c;">❌ Error loading emails: ${esc(e.message)}</td></tr>`;
+  }
+}
+
+async function addBranchEmail() {
+  const select = document.getElementById('beSelBranch');
+  const emailInput = document.getElementById('beEmailInput');
+  if (!select || !emailInput) return;
+
+  const branchId = select.value;
+  const branchOption = select.options[select.selectedIndex];
+  const branchName = branchOption ? branchOption.getAttribute('data-name') : '';
+  const email = emailInput.value.trim().toLowerCase();
+
+  if (!branchId || !email) {
+    showToast('⚠️ Please select a branch and enter a valid email address!', 'warn');
+    return;
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    showToast('⚠️ Invalid email format!', 'warn');
+    return;
+  }
+
+  showToast('⏳ Adding email...', 'info');
+
+  try {
+    const res = await fetch(GOOGLE_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'add_branch_email',
+        branchId: branchId,
+        branchName: branchName,
+        email: email
+      })
+    });
+    const out = await res.json();
+    if (out.status !== 'ok') throw new Error(out.message || 'Server error');
+    
+    showToast('✅ Branch email added successfully!', 'success');
+    emailInput.value = '';
+    await loadBranchEmails();
+  } catch (e) {
+    showToast('❌ Failed to add email: ' + e.message, 'danger');
+  }
+}
+
+async function deleteBranchEmail(rowNumber) {
+  if (!confirm('Are you sure you want to delete this branch email address?')) return;
+  
+  showToast('⏳ Deleting email...', 'info');
+  
+  try {
+    const res = await fetch(GOOGLE_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'delete_branch_email',
+        rowNumber: rowNumber
+      })
+    });
+    const out = await res.json();
+    if (out.status !== 'ok') throw new Error(out.message || 'Server error');
+    
+    showToast('✅ Branch email deleted!', 'success');
+    await loadBranchEmails();
+  } catch (e) {
+    showToast('❌ Failed to delete email: ' + e.message, 'danger');
   }
 }
 

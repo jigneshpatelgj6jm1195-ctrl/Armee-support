@@ -384,6 +384,44 @@ function doPost(e) {
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
+    if (data.action === 'add_branch_email') {
+      var sheet = getOrCreateBranchEmailsSheet(ss);
+      var bid = String(data.branchId || '').trim();
+      var bname = String(data.branchName || '').trim();
+      var email = String(data.email || '').trim().toLowerCase();
+      if (!bid || !email) {
+        return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'branchId and email are required' }))
+                             .setMimeType(ContentService.MimeType.JSON);
+      }
+      var dup = false;
+      if (sheet.getLastRow() > 1) {
+        var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues();
+        for (var i = 0; i < rows.length; i++) {
+          if (String(rows[i][0]).trim() === bid && String(rows[i][2]).trim().toLowerCase() === email) {
+            dup = true;
+            break;
+          }
+        }
+      }
+      if (!dup) {
+        sheet.appendRow([bid, bname, email]);
+      }
+      return ContentService.createTextOutput(JSON.stringify({ status: 'ok' }))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (data.action === 'delete_branch_email') {
+      var sheet = getOrCreateBranchEmailsSheet(ss);
+      var rowNum = Number(data.rowNumber);
+      if (!rowNum || rowNum < 2 || rowNum > sheet.getLastRow()) {
+        return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Invalid rowNumber' }))
+                             .setMimeType(ContentService.MimeType.JSON);
+      }
+      sheet.deleteRow(rowNum);
+      return ContentService.createTextOutput(JSON.stringify({ status: 'ok' }))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
     // Scraper failure alert: emails ALERT_EMAIL (script property) or the sheet
     // owner so a broken scrape never fails silently.
     if (data.action === 'scraper_alert') {
@@ -523,6 +561,24 @@ function doGet(e) {
 
     if (action === 'get_unmapped_aliases') {
       return ContentService.createTextOutput(JSON.stringify(getUnmappedAliases(ss)))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (action === 'get_branch_emails') {
+      var sheet = getOrCreateBranchEmailsSheet(ss);
+      var list = [];
+      if (sheet.getLastRow() > 1) {
+        var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues();
+        for (var i = 0; i < rows.length; i++) {
+          list.push({
+            rowNumber: i + 2,
+            branchId: String(rows[i][0] || '').trim(),
+            branchName: String(rows[i][1] || '').trim(),
+            email: String(rows[i][2] || '').trim()
+          });
+        }
+      }
+      return ContentService.createTextOutput(JSON.stringify(list))
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -1263,6 +1319,8 @@ function importDepartmentComplaints(ss, data) {
   var insertedRows = [];
   var updatedCount = 0;
   var newByAdmin = {}; // email -> { name, tickets: [] }
+  var newByBranch = {}; // branchId -> { branchName, tickets: [] }
+  var structure = loadBranchStructure(ss);
 
   for (var j = 0; j < rows.length; j++) {
     var r = rows[j];
@@ -1313,6 +1371,17 @@ function importDepartmentComplaints(ss, data) {
         ticketId: ticketId, school: r.School, issueType: r.Issue_Type, contact: r.Contact_Name
       });
     }
+
+    var br = getBranchForDeptComplaint(ss, structure, newRow, {});
+    var bid = br ? br.id : 'Unmapped';
+    var bname = br ? br.name : 'Unmapped';
+    if (!newByBranch[bid]) {
+      newByBranch[bid] = { branchName: bname, tickets: [] };
+    }
+    newByBranch[bid].tickets.push({
+      ticketId: ticketId, school: r.School, issueType: r.Issue_Type,
+      contact: r.Contact_Name, phone: r.Phone_Number, district: r.District
+    });
   }
 
   if (insertedRows.length > 0) {
@@ -1323,6 +1392,7 @@ function importDepartmentComplaints(ss, data) {
   // so a historical import doesn't blast digest emails to every district admin.
   if (data.sendEmails !== false) {
     sendDeptComplaintDigestEmails(newByAdmin);
+    sendBranchComplaintDigestEmails(ss, newByBranch);
   }
 
   return { status: 'ok', inserted: insertedRows.length, updated: updatedCount };
@@ -1373,6 +1443,95 @@ function sendDeptComplaintDigestEmails(newByAdmin) {
     } catch (e) {
       Logger.log('Email send error for ' + email + ': ' + e.toString());
     }
+  }
+}
+
+function getOrCreateBranchEmailsSheet(ss) {
+  var sheet = ss.getSheetByName('BranchEmails');
+  if (!sheet) {
+    sheet = ss.insertSheet('BranchEmails');
+    sheet.appendRow(['BranchID', 'BranchName', 'Email']);
+    sheet.getRange(1, 1, 1, 3).setFontWeight('bold');
+  }
+  return sheet;
+}
+
+function getBranchEmailsMap(ss) {
+  var sheet = getOrCreateBranchEmailsSheet(ss);
+  var map = {};
+  if (sheet.getLastRow() < 2) return map;
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    var bid = String(rows[i][0] || '').trim();
+    var email = String(rows[i][2] || '').trim();
+    if (bid && email) {
+      if (!map[bid]) map[bid] = [];
+      map[bid].push(email);
+    }
+  }
+  return map;
+}
+
+function getBranchForDeptComplaint(ss, structure, row, resolutions) {
+  var ticketId = String(row[9] || '').trim();
+  var res = resolutions[ticketId] || { internalStatus: 'Pending', closureType: '', owningDistrictAdmin: '' };
+  var candidates = [res.owningDistrictAdmin, row[0]];
+  var hit = resolveBranchId(structure, candidates);
+  return hit ? structure.branchById[hit.branchId] : null;
+}
+
+function sendBranchComplaintDigestEmails(ss, newByBranch) {
+  var emailMap = getBranchEmailsMap(ss);
+  
+  for (var bid in newByBranch) {
+    var info = newByBranch[bid];
+    if (!info.tickets.length) continue;
+    
+    var emails = emailMap[bid] || [];
+    if (emails.length === 0) {
+      Logger.log('No emails configured for branch: ' + info.branchName + ' (' + bid + ')');
+      continue;
+    }
+    
+    var rowsHtml = info.tickets.map(function(t) {
+      return '<tr>' +
+        '<td class="ticket-id" style="font-weight: bold; color: #2563eb; padding: 12px 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; line-height: 1.4;">' + t.ticketId + '</td>' +
+        '<td style="padding: 12px 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; line-height: 1.4;"><strong>' + t.school + '</strong><br><span style="color:#6b7280; font-size:11px;">' + t.district + '</span></td>' +
+        '<td style="padding: 12px 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; line-height: 1.4;">' + t.issueType + '</td>' +
+        '<td style="padding: 12px 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; line-height: 1.4;">' + t.contact + '<br><span style="color:#6b7280; font-size:11px;">' + t.phone + '</span></td>' +
+      '</tr>';
+    }).join('');
+    
+    var htmlBody = '<!DOCTYPE html><html><head><style>' +
+      'body { font-family: Arial, sans-serif; color: #333333; margin: 0; padding: 20px; background-color: #f4f6f9; }' +
+      '.container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 8px; border: 1px solid #e1e4e8; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }' +
+      '.header { background-color: #1e3a8a; padding: 20px; text-align: center; color: #ffffff; }' +
+      '.header h2 { margin: 0; font-size: 20px; font-weight: bold; }' +
+      '.content { padding: 25px; }' +
+      '.summary { font-size: 14px; margin-bottom: 20px; line-height: 1.5; }' +
+      '.ticket-table { width: 100%; border-collapse: collapse; margin-top: 15px; }' +
+      '.ticket-table th { background-color: #f3f4f6; color: #4b5563; font-weight: bold; font-size: 12px; text-transform: uppercase; padding: 10px; border-bottom: 2px solid #e5e7eb; text-align: left; }' +
+      '</style></head><body><div class="container">' +
+      '<div class="header" style="background-color: #1e3a8a; padding: 20px; text-align: center; color: #ffffff;"><h2>🎫 New Department Complaints Logged</h2></div>' +
+      '<div class="content" style="padding: 25px;">' +
+      '<div class="summary" style="font-size: 14px; margin-bottom: 20px; line-height: 1.5;">Hello Team,<br><br>The automatic web scraper has fetched <strong>' + info.tickets.length + '</strong> new complaint(s) for the <strong>' + info.branchName + '</strong> branch. Please find the details below:</div>' +
+      '<table class="ticket-table" style="width: 100%; border-collapse: collapse; margin-top: 15px;"><thead><tr><th style="background-color: #f3f4f6; color: #4b5563; font-weight: bold; font-size: 12px; text-transform: uppercase; padding: 10px; border-bottom: 2px solid #e5e7eb; text-align: left;">Ticket ID</th><th style="background-color: #f3f4f6; color: #4b5563; font-weight: bold; font-size: 12px; text-transform: uppercase; padding: 10px; border-bottom: 2px solid #e5e7eb; text-align: left;">School & District</th><th style="background-color: #f3f4f6; color: #4b5563; font-weight: bold; font-size: 12px; text-transform: uppercase; padding: 10px; border-bottom: 2px solid #e5e7eb; text-align: left;">Issue Type</th><th style="background-color: #f3f4f6; color: #4b5563; font-weight: bold; font-size: 12px; text-transform: uppercase; padding: 10px; border-bottom: 2px solid #e5e7eb; text-align: left;">Contact</th></tr></thead>' +
+      '<tbody>' + rowsHtml + '</tbody></table>' +
+      '<div class="summary" style="font-size: 14px; margin-top: 25px; line-height: 1.5;">Please log in to the <a href="https://support.armee.online/admin" target="_blank" style="color: #2563eb; font-weight: bold; text-decoration: none;">ICT Support Admin Dashboard</a> to assign technicians and update statuses.</div>' +
+      '</div><div class="footer" style="background-color: #f9fafb; padding: 15px; text-align: center; font-size: 11px; color: #9ca3af; border-top: 1px solid #e5e7eb;">This is an automated notification. Please do not reply directly to this email.</div>' +
+      '</div></body></html>';
+      
+    emails.forEach(function(email) {
+      try {
+        MailApp.sendEmail({
+          to: email,
+          subject: 'New Department Complaints - ' + info.tickets.length + ' ticket(s) - ' + info.branchName + ' Branch',
+          htmlBody: htmlBody
+        });
+      } catch (e) {
+        Logger.log('Error sending branch email to ' + email + ': ' + e.toString());
+      }
+    });
   }
 }
 
