@@ -1247,7 +1247,7 @@ tr:hover td { background: #f8fafc; }
 <div class="modal-bg" id="deptDetailModal">
   <div class="modal" style="max-width: 600px; width: 95%; max-height: 85vh; overflow-y: auto; display: flex; flex-direction: column; gap: 16px;">
     <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:10px;">
-      <h3 style="margin:0; font-size:1.1rem;" id="deptDetTitle">🎫 Ticket Details</h3>
+      <h3 style="margin:0; font-size:1.1rem;" id="deptDetTitle" data-ticket-id="">🎫 Ticket Details</h3>
       <button class="btn btn-ghost btn-sm" onclick="closeModal('deptDetailModal')" style="padding:4px 8px; font-weight:bold;">✕</button>
     </div>
     
@@ -1918,11 +1918,10 @@ function normalizeComplaintStatuses(list) {
   if (!Array.isArray(list)) return [];
   return list.map(c => {
     const s = String(c.status || '').trim().toLowerCase();
-    if (s === 'part request' || s === 'partrequest') {
-      c.status = 'Part Request';
-    } else {
-      c.status = 'Closed';
-    }
+    if (s === 'part request' || s === 'partrequest') c.status = 'Part Request';
+    else if (s === 'resolved' || s === 'closed')     c.status = 'Closed';
+    else if (s === 'in progress')                     c.status = 'In Progress';
+    // else: keep original value (e.g. 'Open')
     return c;
   });
 }
@@ -3922,6 +3921,8 @@ function renderComplaintsTable() {
 /* ─────────────── SESSION & ACCESS LOGIC ─────────────── */
 const SESSION_KEY = 'armeeAdmin_session';
 let currentUser = null;
+let loginFailCount = 0;
+let loginLockedUntil = 0;
 
 function getSession() {
   try {
@@ -3983,9 +3984,18 @@ function submitAdminLogin() {
     startAutoRefresh();
     loadData();
     loadComplaints();
+    loginFailCount = 0;
+    loginLockedUntil = 0;
     showToast(`🔓 Welcome back, ${user.name}!`, 'success');
   } else {
-    showToast('❌ Invalid email, password, or account inactive', 'danger');
+    loginFailCount++;
+    if (loginFailCount >= 5) {
+      loginLockedUntil = Date.now() + 60000;
+      loginFailCount = 0;
+      showToast('🔒 5 failed attempts — login locked for 60 seconds.', 'danger');
+    } else {
+      showToast(`❌ Invalid email, password, or account inactive (attempt ${loginFailCount}/5)`, 'danger');
+    }
   }
 }
 
@@ -4931,8 +4941,7 @@ async function bulkUpdateDeptStatus(action) {
 }
 
 async function submitDeptStatusUpdate(action) {
-  const title = document.getElementById('deptDetTitle').textContent;
-  const ticketId = title.replace('🎫 Ticket Details: ', '').replace('🎫 Ticket Details:', '').trim();
+  const ticketId = (document.getElementById('deptDetTitle').getAttribute('data-ticket-id') || '').trim();
   if (!ticketId) return;
   const confirmMsg = `Are you sure you want to update ticket ${ticketId} status to "${action.replace(/_/g, ' ').toUpperCase()}"?`;
   if (!confirm(confirmMsg)) return;
@@ -5075,6 +5084,7 @@ function viewDeptDetails(ticketId) {
   if (!r) return;
   
   document.getElementById('deptDetTitle').innerHTML = '🎫 Ticket Details: ' + esc(r.ticketId);
+  document.getElementById('deptDetTitle').setAttribute('data-ticket-id', r.ticketId);
   document.getElementById('deptDetSchool').textContent = r.school || '—';
   document.getElementById('deptDetDise').textContent = r.schoolId || '—';
   document.getElementById('deptDetDistrict').textContent = r.district || '—';

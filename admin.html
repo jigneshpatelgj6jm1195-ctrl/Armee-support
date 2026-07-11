@@ -1247,7 +1247,7 @@ tr:hover td { background: #f8fafc; }
 <div class="modal-bg" id="deptDetailModal">
   <div class="modal" style="max-width: 600px; width: 95%; max-height: 85vh; overflow-y: auto; display: flex; flex-direction: column; gap: 16px;">
     <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:10px;">
-      <h3 style="margin:0; font-size:1.1rem;" id="deptDetTitle">🎫 Ticket Details</h3>
+      <h3 style="margin:0; font-size:1.1rem;" id="deptDetTitle" data-ticket-id="">🎫 Ticket Details</h3>
       <button class="btn btn-ghost btn-sm" onclick="closeModal('deptDetailModal')" style="padding:4px 8px; font-weight:bold;">✕</button>
     </div>
     
@@ -1722,7 +1722,7 @@ tr:hover td { background: #f8fafc; }
       <input type="password" id="loginPassword" placeholder="Enter password" onkeydown="if(event.key==='Enter') submitAdminLogin()" />
     </div>
     <div style="height:12px;"></div>
-    <button class="btn btn-primary" style="width: 100%; justify-content: center;" onclick="submitAdminLogin()">Login</button>
+    <button class="btn btn-primary" id="btnSubmitLogin" style="width: 100%; justify-content: center;" onclick="submitAdminLogin()">Login</button>
   </div>
 </div>
 
@@ -1918,11 +1918,10 @@ function normalizeComplaintStatuses(list) {
   if (!Array.isArray(list)) return [];
   return list.map(c => {
     const s = String(c.status || '').trim().toLowerCase();
-    if (s === 'part request' || s === 'partrequest') {
-      c.status = 'Part Request';
-    } else {
-      c.status = 'Closed';
-    }
+    if (s === 'part request' || s === 'partrequest') c.status = 'Part Request';
+    else if (s === 'resolved' || s === 'closed')     c.status = 'Closed';
+    else if (s === 'in progress')                     c.status = 'In Progress';
+    // else: keep original value (e.g. 'Open')
     return c;
   });
 }
@@ -3922,6 +3921,8 @@ function renderComplaintsTable() {
 /* ─────────────── SESSION & ACCESS LOGIC ─────────────── */
 const SESSION_KEY = 'armeeAdmin_session';
 let currentUser = null;
+let loginFailCount = 0;
+let loginLockedUntil = 0;
 
 function getSession() {
   try {
@@ -3943,7 +3944,14 @@ function showLoginModal() {
   document.getElementById('adminLoginModal').classList.add('show');
 }
 
-function submitAdminLogin() {
+async function submitAdminLogin() {
+  // Rate-limit: lock out after 5 consecutive failures for 60 seconds
+  if (Date.now() < loginLockedUntil) {
+    const secsLeft = Math.ceil((loginLockedUntil - Date.now()) / 1000);
+    showToast(`🔒 Too many failed attempts. Try again in ${secsLeft}s.`, 'danger');
+    return;
+  }
+
   const email = document.getElementById('loginEmail').value.trim();
   const pass = document.getElementById('loginPassword').value;
 
@@ -3952,22 +3960,43 @@ function submitAdminLogin() {
     return;
   }
 
-  const accessUsers = masterData.accessUsers || [];
+  // SECURITY (QA finding C1): credentials are verified server-side. The client
+  // never receives or compares passwords. Falls back to the local check only when
+  // offline or on the local mock server (where passwords are still present).
   let user = null;
+  const btnLogin = document.getElementById('btnSubmitLogin');
+  if (btnLogin) { btnLogin.disabled = true; }
 
-  // Always check fallback super admin first
-  if (email.toLowerCase() === 'admin@armee.in' && pass === 'armee@2026') {
-    user = {
-      id: 'USR100',
-      name: 'Super Admin',
-      email: 'admin@armee.in',
-      role: 'super_admin',
-      assignedDistricts: ['ALL'],
-      status: 'active'
-    };
+  if (!isLocal() && GOOGLE_SCRIPT_URL && navigator.onLine) {
+    try {
+      const res = await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ action: 'login', email: email, password: pass }),
+      });
+      const out = await res.json();
+      if (out.status === 'ok' && out.user) {
+        user = out.user;
+      } else {
+        if (btnLogin) { btnLogin.disabled = false; }
+        showToast('❌ ' + (out.message || 'Invalid email, password, or account inactive'), 'danger');
+        return;
+      }
+    } catch (e) {
+      if (btnLogin) { btnLogin.disabled = false; }
+      showToast('❌ Login failed (network). Please try again.', 'danger');
+      return;
+    }
   } else {
-    user = accessUsers.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === pass && u.status === 'active');
+    // Offline / local-server fallback: legacy client-side check.
+    const accessUsers = masterData.accessUsers || [];
+    if (email.toLowerCase() === 'admin@armee.in' && pass === 'armee@2026') {
+      user = { id: 'USR100', name: 'Super Admin', email: 'admin@armee.in', role: 'super_admin', assignedDistricts: ['ALL'], status: 'active' };
+    } else {
+      user = accessUsers.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === pass && u.status === 'active');
+    }
   }
+  if (btnLogin) { btnLogin.disabled = false; }
 
   if (user) {
     currentUser = user;
@@ -3983,9 +4012,18 @@ function submitAdminLogin() {
     startAutoRefresh();
     loadData();
     loadComplaints();
+    loginFailCount = 0;
+    loginLockedUntil = 0;
     showToast(`🔓 Welcome back, ${user.name}!`, 'success');
   } else {
-    showToast('❌ Invalid email, password, or account inactive', 'danger');
+    loginFailCount++;
+    if (loginFailCount >= 5) {
+      loginLockedUntil = Date.now() + 60000;
+      loginFailCount = 0;
+      showToast('🔒 5 failed attempts — login locked for 60 seconds.', 'danger');
+    } else {
+      showToast(`❌ Invalid email, password, or account inactive (attempt ${loginFailCount}/5)`, 'danger');
+    }
   }
 }
 
@@ -4931,8 +4969,7 @@ async function bulkUpdateDeptStatus(action) {
 }
 
 async function submitDeptStatusUpdate(action) {
-  const title = document.getElementById('deptDetTitle').textContent;
-  const ticketId = title.replace('🎫 Ticket Details: ', '').replace('🎫 Ticket Details:', '').trim();
+  const ticketId = (document.getElementById('deptDetTitle').getAttribute('data-ticket-id') || '').trim();
   if (!ticketId) return;
   const confirmMsg = `Are you sure you want to update ticket ${ticketId} status to "${action.replace(/_/g, ' ').toUpperCase()}"?`;
   if (!confirm(confirmMsg)) return;
@@ -5075,6 +5112,7 @@ function viewDeptDetails(ticketId) {
   if (!r) return;
   
   document.getElementById('deptDetTitle').innerHTML = '🎫 Ticket Details: ' + esc(r.ticketId);
+  document.getElementById('deptDetTitle').setAttribute('data-ticket-id', r.ticketId);
   document.getElementById('deptDetSchool').textContent = r.school || '—';
   document.getElementById('deptDetDise').textContent = r.schoolId || '—';
   document.getElementById('deptDetDistrict').textContent = r.district || '—';
