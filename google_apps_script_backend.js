@@ -3632,12 +3632,14 @@ function getOrCreateSchoolComplaintSheets(ss) {
 }
 
 function importSchoolComplaints(ss, data) {
+  var masterSheet = ss.getSheetByName('SchoolComplaintMaster');
   var complaintsSheet = ss.getSheetByName('Complaints');
   var matchLogSheet = ss.getSheetByName('SchoolComplaintMatchLog');
   var exceptionsSheet = ss.getSheetByName('SchoolComplaintExceptions');
   
-  if (!complaintsSheet || !matchLogSheet || !exceptionsSheet) {
+  if (!masterSheet || !complaintsSheet || !matchLogSheet || !exceptionsSheet) {
     getOrCreateSchoolComplaintSheets(ss);
+    masterSheet = ss.getSheetByName('SchoolComplaintMaster');
     complaintsSheet = ss.getSheetByName('Complaints');
     matchLogSheet = ss.getSheetByName('SchoolComplaintMatchLog');
     exceptionsSheet = ss.getSheetByName('SchoolComplaintExceptions');
@@ -3647,19 +3649,65 @@ function importSchoolComplaints(ss, data) {
   var importedCount = 0;
   var skippedCount = 0;
   var exceptionCount = 0;
+  var masterCount = 0;
 
-  // Build a Set of all existing serial numbers in Complaints (column 18 = Serial Number, 1-indexed)
-  var existingSerials = {};
+  var now = new Date();
+  var thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(now.getDate() - 30);
+
+  // ──────────────────────────────────────────────────────────────
+  // STEP 1: Import ALL rows into SchoolComplaintMaster (raw log)
+  // ──────────────────────────────────────────────────────────────
+  for (var i = 0; i < records.length; i++) {
+    var rec = records[i];
+    var serial = String(rec.serialNumber || rec.serial || '').trim();
+    var masterSrNo = masterSheet.getLastRow() + 1;
+    masterSheet.appendRow([
+      masterSrNo - 1,                        // SR No.
+      'ICT',                                 // Project
+      '',                                    // DISE Code
+      '',                                    // School Code
+      rec.cityName || '',                    // District (City Name from Excel)
+      rec.nearbyMajorCity || '',             // Taluka (Nearby Major City from Excel)
+      rec.customerName || '',                // School Name
+      rec.contactPerson || '',               // Principal Name
+      rec.mobile || '',                      // Principal Contact
+      rec.address || '',                     // Address
+      rec.pincode || '',                     // Pin Code
+      rec.equipment || 'Desktop',            // Equipment
+      rec.problem || 'No Power',             // Nature of Complaint
+      serial,                                // Serial Number
+      rec.state || 'GUJARAT',                // State
+      ''                                     // Branch
+    ]);
+    masterCount++;
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // STEP 2: Build lookup of existing S/N → latest complaint date
+  // ──────────────────────────────────────────────────────────────
+  // Key = serial (uppercase), Value = most recent complaint date
+  var existingSerialDates = {};
   if (complaintsSheet.getLastRow() > 1) {
     var complaints = complaintsSheet.getRange(2, 1, complaintsSheet.getLastRow() - 1, complaintsSheet.getLastColumn()).getValues();
     for (var c = 0; c < complaints.length; c++) {
-      var s = String(complaints[c][17] || '').trim().toUpperCase(); // Column 18 (0-indexed = 17) = Serial Number
-      if (s) existingSerials[s] = true;
+      var s = String(complaints[c][17] || '').trim().toUpperCase(); // Column 18 (0-indexed=17) = Serial Number
+      if (!s) continue;
+      var dateStr = complaints[c][1]; // Column 2 = Submitted At
+      if (!dateStr) continue;
+      var d = new Date(dateStr);
+      if (!existingSerialDates[s] || d > existingSerialDates[s]) {
+        existingSerialDates[s] = d; // Keep the most recent date
+      }
     }
   }
 
-  var now = new Date();
-
+  // ──────────────────────────────────────────────────────────────
+  // STEP 3: For each record, check S/N against Complaints
+  //   - S/N found within 30 days → SKIP (duplicate)
+  //   - S/N found but older than 30 days → CREATE (repeating issue)
+  //   - S/N not found → CREATE (new complaint)
+  // ──────────────────────────────────────────────────────────────
   for (var i = 0; i < records.length; i++) {
     var rawRec = records[i];
     var rawSerial = String(rawRec.serialNumber || rawRec.serial || '').trim();
@@ -3669,43 +3717,47 @@ function importSchoolComplaints(ss, data) {
       continue;
     }
 
-    // CHECK: If serial already exists in Complaints → SKIP (no duplicate upload)
-    if (existingSerials[rawSerial.toUpperCase()]) {
+    var serialKey = rawSerial.toUpperCase();
+    var lastDate = existingSerialDates[serialKey] || null;
+
+    // If S/N exists and was filed within last 30 days → SKIP
+    if (lastDate && lastDate >= thirtyDaysAgo) {
       matchLogSheet.appendRow([
         'LOG-' + Date.now() + '-' + i,
         now.toISOString(),
         '',
         rawSerial,
-        'Already Exists - Skipped',
+        'Duplicate within 30 days - Skipped',
         '',
         '',
         'Skipped',
-        'Serial ' + rawSerial + ' already exists in Complaints sheet, skipped.'
+        'Serial ' + rawSerial + ' already has a complaint from ' + lastDate.toISOString().split('T')[0] + ' (within 30 days). Skipped.'
       ]);
       skippedCount++;
       continue;
     }
 
-    // Serial does NOT exist → Create a new complaint ticket from the Excel data
+    // S/N not found OR found but older than 30 days → CREATE new Open ticket
+    var reason = lastDate ? 'Repeating after 30 days' : 'New Complaint';
     var caseId = 'CASE-' + Date.now() + '-' + i;
     var srNo = complaintsSheet.getLastRow() + 1;
     var newComplaintRow = [
       srNo,                                                    // SR No.
       now.toISOString(),                                       // Submitted At
-      rawRec.customerName || '',                               // Complainant Name (School Name from Excel)
+      rawRec.customerName || '',                               // Complainant Name
       rawRec.mobile || '',                                     // Complainant Phone
       'School',                                                // Complainant Role
       'ICT',                                                   // Project
-      '',                                                      // DISE Code (not available in Excel)
-      '',                                                      // School Code (not available in Excel)
-      '',                                                      // District
-      '',                                                      // Taluka
+      '',                                                      // DISE Code
+      '',                                                      // School Code
+      rawRec.cityName || '',                                   // District
+      rawRec.nearbyMajorCity || '',                            // Taluka
       rawRec.customerName || '',                               // School Name
       rawRec.contactPerson || '',                              // Principal Name
       rawRec.mobile || '',                                     // Principal Contact
       rawRec.address || '',                                    // Address
       rawRec.pincode || '',                                    // Pin Code
-      rawRec.equipment || 'Desktop',                           // Equipment (Product Category from Excel)
+      rawRec.equipment || 'Desktop',                           // Equipment
       rawRec.problem || 'No Power',                            // Nature of Complaint
       rawSerial,                                               // Serial Number
       1,                                                       // Quantity
@@ -3725,25 +3777,26 @@ function importSchoolComplaints(ss, data) {
     complaintsSheet.appendRow(newComplaintRow);
     formatLastRow(complaintsSheet, complaintsSheet.getLastRow());
 
-    // Also mark it as existing so duplicates within the same upload batch are caught
-    existingSerials[rawSerial.toUpperCase()] = true;
+    // Mark as existing so duplicates within the same upload batch are caught
+    existingSerialDates[serialKey] = now;
 
     matchLogSheet.appendRow([
       'LOG-' + Date.now() + '-' + i,
       now.toISOString(),
       '',
       rawSerial,
-      'New School Ticket Created',
+      reason,
       caseId,
       'None',
       'Open',
-      'Created new ticket ' + caseId
+      'Created new ticket ' + caseId + ' (' + reason + ')'
     ]);
     importedCount++;
   }
 
   return {
     status: 'ok',
+    masterCount: masterCount,
     importedCount: importedCount,
     skippedCount: skippedCount,
     exceptionCount: exceptionCount

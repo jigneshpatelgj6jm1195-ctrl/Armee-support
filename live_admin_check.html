@@ -4792,6 +4792,9 @@ function handleSchoolFileSelect() {
       const pincodeColKey = findSchoolColumn(sampleRow, ['PINCODE', 'Pin code', 'Pin Code']);
       const categoryColKey = findSchoolColumn(sampleRow, ['Product Category', 'Equipment']);
       const problemColKey = findSchoolColumn(sampleRow, ['Problem Description', 'Problem Description*', 'Nature of Complaint']);
+      const cityColKey = findSchoolColumn(sampleRow, ['City Name', 'City', 'District']);
+      const stateColKey = findSchoolColumn(sampleRow, ['State']);
+      const nearbyCityColKey = findSchoolColumn(sampleRow, ['Nearby Major City', 'Nearby City', 'Taluka', 'Block']);
 
       const cleanRows = rows.map(r => {
         return {
@@ -4802,7 +4805,10 @@ function handleSchoolFileSelect() {
           address: addressColKey ? String(r[addressColKey] || '').trim() : '',
           pincode: pincodeColKey ? String(r[pincodeColKey] || '').trim() : '',
           equipment: categoryColKey ? String(r[categoryColKey] || '').trim() : '',
-          problem: problemColKey ? String(r[problemColKey] || '').trim() : ''
+          problem: problemColKey ? String(r[problemColKey] || '').trim() : '',
+          cityName: cityColKey ? String(r[cityColKey] || '').trim() : '',
+          state: stateColKey ? String(r[stateColKey] || '').trim() : '',
+          nearbyMajorCity: nearbyCityColKey ? String(r[nearbyCityColKey] || '').trim() : ''
         };
       });
 
@@ -4867,7 +4873,7 @@ async function runSchoolUpload() {
 
     localStorage.setItem(SCHOOL_IMPORT_KEY_LS, importKey);
     result.style.background = '#f0fdf4'; result.style.color = '#166534'; result.style.border = '1.5px solid #bbf7d0';
-    result.textContent = `✅ Success! New tickets created: ${out.importedCount || 0}, already existing (skipped): ${out.skippedCount || 0}, validation errors: ${out.exceptionCount || 0}. Check SchoolComplaintMatchLog and SchoolComplaintExceptions tabs in Google Sheet.`;
+    result.textContent = `✅ Success! Saved to Master: ${out.masterCount || 0}, New tickets created: ${out.importedCount || 0}, Skipped (within 30 days): ${out.skippedCount || 0}, Errors: ${out.exceptionCount || 0}. Check SchoolComplaintMaster, SchoolComplaintMatchLog tabs in Google Sheet.`;
     showToast('✅ School complaints processed successfully!', 'success');
   } catch (err) {
     result.style.background = '#fef2f2'; result.style.color = '#b91c1c'; result.style.border = '1.5px solid #fecaca';
