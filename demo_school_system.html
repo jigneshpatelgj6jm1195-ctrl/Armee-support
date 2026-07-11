@@ -1,0 +1,1832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Demo - Approval Required | ArMee Technology School Complaint System</title>
+  <!-- Google Fonts: Inter -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #0284c7;
+      --primary-dark: #0369a1;
+      --primary-light: #e0f2fe;
+      --secondary: #0f172a;
+      --background: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --text: #334155;
+      --text-muted: #64748b;
+      --success: #10b981;
+      --success-light: #ecfdf5;
+      --warning: #f59e0b;
+      --warning-light: #fffbeb;
+      --danger: #ef4444;
+      --danger-light: #fef2f2;
+      --info: #3b82f6;
+      --info-light: #eff6ff;
+      --gradient: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+      --radius: 12px;
+      --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+      --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+      --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', sans-serif;
+    }
+
+    body {
+      background-color: var(--background);
+      color: var(--text);
+      line-height: 1.5;
+      padding-bottom: 60px;
+    }
+
+    /* --- Demo Banner --- */
+    .demo-banner {
+      background-color: #b91c1c;
+      color: white;
+      text-align: center;
+      padding: 10px;
+      font-weight: 700;
+      font-size: 0.95rem;
+      letter-spacing: 0.05em;
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .demo-banner span {
+      background-color: white;
+      color: #b91c1c;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    /* --- Header --- */
+    header {
+      background: var(--gradient);
+      color: white;
+      padding: 16px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: var(--shadow);
+    }
+
+    .logo-container {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-square {
+      width: 40px;
+      height: 40px;
+      background: white;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 1.5rem;
+      color: var(--primary);
+      box-shadow: var(--shadow);
+    }
+
+    .logo-text h1 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+
+    .logo-text p {
+      font-size: 0.75rem;
+      opacity: 0.9;
+    }
+
+    .header-user {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .role-select-container {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      padding: 4px 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: white;
+      font-size: 0.85rem;
+    }
+
+    .role-select-container select {
+      background: transparent;
+      border: none;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      outline: none;
+      font-size: 0.85rem;
+    }
+
+    .role-select-container select option {
+      color: var(--secondary);
+    }
+
+    /* --- Main Container --- */
+    .container {
+      max-width: 1280px;
+      margin: 24px auto;
+      padding: 0 16px;
+    }
+
+    /* --- Navigation Tabs --- */
+    .nav-tabs {
+      display: flex;
+      border-bottom: 2px solid var(--border);
+      margin-bottom: 24px;
+      gap: 8px;
+      overflow-x: auto;
+    }
+
+    .nav-tab {
+      padding: 12px 20px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      border-bottom: 3px solid transparent;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: var(--transition);
+    }
+
+    .nav-tab:hover {
+      color: var(--primary);
+      border-bottom-color: var(--primary-light);
+    }
+
+    .nav-tab.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+    }
+
+    /* --- Landing Grid --- */
+    .landing-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 24px;
+      margin-top: 32px;
+    }
+
+    .landing-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px;
+      box-shadow: var(--shadow);
+      cursor: pointer;
+      transition: var(--transition);
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 16px;
+    }
+
+    .landing-card:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-lg);
+      border-color: var(--primary);
+    }
+
+    .landing-card.highlight {
+      border: 2px solid var(--primary);
+      background: linear-gradient(to bottom, #ffffff, #f0f9ff);
+    }
+
+    .card-icon {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.8rem;
+    }
+
+    .icon-blue { background: #e0f2fe; color: #0284c7; }
+    .icon-purple { background: #f3e8ff; color: #7c3aed; }
+    .icon-emerald { background: #d1fae5; color: #059669; }
+
+    .landing-card h3 {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--secondary);
+    }
+
+    .landing-card p {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+    }
+
+    .landing-card .badge {
+      background-color: var(--primary);
+      color: white;
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* --- Form Wizard --- */
+    .wizard-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .wizard-header {
+      background: #f8fafc;
+      border-bottom: 1px solid var(--border);
+      padding: 20px 24px;
+    }
+
+    .wizard-steps {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .wizard-step {
+      flex: 1;
+      text-align: center;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      position: relative;
+    }
+
+    .wizard-step.active {
+      color: var(--primary);
+    }
+
+    .wizard-step.completed {
+      color: var(--success);
+    }
+
+    .wizard-step::after {
+      content: '';
+      position: absolute;
+      bottom: -6px;
+      left: 0;
+      width: 100%;
+      height: 4px;
+      background: var(--border);
+    }
+
+    .wizard-step.active::after {
+      background: var(--primary);
+    }
+
+    .wizard-step.completed::after {
+      background: var(--success);
+    }
+
+    .wizard-content {
+      padding: 32px 24px;
+    }
+
+    .form-group {
+      margin-bottom: 24px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--secondary);
+      margin-bottom: 8px;
+    }
+
+    .form-group label span {
+      color: var(--danger);
+    }
+
+    .form-control {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.95rem;
+      color: var(--text);
+      outline: none;
+      transition: var(--transition);
+    }
+
+    .form-control:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
+    }
+
+    .form-control:disabled {
+      background-color: #f1f5f9;
+      color: var(--text-muted);
+      cursor: not-allowed;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    @media (max-width: 600px) {
+      .form-row {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .lookup-input-group {
+      display: flex;
+      gap: 12px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 20px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: var(--transition);
+      gap: 8px;
+    }
+
+    .btn-primary {
+      background-color: var(--primary);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background-color: var(--primary-dark);
+    }
+
+    .btn-secondary {
+      background-color: white;
+      border-color: var(--border);
+      color: var(--text);
+    }
+
+    .btn-secondary:hover {
+      background-color: #f8fafc;
+      border-color: var(--text-muted);
+    }
+
+    .btn-success {
+      background-color: var(--success);
+      color: white;
+    }
+
+    .btn-success:hover {
+      background-color: #059669;
+    }
+
+    .btn-group {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 32px;
+      border-top: 1px solid var(--border);
+      padding-top: 24px;
+    }
+
+    /* --- Status Buttons --- */
+    .status-btn-group {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .status-btn {
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      text-align: center;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+      background: white;
+    }
+
+    .status-btn:hover {
+      border-color: var(--primary-light);
+      background-color: #fafafa;
+    }
+
+    .status-btn.active[data-status="Closed"] {
+      border-color: var(--success);
+      background-color: var(--success-light);
+      color: var(--success);
+    }
+
+    .status-btn.active[data-status="Part Request"] {
+      border-color: var(--warning);
+      background-color: var(--warning-light);
+      color: var(--warning);
+    }
+
+    /* --- Review Section --- */
+    .review-section {
+      background-color: #f8fafc;
+      border-radius: 8px;
+      padding: 20px;
+      border: 1px solid var(--border);
+      margin-bottom: 24px;
+    }
+
+    .review-title {
+      font-size: 1rem;
+      font-weight: 700;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+      margin-bottom: 12px;
+      color: var(--secondary);
+    }
+
+    .review-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+    }
+
+    .review-item label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .review-item p {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--secondary);
+    }
+
+    /* --- Table Views --- */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    .card-title-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .card-title-bar h2 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--secondary);
+    }
+
+    .table-container {
+      width: 100%;
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.9rem;
+    }
+
+    th, td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      font-weight: 600;
+      color: var(--text-muted);
+      background-color: #f8fafc;
+    }
+
+    tr:hover td {
+      background-color: #f8fafc;
+    }
+
+    .badge-status {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .badge-status.closed { background: var(--success-light); color: var(--success); }
+    .badge-status.part { background: var(--warning-light); color: var(--warning); }
+    .badge-status.open { background: var(--info-light); color: var(--info); }
+
+    .badge-source {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      background: #f1f5f9;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .badge-source.advance {
+      background-color: #ede9fe;
+      color: #7c3aed;
+      border-color: #ddd6fe;
+    }
+
+    .badge-source.school {
+      background-color: #e0f2fe;
+      color: #0369a1;
+      border-color: #bae6fd;
+    }
+
+    /* --- Excel Upload Section --- */
+    .upload-area {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 40px;
+      text-align: center;
+      cursor: pointer;
+      background-color: #f8fafc;
+      transition: var(--transition);
+      margin-bottom: 24px;
+    }
+
+    .upload-area:hover {
+      border-color: var(--primary);
+      background-color: var(--primary-light);
+    }
+
+    .upload-area svg {
+      width: 48px;
+      height: 48px;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+
+    /* --- Dashboard KPIs --- */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .kpi-card {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .kpi-card label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .kpi-card .value {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--secondary);
+    }
+
+    .kpi-card .trend {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    /* --- Dashboard Layout --- */
+    .dashboard-layout {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+
+    @media (max-width: 1024px) {
+      .dashboard-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* --- SVG Charts --- */
+    .chart-container {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      box-shadow: var(--shadow);
+    }
+
+    .chart-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--secondary);
+      margin-bottom: 16px;
+    }
+
+    /* --- Filter Bar --- */
+    .filter-bar {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      box-shadow: var(--shadow);
+      margin-bottom: 24px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+    }
+
+    .filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .filter-group label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .filter-control {
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.85rem;
+      outline: none;
+      background: #f8fafc;
+    }
+
+    /* --- Toast Notification --- */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background-color: var(--secondary);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      box-shadow: var(--shadow-lg);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transform: translateY(100px);
+      opacity: 0;
+      transition: var(--transition);
+      z-index: 1100;
+    }
+
+    .toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    .toast.success { background-color: var(--success); }
+    .toast.danger { background-color: var(--danger); }
+    .toast.warning { background-color: var(--warning); }
+  </style>
+</head>
+<body>
+
+  <!-- Demo Banner -->
+  <div class="demo-banner">
+    <span>Demo – Approval Required</span> This is a mock simulation. Live integrations are disabled.
+  </div>
+
+  <!-- Header -->
+  <header>
+    <div class="logo-container">
+      <div class="logo-square">A</div>
+      <div class="logo-text">
+        <h1>ArMee Technology</h1>
+        <p>School Complaint System</p>
+      </div>
+    </div>
+
+    <div class="header-user">
+      <div class="role-select-container">
+        <span>👤 Role:</span>
+        <select id="userRoleSelect" onchange="changeRole()">
+          <option value="admin">Super Admin (All Branches)</option>
+          <option value="branch_ahmedabad">Branch Manager (Ahmedabad)</option>
+          <option value="branch_vadodara">Branch Manager (Vadodara)</option>
+          <option value="branch_rajkot">Branch Manager (Rajkot)</option>
+          <option value="engineer">Field Engineer</option>
+        </select>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <div class="container">
+    
+    <!-- Tab Navigation -->
+    <div class="nav-tabs" id="mainNavTabs">
+      <div class="nav-tab active" onclick="switchView('landing')">🚪 Landing Page</div>
+      <div class="nav-tab" onclick="switchView('wizard')">📝 School Complaint Form</div>
+      <div class="nav-tab" onclick="switchView('upload')">📤 Bulk Excel Upload</div>
+      <div class="nav-tab" onclick="switchView('database')">🗄️ Database Sheets (5 Tabs)</div>
+      <div class="nav-tab" onclick="switchView('dashboard')">📊 School Dashboard</div>
+    </div>
+
+    <!-- VIEW 1: LANDING PAGE -->
+    <div id="view_landing" class="view-content">
+      <div style="text-align:center; margin-bottom:32px;">
+        <h2 style="font-size:1.8rem; font-weight:700; color:var(--secondary);">Select Complaint Workflow</h2>
+        <p style="color:var(--text-muted);">Select the type of complaint form you want to log or resolve.</p>
+      </div>
+      <div class="landing-grid">
+        <div class="landing-card" onclick="alert('Advance Complaint flow disabled. This is a School Complaint Demo.')">
+          <div class="card-icon icon-blue">⚡</div>
+          <h3>1. Advance Complaint</h3>
+          <p>Standard engineering ticket logging for corporate and institutional accounts.</p>
+        </div>
+        <div class="landing-card" onclick="alert('Department Complaint flow disabled. This is a School Complaint Demo.')">
+          <div class="card-icon icon-purple">🏢</div>
+          <h3>2. Department Complaint</h3>
+          <p>Tickets logged directly for department operations and branches.</p>
+        </div>
+        <div class="landing-card highlight" onclick="switchView('wizard')">
+          <div class="card-icon icon-emerald">🏫</div>
+          <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
+            <h3>3. School Complaint</h3>
+            <span class="badge">New Demo</span>
+          </div>
+          <p>Look up school details by DISE code, auto-fill asset/serial details, and log resolution status.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 2: SCHOOL COMPLAINT WIZARD FORM -->
+    <div id="view_wizard" class="view-content" style="display:none;">
+      <div class="wizard-card">
+        <div class="wizard-header">
+          <div class="wizard-steps">
+            <div class="wizard-step active" id="stepIndicator1">1. Lookup</div>
+            <div class="wizard-step" id="stepIndicator2">2. School Info</div>
+            <div class="wizard-step" id="stepIndicator3">3. Resolution Details</div>
+            <div class="wizard-step" id="stepIndicator4">4. Summary</div>
+          </div>
+        </div>
+
+        <div class="wizard-content">
+          <!-- Step 1: DISE Code Lookup -->
+          <div id="wizardStep1">
+            <h3 style="font-size:1.1rem; margin-bottom:16px; font-weight:700;">Search School Details</h3>
+            <p style="color:var(--text-muted); font-size:0.9rem; margin-bottom:24px;">Enter the 11-digit DISE Code of the school to retrieve its customer details and assigned asset records.</p>
+            <div class="form-group">
+              <label for="lookupDiseCode">DISE Code <span>*</span></label>
+              <div class="lookup-input-group">
+                <input type="text" id="lookupDiseCode" class="form-control" placeholder="Enter 11-digit DISE Code (e.g. 24071005901)" value="24071005901">
+                <button class="btn btn-primary" onclick="lookupSchoolByDise()">Search School</button>
+              </div>
+              <div style="margin-top:12px; font-size:0.8rem; color:var(--text-muted);">
+                💡 Tip: Try searching <strong>24071005901</strong> or <strong>24071005801</strong>.
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 2: School Info -->
+          <div id="wizardStep2" style="display:none;">
+            <h3 style="font-size:1.1rem; margin-bottom:20px; font-weight:700;">Auto-Filled School Details</h3>
+            <div class="form-row">
+              <div class="form-group">
+                <label>DISE Code</label>
+                <input type="text" id="schoolDiseCode" class="form-control" disabled>
+              </div>
+              <div class="form-group">
+                <label>School Name</label>
+                <input type="text" id="schoolName" class="form-control" disabled>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Contact Person</label>
+                <input type="text" id="schoolContact" class="form-control" disabled>
+              </div>
+              <div class="form-group">
+                <label>Mobile Number</label>
+                <input type="text" id="schoolMobile" class="form-control" disabled>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Full Address</label>
+              <input type="text" id="schoolAddress" class="form-control" disabled>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>District</label>
+                <input type="text" id="schoolDistrict" class="form-control" disabled>
+              </div>
+              <div class="form-group">
+                <label>Branch</label>
+                <input type="text" id="schoolBranch" class="form-control" disabled>
+              </div>
+            </div>
+            <div class="form-group" style="background:#f8fafc; padding:16px; border-radius:8px; border:1px solid var(--border);">
+              <label style="color:var(--primary); font-weight:700;">Asset / Serial Number Verification</label>
+              <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:12px;">This is the serial number retrieved from the master file. You can correct it if needed.</p>
+              <div class="form-row">
+                <div class="form-group" style="margin-bottom:0;">
+                  <label>Original Serial (For Audit)</label>
+                  <input type="text" id="schoolOrigSerial" class="form-control" disabled>
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                  <label>Corrected Serial (Editable) <span>*</span></label>
+                  <input type="text" id="schoolEditableSerial" class="form-control" placeholder="Enter verified serial number">
+                </div>
+              </div>
+            </div>
+            <div class="btn-group">
+              <button class="btn btn-secondary" onclick="wizardGoToStep(1)">Back</button>
+              <button class="btn btn-primary" onclick="validateStep2()">Next</button>
+            </div>
+          </div>
+
+          <!-- Step 3: Resolution Details -->
+          <div id="wizardStep3" style="display:none;">
+            <h3 style="font-size:1.1rem; margin-bottom:20px; font-weight:700;">Complaint Resolution</h3>
+            <div class="form-group">
+              <label>Complaint Resolution Status <span>*</span></label>
+              <div class="status-btn-group">
+                <div class="status-btn active" data-status="Closed" onclick="setResolutionStatus('Closed')">✅ Closed</div>
+                <div class="status-btn" data-status="Part Request" onclick="setResolutionStatus('Part Request')">🔧 Part Request</div>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Equipment <span>*</span></label>
+                <select id="compEquipment" class="form-control">
+                  <option value="IFP">IFP (Interactive Flat Panel)</option>
+                  <option value="Laptop">Laptop</option>
+                  <option value="Desktop">Desktop</option>
+                  <option value="TFT">TFT Screen</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Nature of Complaint <span>*</span></label>
+                <select id="compNature" class="form-control">
+                  <option value="No Power">No Power / Dead</option>
+                  <option value="Display Issue">No Display / Flickering</option>
+                  <option value="Touch Issue">Touch Not Working</option>
+                  <option value="OS Issue">Operating System/Software Issue</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Quantity <span>*</span></label>
+                <input type="number" id="compQty" class="form-control" value="1" min="1">
+              </div>
+              <div class="form-group">
+                <label>Resolution Date <span>*</span></label>
+                <input type="date" id="compDate" class="form-control">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Serial Number Photo Upload <span>*</span></label>
+              <div style="border: 2px dashed var(--border); border-radius: 8px; padding: 20px; text-align: center; background: #fafafa;">
+                📷 Simulating Camera/Gallery upload...<br>
+                <span style="font-size: 0.8rem; color: var(--success); font-weight: 600;">✓ Mock photo attached successfully.</span>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Description / Technical Notes (Optional)</label>
+              <textarea id="compNotes" class="form-control" rows="3" placeholder="Enter resolution details..."></textarea>
+            </div>
+            <div class="btn-group">
+              <button class="btn btn-secondary" onclick="wizardGoToStep(2)">Back</button>
+              <button class="btn btn-primary" onclick="validateStep3()">Next</button>
+            </div>
+          </div>
+
+          <!-- Step 4: Summary -->
+          <div id="wizardStep4" style="display:none;">
+            <h3 style="font-size:1.1rem; margin-bottom:20px; font-weight:700;">Review Complaint Summary</h3>
+            <div class="review-section">
+              <div class="review-title">School Details</div>
+              <div class="review-grid">
+                <div class="review-item"><label>DISE Code</label><p id="revDise"></p></div>
+                <div class="review-item"><label>School Name</label><p id="revSchool"></p></div>
+                <div class="review-item"><label>District / Branch</label><p id="revDistBranch"></p></div>
+                <div class="review-item"><label>Principal / Contact</label><p id="revContact"></p></div>
+              </div>
+            </div>
+            <div class="review-section">
+              <div class="review-title">Resolution Details</div>
+              <div class="review-grid">
+                <div class="review-item"><label>Resolution Status</label><p id="revStatus"></p></div>
+                <div class="review-item"><label>Equipment / Nature</label><p id="revEquipNature"></p></div>
+                <div class="review-item"><label>Corrected Serial (Audit)</label><p id="revSerial"></p></div>
+                <div class="review-item"><label>Date / Quantity</label><p id="revDateQty"></p></div>
+              </div>
+            </div>
+            <div class="btn-group">
+              <button class="btn btn-secondary" onclick="wizardGoToStep(3)">Back</button>
+              <button class="btn btn-success" onclick="submitSchoolComplaintForm()">Submit Complaint</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 3: BULK UPLOAD SIMULATOR -->
+    <div id="view_upload" class="view-content" style="display:none;">
+      <div class="card">
+        <div class="card-title-bar">
+          <h2>Bulk School Complaint Excel Upload</h2>
+        </div>
+        <p style="color:var(--text-muted); margin-bottom:24px;">
+          Simulate uploading an Excel file received via email (e.g. <code>COMPLAINT SHEET 10.07.26 - Lot-2.xlsx</code>). 
+          The backend runs the 30-day matching algorithm to separate <strong>Advance Complaints</strong> from new <strong>School Complaints</strong>.
+        </p>
+
+        <!-- Simulated Dropzone -->
+        <div class="upload-area" onclick="triggerMockUpload()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+          </svg>
+          <h3 id="uploadFileName">COMPLAINT SHEET 10.07.26 - Lot-2.xlsx</h3>
+          <p style="font-size:0.85rem; color:var(--text-muted); margin-top:8px;">Click here to simulate choosing this email attachment (14 rows ready)</p>
+        </div>
+
+        <div style="text-align:center;">
+          <button class="btn btn-primary" style="padding:12px 32px;" onclick="processBulkUploadSimulation()">Process Upload & Match (30-Day Key Check)</button>
+        </div>
+      </div>
+
+      <div class="card" style="display:none;" id="uploadSummaryCard">
+        <h3 style="font-size:1.1rem; margin-bottom:16px; color:var(--secondary);">Upload Results & Match Log</h3>
+        <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));">
+          <div class="kpi-card" style="border-left: 4px solid var(--secondary);"><label>Total Uploaded</label><div class="value" id="uplTotal">0</div></div>
+          <div class="kpi-card" style="border-left: 4px solid var(--success);"><label>Matched (Advance)</label><div class="value" id="uplMatched">0</div></div>
+          <div class="kpi-card" style="border-left: 4px solid var(--info);"><label>New School Comp</label><div class="value" id="uplNew">0</div></div>
+          <div class="kpi-card" style="border-left: 4px solid var(--danger);"><label>Exceptions</label><div class="value" id="uplExceptions">0</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 4: DATABASE SHEETS (5 TABS) -->
+    <div id="view_database" class="view-content" style="display:none;">
+      <div class="card">
+        <div class="card-title-bar">
+          <h2>Simulated Database Sheets</h2>
+        </div>
+        <div class="nav-tabs" style="border-bottom:1px solid var(--border); margin-bottom:16px;">
+          <div class="nav-tab active" id="dbTab1" onclick="switchDbTab(1)">1. Complaints (Existing Log)</div>
+          <div class="nav-tab" id="dbTab2" onclick="switchDbTab(2)">2. School Complaint Upload</div>
+          <div class="nav-tab" id="dbTab3" onclick="switchDbTab(3)">3. School Complaint Master</div>
+          <div class="nav-tab" id="dbTab4" onclick="switchDbTab(4)">4. School Complaint Match Log</div>
+          <div class="nav-tab" id="dbTab5" onclick="switchDbTab(5)">5. Exceptions List</div>
+        </div>
+
+        <div class="table-container">
+          <table id="dbTable">
+            <!-- Dynamically populated -->
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 5: DASHBOARD -->
+    <div id="view_dashboard" class="view-content" style="display:none;">
+      
+      <!-- Filters -->
+      <div class="filter-bar">
+        <div class="filter-group">
+          <label>Branch</label>
+          <select id="filtBranch" class="filter-control" onchange="renderDashboard()">
+            <option value="ALL">All Branches</option>
+            <option value="Ahmedabad Branch">Ahmedabad Branch</option>
+            <option value="Vadodara Branch">Vadodara Branch</option>
+            <option value="Rajkot Branch">Rajkot Branch</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>Status</label>
+          <select id="filtStatus" class="filter-control" onchange="renderDashboard()">
+            <option value="ALL">All Statuses</option>
+            <option value="Closed">Closed</option>
+            <option value="Part Request">Part Request</option>
+            <option value="Open">Open</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>Source Tag</label>
+          <select id="filtSource" class="filter-control" onchange="renderDashboard()">
+            <option value="ALL">All Sources</option>
+            <option value="Advance Complaint">Advance Complaint</option>
+            <option value="School Complaint">School Complaint</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>District</label>
+          <select id="filtDistrict" class="filter-control" onchange="renderDashboard()">
+            <option value="ALL">All Districts</option>
+            <option value="AHMEDABAD">AHMEDABAD</option>
+            <option value="ANAND">ANAND</option>
+            <option value="RAJKOT">RAJKOT</option>
+            <option value="VALSAD">VALSAD</option>
+            <option value="SMC">SMC</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Dashboard KPIs -->
+      <div class="kpi-grid">
+        <div class="kpi-card"><label>Total School Complaints</label><div class="value" id="kpiTotal">0</div><div class="trend">Overall tickets</div></div>
+        <div class="kpi-card"><label>New School Complaints</label><div class="value" id="kpiNew">0</div><div class="trend">Source: School</div></div>
+        <div class="kpi-card"><label>Matched as Advance</label><div class="value" id="kpiMatched">0</div><div class="trend">Source: Advance</div></div>
+        <div class="kpi-card"><label>Closed Complaints</label><div class="value" id="kpiClosed">0</div><div class="trend" id="kpiClosurePct">0% Closure</div></div>
+        <div class="kpi-card"><label>Part Requests</label><div class="value" id="kpiPart">0</div><div class="trend" id="kpiPartPct">0% Part Request</div></div>
+        <div class="kpi-card"><label>Pending >30 Days</label><div class="value" id="kpiAging" style="color:var(--danger);">0</div><div class="trend">Needs attention</div></div>
+      </div>
+
+      <!-- Visuals Layout -->
+      <div class="dashboard-layout">
+        
+        <!-- Ageing & pending tables -->
+        <div class="chart-container">
+          <div class="chart-title">Branchwise Ageing & Pending Overview</div>
+          <div class="table-container">
+            <table style="font-size:0.85rem;">
+              <thead>
+                <tr>
+                  <th>Branch</th>
+                  <th>Open/Pending</th>
+                  <th>Part Requests</th>
+                  <th>Closed</th>
+                  <th>Total Complaints</th>
+                  <th>Closure %</th>
+                </tr>
+              </thead>
+              <tbody id="dashBranchSummaryTable">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Status chart representation -->
+        <div class="chart-container" style="display:flex; flex-direction:column; justify-content:space-between;">
+          <div class="chart-title">Ticket Status Distribution</div>
+          <div style="display:flex; justify-content:center; align-items:center; height:180px;">
+            <svg width="160" height="160" viewBox="0 0 160 160" id="dashStatusDonut">
+              <!-- Donut Chart generated by JS -->
+            </svg>
+          </div>
+          <div style="display:flex; justify-content:space-around; font-size:0.8rem; margin-top:12px;">
+            <span style="color:var(--success); font-weight:700;">● Closed</span>
+            <span style="color:var(--warning); font-weight:700;">● Part Request</span>
+            <span style="color:var(--info); font-weight:700;">● Open</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Drill-Down Table -->
+      <div class="card">
+        <div class="card-title-bar">
+          <h2>School Complaint Drill-Down Table</h2>
+        </div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>DISE Code</th>
+                <th>School Name</th>
+                <th>Serial Number</th>
+                <th>Status</th>
+                <th>Branch</th>
+                <th>District</th>
+                <th>Complaint Date</th>
+                <th>Source Tag</th>
+              </tr>
+            </thead>
+            <tbody id="dashDrilldownTable">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="toast" id="toast"></div>
+
+  <script>
+    /* ==========================================================================
+       1. DATA STRUCTURES & SAMPLE DATA
+       ========================================================================== */
+    let currentView = 'landing';
+    let currentDbTab = 1;
+    let wizardStep = 1;
+    let selectedResolutionStatus = 'Closed';
+    let userRole = 'admin';
+
+    // Mock data structures (representing Google Sheets)
+    let dbComplaints = [
+      { id: "TKT-1001", date: "2026-07-01", name: "DUMALI PRIMARY SCHOOL", diseCode: "24071005901", district: "AHMEDABAD", branch: "Ahmedabad Branch", serial: "UD315SI00440900F9C0700", status: "Open", source: "Advance Complaint" },
+      { id: "TKT-1002", date: "2026-06-15", name: "VASANA DHEDHAL PRIMARY SCHOOL", diseCode: "24071005801", district: "AHMEDABAD", branch: "Ahmedabad Branch", serial: "UN431SI36741300B040700", status: "Part Request", source: "Advance Complaint" }
+    ];
+
+    let dbSchoolUpload = [];
+    
+    let dbSchoolMaster = [
+      { diseCode: "24071005901", schoolCode: "GNK-AHD-0001", district: "AHMEDABAD", block: "BAVLA", schoolName: "DUMALI PRIMARY SCHOOL", principalName: "bhanuben patel", principalMobile: "8200130803", address: "DUMALI PRIMARY SCHOOL TA-BAVLA DIST-AHMEDABAD", pincode: "382240", serialNumber: "UD315SI00440900F9C0700", equipment: "IFP", state: "GUJARAT", branch: "Ahmedabad Branch" },
+      { diseCode: "24071005801", schoolCode: "GNK-AHD-0002", district: "AHMEDABAD", block: "BAVLA", schoolName: "VASANA DHEDHAL PRIMARY SCHOOL", principalName: "CHIRAGBHAI KESHUBHAI SINDHAV", principalMobile: "9925451073", address: "VASANA DHEDHAL PRIMARY SCHOOL TA-BAVLA DIST-AHMEDABAD", pincode: "382220", serialNumber: "UN431SI36741300B040700", equipment: "Laptop", state: "GUJARAT", branch: "Ahmedabad Branch" },
+      { diseCode: "24071005701", schoolCode: "GNK-AHD-0003", district: "AHMEDABAD", block: "BAVLA", schoolName: "VA. NANODARA PRIMARY SCHOOL", principalName: "PATEL DINESHKUMAR JAGABHAI", principalMobile: "9725537954", address: "VASNA-NANODARA PRIMARI SCHOOL AT VASNA NANODARA TA BAVLA", pincode: "382220", serialNumber: "UN431SI367416083BD0700", equipment: "Laptop", state: "GUJARAT", branch: "Ahmedabad Branch" },
+      { diseCode: "24071005601", schoolCode: "GNK-AHD-0004", district: "AHMEDABAD", block: "BAVLA", schoolName: "SHIYAL - 2 PRIMARY SCHOOL", principalName: "SURESHBHAI BHIKHABHAI SOLANKI", principalMobile: "9925640268", address: "SHIYAL-2 PRIMARY SCHOOL TA-BAVAL DIST-AHMEDABAD", pincode: "382230", serialNumber: "UD315SI004427013B50700", equipment: "IFP", state: "GUJARAT", branch: "Ahmedabad Branch" },
+      { diseCode: "24161108702", schoolCode: "GNK-KHD-0022", district: "KHEDA", block: "GALTESHWAR", schoolName: "GANGA NA MUVADA", principalName: "DUSHYANTBHAI D PATEL", principalMobile: "9427041045", address: "GANGA NA MUVADA TA GALTESHWAR", pincode: "388220", serialNumber: "UD315SI00441201F710700", equipment: "IFP", state: "GUJARAT", branch: "Vadodara Branch" }
+    ];
+
+    let dbMatchLog = [];
+    let dbExceptions = [];
+
+    // Preloaded sample excel import simulation records (from Lot-2)
+    const lot2UploadRecords = [
+      { productCategory: "IFP", customerName: "DUMALI PRIMARY SCHOOL", contactPerson: "bhanuben patel", address: "DUMALI PRIMARY SCHOOL TA-BAVLA DIST-AHMEDABAD", pincode: "382240", mobile: "8200130803", cityName: "AHMEDABAD", nearbyMajorCity: "BAVLA", state: "GUJARAT", productSerial: "UD315SI00440900F9C0700", problemDescription: "No Power", status: "Closed" }, // Matched within 30 days
+      { productCategory: "Laptop", customerName: "VASANA DHEDHAL PRIMARY SCHOOL", contactPerson: "CHIRAGBHAI KESHUBHAI SINDHAV", address: "VASANA DHEDHAL PRIMARY SCHOOL TA-BAVLA", pincode: "382220", mobile: "9925451073", cityName: "AHMEDABAD", nearbyMajorCity: "BAVLA", state: "GUJARAT", productSerial: "UN431SI36741300B040700", problemDescription: "Slow", status: "Part Request" }, // Outside 30 days / unmatched status update
+      { productCategory: "Laptop", customerName: "BERNA PRI SCHOOL", contactPerson: "DHAVAL SUTHAR", address: "AT BERNA TA HIMMATNAGAR DIST SABARKANTHA", pincode: "383001", mobile: "9328037445", cityName: "SABAR KANTHA", nearbyMajorCity: "HIMMATNAGAR", state: "GUJARAT", productSerial: "UN431SI367416083BD0700", problemDescription: "Dead", status: "Closed" }, // Exception: Missing DISE lookup
+      { productCategory: "IFP", customerName: "GANGA NA MUVADA", contactPerson: "DUSHYANTBHAI D PATEL", address: "GANGA NA MUVADA TA GALTESHWAR", pincode: "388220", mobile: "9427041045", cityName: "KHEDA", nearbyMajorCity: "GALTESHWAR", state: "GUJARAT", productSerial: "UD315SI00441201F710700", problemDescription: "No Power", status: "Closed" } // Normal new School Complaint
+    ];
+
+    let currentSelectedSchool = null;
+
+    /* ==========================================================================
+       2. WIZARD / USER FLOW LOGIC
+       ========================================================================== */
+    function lookupSchoolByDise() {
+      const code = document.getElementById('lookupDiseCode').value.trim();
+      if (!code) {
+        showToast("⚠️ Please enter a DISE Code", "warning");
+        return;
+      }
+
+      // Search in Master
+      const school = dbSchoolMaster.find(s => s.diseCode === code);
+      if (school) {
+        currentSelectedSchool = school;
+        
+        // Auto-fill Step 2 fields
+        document.getElementById('schoolDiseCode').value = school.diseCode;
+        document.getElementById('schoolName').value = school.schoolName;
+        document.getElementById('schoolContact').value = school.principalName;
+        document.getElementById('schoolMobile').value = school.principalMobile;
+        document.getElementById('schoolAddress').value = school.address;
+        document.getElementById('schoolDistrict').value = school.district;
+        document.getElementById('schoolBranch').value = school.branch;
+        document.getElementById('schoolOrigSerial').value = school.serialNumber;
+        document.getElementById('schoolEditableSerial').value = school.serialNumber;
+
+        showToast("✅ School match found!", "success");
+        wizardGoToStep(2);
+      } else {
+        showToast("❌ No school found with this DISE Code in Master.", "danger");
+      }
+    }
+
+    function validateStep2() {
+      const serial = document.getElementById('schoolEditableSerial').value.trim();
+      if (!serial) {
+        showToast("⚠️ Verified Serial Number is required.", "warning");
+        return;
+      }
+      wizardGoToStep(3);
+    }
+
+    function setResolutionStatus(status) {
+      selectedResolutionStatus = status;
+      document.querySelectorAll('.status-btn').forEach(btn => {
+        if (btn.getAttribute('data-status') === status) {
+          btn.classList.add('active');
+        } else {
+          btn.classList.remove('active');
+        }
+      });
+    }
+
+    function validateStep3() {
+      const date = document.getElementById('compDate').value;
+      if (!date) {
+        showToast("⚠️ Resolution Date is required.", "warning");
+        return;
+      }
+      
+      // Populate Step 4 review
+      document.getElementById('revDise').textContent = currentSelectedSchool.diseCode;
+      document.getElementById('revSchool').textContent = currentSelectedSchool.schoolName;
+      document.getElementById('revDistBranch').textContent = currentSelectedSchool.district + " / " + currentSelectedSchool.branch;
+      document.getElementById('revContact').textContent = currentSelectedSchool.principalName + " (" + currentSelectedSchool.principalMobile + ")";
+      
+      document.getElementById('revStatus').innerHTML = selectedResolutionStatus === 'Closed' 
+        ? `<span class="badge-status closed">Closed</span>`
+        : `<span class="badge-status part">Part Request</span>`;
+      
+      document.getElementById('revEquipNature').textContent = document.getElementById('compEquipment').value + " - " + document.getElementById('compNature').value;
+      
+      const orig = currentSelectedSchool.serialNumber;
+      const editable = document.getElementById('schoolEditableSerial').value.trim();
+      document.getElementById('revSerial').textContent = editable + (orig !== editable ? ` (Original: ${orig})` : ` (Unchanged)`);
+      
+      document.getElementById('revDateQty').textContent = date + " / Qty: " + document.getElementById('compQty').value;
+
+      wizardGoToStep(4);
+    }
+
+    function submitSchoolComplaintForm() {
+      // 1. Create complaint record
+      const date = document.getElementById('compDate').value;
+      const equip = document.getElementById('compEquipment').value;
+      const nature = document.getElementById('compNature').value;
+      const qty = document.getElementById('compQty').value;
+      const serial = document.getElementById('schoolEditableSerial').value.trim();
+      const origSerial = currentSelectedSchool.serialNumber;
+      
+      const ticketId = "SCH-" + (1000 + dbComplaints.length + 1);
+
+      const newComplaint = {
+        id: ticketId,
+        date: date,
+        name: currentSelectedSchool.schoolName,
+        diseCode: currentSelectedSchool.diseCode,
+        district: currentSelectedSchool.district,
+        branch: currentSelectedSchool.branch,
+        serial: serial,
+        status: selectedResolutionStatus,
+        source: "School Complaint"
+      };
+
+      dbComplaints.push(newComplaint);
+
+      // 2. Log in Match Log (Audit trail)
+      dbMatchLog.push({
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        batchName: "Engineer Form Submission",
+        diseCode: currentSelectedSchool.diseCode,
+        serialNumber: serial,
+        originalSerial: origSerial,
+        originalStatus: "Open",
+        updatedStatus: selectedResolutionStatus,
+        matchedId: ticketId,
+        sourceTag: "School Complaint",
+        updatedBy: "Field Engineer"
+      });
+
+      showToast("🎉 Complaint logged successfully!", "success");
+      
+      // Refresh DB sheets and Dashboard
+      renderDbTable();
+      renderDashboard();
+      
+      // Go back to landing page
+      switchView('landing');
+      
+      // Reset wizard
+      wizardGoToStep(1);
+    }
+
+    function wizardGoToStep(step) {
+      wizardStep = step;
+      for (let i = 1; i <= 4; i++) {
+        const ind = document.getElementById('stepIndicator' + i);
+        const view = document.getElementById('wizardStep' + i);
+        if (i === step) {
+          ind.className = "wizard-step active";
+          view.style.display = "block";
+        } else if (i < step) {
+          ind.className = "wizard-step completed";
+          view.style.display = "none";
+        } else {
+          ind.className = "wizard-step";
+          view.style.display = "none";
+        }
+      }
+    }
+
+    /* ==========================================================================
+       3. BULK EXCEL UPLOAD SIMULATOR
+       ========================================================================== */
+    function triggerMockUpload() {
+      showToast("📁 COMPLAINT SHEET 10.07.26 - Lot-2.xlsx selected.", "info");
+    }
+
+    function processBulkUploadSimulation() {
+      // Clear previous run data
+      dbSchoolUpload = [];
+      dbExceptions = [];
+      
+      let matchedCount = 0;
+      let newCount = 0;
+      let exceptionCount = 0;
+
+      const nowTime = new Date();
+
+      lot2UploadRecords.forEach(rec => {
+        // Log raw row to dbSchoolUpload
+        dbSchoolUpload.push(rec);
+
+        // Run matching keys logic:
+        // Match by Serial Number first (to find DISE details in master)
+        const matchedSchool = dbSchoolMaster.find(s => s.serialNumber === rec.productSerial);
+        
+        if (!matchedSchool) {
+          // Exception: Missing DISE Code / lookup match
+          dbExceptions.push({
+            reason: "Missing DISE Code (Serial not found in master)",
+            details: `Serial: ${rec.productSerial} | Name: ${rec.customerName} | Status: ${rec.status}`,
+            rowInfo: rec
+          });
+          exceptionCount++;
+          return;
+        }
+
+        const diseCode = matchedSchool.diseCode;
+
+        // Compare each uploaded complaint with existing Complaints log within previous 30 calendar days
+        // Match key: DISE Code + Serial
+        let foundExistingMatch = null;
+        const uploadDate = new Date(); // assume current simulation date
+
+        dbComplaints.forEach(c => {
+          if (c.diseCode === diseCode && c.serial === rec.productSerial) {
+            // Check if ticket date is within 30 days
+            const compDate = new Date(c.date);
+            const diffTime = Math.abs(uploadDate - compDate);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            if (diffDays <= 30) {
+              foundExistingMatch = c;
+            }
+          }
+        });
+
+        if (foundExistingMatch) {
+          // Update status of existing complaint
+          const oldStatus = foundExistingMatch.status;
+          foundExistingMatch.status = rec.status;
+          foundExistingMatch.source = "Advance Complaint";
+
+          // Log in School Complaint Match Log
+          dbMatchLog.push({
+            timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+            batchName: "COMPLAINT SHEET 10.07.26 - Lot-2.xlsx",
+            diseCode: diseCode,
+            serialNumber: rec.productSerial,
+            originalSerial: rec.productSerial,
+            originalStatus: oldStatus,
+            updatedStatus: rec.status,
+            matchedId: foundExistingMatch.id,
+            sourceTag: "Advance Complaint",
+            updatedBy: "Admin Bulk Upload"
+          });
+          matchedCount++;
+        } else {
+          // Create new School Complaint record
+          const ticketId = "SCH-" + (1000 + dbComplaints.length + 1);
+          dbComplaints.push({
+            id: ticketId,
+            date: new Date().toISOString().split('T')[0],
+            name: matchedSchool.schoolName,
+            diseCode: diseCode,
+            district: matchedSchool.district,
+            branch: matchedSchool.branch,
+            serial: rec.productSerial,
+            status: rec.status || "Open",
+            source: "School Complaint"
+          });
+
+          // Log in Match Log
+          dbMatchLog.push({
+            timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+            batchName: "COMPLAINT SHEET 10.07.26 - Lot-2.xlsx",
+            diseCode: diseCode,
+            serialNumber: rec.productSerial,
+            originalSerial: rec.productSerial,
+            originalStatus: "Open",
+            updatedStatus: rec.status || "Open",
+            matchedId: ticketId,
+            sourceTag: "School Complaint",
+            updatedBy: "Admin Bulk Upload"
+          });
+          newCount++;
+        }
+      });
+
+      // Show summary card
+      document.getElementById('uploadSummaryCard').style.display = "block";
+      document.getElementById('uplTotal').textContent = lot2UploadRecords.length;
+      document.getElementById('uplMatched').textContent = matchedCount;
+      document.getElementById('uplNew').textContent = newCount;
+      document.getElementById('uplExceptions').textContent = exceptionCount;
+
+      showToast(`📈 Upload complete: ${matchedCount} matched, ${newCount} new, ${exceptionCount} exceptions logged.`, "success");
+
+      // Refresh elements
+      renderDbTable();
+      renderDashboard();
+    }
+
+    /* ==========================================================================
+       4. DATABASE VIEWER
+       ========================================================================== */
+    function switchDbTab(tabNum) {
+      currentDbTab = tabNum;
+      for (let i = 1; i <= 5; i++) {
+        document.getElementById('dbTab' + i).className = (i === tabNum) ? "nav-tab active" : "nav-tab";
+      }
+      renderDbTable();
+    }
+
+    function renderDbTable() {
+      const table = document.getElementById('dbTable');
+      table.innerHTML = "";
+
+      let html = "";
+      if (currentDbTab === 1) {
+        // Complaints
+        html += `<thead><tr><th>Case ID</th><th>Date</th><th>School Name</th><th>DISE Code</th><th>District</th><th>Branch</th><th>Serial</th><th>Status</th><th>Source</th></tr></thead><tbody>`;
+        dbComplaints.forEach(r => {
+          html += `<tr>
+            <td><strong>${r.id}</strong></td>
+            <td>${r.date}</td>
+            <td>${r.name}</td>
+            <td>${r.diseCode}</td>
+            <td>${r.district}</td>
+            <td>${r.branch}</td>
+            <td><code>${r.serial}</code></td>
+            <td><span class="badge-status ${r.status.toLowerCase().replace(' ', '')}">${r.status}</span></td>
+            <td><span class="badge-source ${r.source === 'Advance Complaint' ? 'advance' : 'school'}">${r.source}</span></td>
+          </tr>`;
+        });
+        html += `</tbody>`;
+      } 
+      else if (currentDbTab === 2) {
+        // School Complaint Upload (Raw)
+        html += `<thead><tr><th>Product</th><th>School Name</th><th>District</th><th>Block</th><th>Serial</th><th>Problem</th></tr></thead><tbody>`;
+        if (dbSchoolUpload.length === 0) {
+          html += `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">No bulk raw data uploaded yet. Go to the "Bulk Excel Upload" tab to simulate.</td></tr>`;
+        } else {
+          dbSchoolUpload.forEach(r => {
+            html += `<tr>
+              <td>${r.productCategory}</td>
+              <td>${r.customerName}</td>
+              <td>${r.cityName}</td>
+              <td>${r.nearbyMajorCity}</td>
+              <td><code>${r.productSerial}</code></td>
+              <td>${r.problemDescription}</td>
+            </tr>`;
+          });
+        }
+        html += `</tbody>`;
+      }
+      else if (currentDbTab === 3) {
+        // School Complaint Master (Asset Lookups)
+        html += `<thead><tr><th>DISE Code</th><th>School Name</th><th>Serial Number</th><th>Equipment</th><th>District</th><th>Branch</th></tr></thead><tbody>`;
+        dbSchoolMaster.forEach(r => {
+          html += `<tr>
+            <td><strong>${r.diseCode}</strong></td>
+            <td>${r.schoolName}</td>
+            <td><code>${r.serialNumber}</code></td>
+            <td>${r.equipment}</td>
+            <td>${r.district}</td>
+            <td>${r.branch}</td>
+          </tr>`;
+        });
+        html += `</tbody>`;
+      }
+      else if (currentDbTab === 4) {
+        // School Complaint Match Log
+        html += `<thead><tr><th>Timestamp</th><th>Batch/File</th><th>DISE Code</th><th>Serial Number</th><th>Old Status</th><th>New Status</th><th>Matched ID</th><th>Source Tag</th></tr></thead><tbody>`;
+        if (dbMatchLog.length === 0) {
+          html += `<tr><td colspan="8" style="text-align:center;color:var(--text-muted);">No matching log audits generated yet.</td></tr>`;
+        } else {
+          dbMatchLog.forEach(r => {
+            html += `<tr>
+              <td><small>${r.timestamp}</small></td>
+              <td><small>${r.batchName}</small></td>
+              <td>${r.diseCode}</td>
+              <td><code>${r.serialNumber}</code></td>
+              <td>${r.originalStatus}</td>
+              <td><strong>${r.updatedStatus}</strong></td>
+              <td>${r.matchedId}</td>
+              <td><span class="badge-source ${r.sourceTag === 'Advance Complaint' ? 'advance' : 'school'}">${r.sourceTag}</span></td>
+            </tr>`;
+          });
+        }
+        html += `</tbody>`;
+      }
+      else if (currentDbTab === 5) {
+        // Exceptions List
+        html += `<thead><tr><th>Exception Reason</th><th>Description Details</th><th>Customer Name</th><th>Serial</th></tr></thead><tbody>`;
+        if (dbExceptions.length === 0) {
+          html += `<tr><td colspan="4" style="text-align:center;color:var(--success);font-weight:600;">✓ No exceptions logged. All uploads processed cleanly.</td></tr>`;
+        } else {
+          dbExceptions.forEach(r => {
+            html += `<tr style="background-color: var(--danger-light);">
+              <td><span style="color:var(--danger);font-weight:700;">⚠️ ${r.reason}</span></td>
+              <td><small>${r.details}</small></td>
+              <td>${r.rowInfo.customerName}</td>
+              <td><code>${r.rowInfo.productSerial}</code></td>
+            </tr>`;
+          });
+        }
+        html += `</tbody>`;
+      }
+
+      table.innerHTML = html;
+    }
+
+    /* ==========================================================================
+       5. INTERACTIVE DASHBOARD & ROLE MANAGEMENT
+       ========================================================================== */
+    function changeRole() {
+      userRole = document.getElementById('userRoleSelect').value;
+      
+      const filtBranch = document.getElementById('filtBranch');
+      if (userRole.startsWith('branch_')) {
+        const branchName = userRole === 'branch_ahmedabad' ? 'Ahmedabad Branch' :
+                           userRole === 'branch_vadodara' ? 'Vadodara Branch' : 'Rajkot Branch';
+        filtBranch.value = branchName;
+        filtBranch.disabled = true; // Lock filter to user role
+      } else {
+        filtBranch.disabled = false;
+      }
+      
+      showToast(`👤 Switched view to role: ${userRole.toUpperCase()}`, "info");
+      renderDashboard();
+    }
+
+    function renderDashboard() {
+      // 1. Gather filters
+      const filterBranch = document.getElementById('filtBranch').value;
+      const filterStatus = document.getElementById('filtStatus').value;
+      const filterSource = document.getElementById('filtSource').value;
+      const filterDistrict = document.getElementById('filtDistrict').value;
+
+      // Filtered Complaints List
+      let list = dbComplaints.slice();
+
+      // Enforce role-based branch restriction
+      if (userRole.startsWith('branch_')) {
+        const userBranch = userRole === 'branch_ahmedabad' ? 'Ahmedabad Branch' :
+                           userRole === 'branch_vadodara' ? 'Vadodara Branch' : 'Rajkot Branch';
+        list = list.filter(r => r.branch === userBranch);
+      } else if (filterBranch !== 'ALL') {
+        list = list.filter(r => r.branch === filterBranch);
+      }
+
+      if (filterStatus !== 'ALL') {
+        list = list.filter(r => r.status === filterStatus);
+      }
+      if (filterSource !== 'ALL') {
+        list = list.filter(r => r.source === filterSource);
+      }
+      if (filterDistrict !== 'ALL') {
+        list = list.filter(r => r.district === filterDistrict);
+      }
+
+      // 2. Compute KPIs
+      const total = list.length;
+      const newComplaints = list.filter(r => r.source === 'School Complaint').length;
+      const matchedComplaints = list.filter(r => r.source === 'Advance Complaint').length;
+      const closed = list.filter(r => r.status === 'Closed').length;
+      const parts = list.filter(r => r.status === 'Part Request').length;
+      const open = list.filter(r => r.status === 'Open').length;
+      
+      const closurePct = total > 0 ? Math.round((closed / total) * 100) : 0;
+      const partPct = total > 0 ? Math.round((parts / total) * 100) : 0;
+
+      // Pending > 30 Days (Ageing Simulation)
+      const ageing = list.filter(r => {
+        if (r.status === 'Closed') return false;
+        // Simulate checking if ticket is older than 30 days
+        const tDate = new Date(r.date);
+        const now = new Date();
+        const diffTime = Math.abs(now - tDate);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        return diffDays > 30;
+      }).length;
+
+      document.getElementById('kpiTotal').textContent = total;
+      document.getElementById('kpiNew').textContent = newComplaints;
+      document.getElementById('kpiMatched').textContent = matchedComplaints;
+      document.getElementById('kpiClosed').textContent = closed;
+      document.getElementById('kpiClosurePct').textContent = `${closurePct}% Closure Percentage`;
+      document.getElementById('kpiPart').textContent = parts;
+      document.getElementById('kpiPartPct').textContent = `${partPct}% Part Requests`;
+      document.getElementById('kpiAging').textContent = ageing;
+
+      // 3. Render Branch Table
+      const branchTbody = document.getElementById('dashBranchSummaryTable');
+      branchTbody.innerHTML = "";
+      
+      const branchNames = ["Ahmedabad Branch", "Vadodara Branch", "Rajkot Branch"];
+      let branchRowsHtml = "";
+      branchNames.forEach(bname => {
+        // If role restricted, skip other branches
+        if (userRole.startsWith('branch_')) {
+          const userBranch = userRole === 'branch_ahmedabad' ? 'Ahmedabad Branch' :
+                             userRole === 'branch_vadodara' ? 'Vadodara Branch' : 'Rajkot Branch';
+          if (bname !== userBranch) return;
+        }
+
+        const bList = dbComplaints.filter(r => r.branch === bname);
+        const bTotal = bList.length;
+        const bOpen = bList.filter(r => r.status === 'Open').length;
+        const bParts = bList.filter(r => r.status === 'Part Request').length;
+        const bClosed = bList.filter(r => r.status === 'Closed').length;
+        const bClosurePct = bTotal > 0 ? Math.round((bClosed / bTotal) * 100) : 0;
+
+        branchRowsHtml += `<tr>
+          <td><strong>${bname}</strong></td>
+          <td style="color:var(--info); font-weight:700;">${bOpen}</td>
+          <td style="color:var(--warning); font-weight:700;">${bParts}</td>
+          <td style="color:var(--success); font-weight:700;">${bClosed}</td>
+          <td>${bTotal}</td>
+          <td><strong>${bClosurePct}%</strong></td>
+        </tr>`;
+      });
+      branchTbody.innerHTML = branchRowsHtml;
+
+      // 4. Render Donut Chart (Dynamic SVG)
+      renderDonutChart(closed, parts, open);
+
+      // 5. Render Drilldown Table
+      const drillTbody = document.getElementById('dashDrilldownTable');
+      drillTbody.innerHTML = "";
+      let drillHtml = "";
+      list.forEach(r => {
+        drillHtml += `<tr>
+          <td>${r.diseCode}</td>
+          <td><strong>${r.name}</strong></td>
+          <td><code>${r.serial}</code></td>
+          <td><span class="badge-status ${r.status.toLowerCase().replace(' ', '')}">${r.status}</span></td>
+          <td>${r.branch}</td>
+          <td>${r.district}</td>
+          <td>${r.date}</td>
+          <td><span class="badge-source ${r.source === 'Advance Complaint' ? 'advance' : 'school'}">${r.source}</span></td>
+        </tr>`;
+      });
+      if (list.length === 0) {
+        drillHtml = `<tr><td colspan="8" style="text-align:center;color:var(--text-muted);">No records match the current filters.</td></tr>`;
+      }
+      drillTbody.innerHTML = drillHtml;
+    }
+
+    function renderDonutChart(closed, parts, open) {
+      const total = closed + parts + open;
+      const svg = document.getElementById('dashStatusDonut');
+      svg.innerHTML = "";
+
+      if (total === 0) {
+        svg.innerHTML = `<circle cx="80" cy="80" r="60" fill="none" stroke="#f1f5f9" stroke-width="24" />
+                         <text x="80" y="85" text-anchor="middle" font-size="12" fill="#64748b" font-weight="700">No Data</text>`;
+        return;
+      }
+
+      // Calculate stroke offsets
+      const r = 50;
+      const circ = 2 * Math.PI * r;
+      
+      const closedPct = closed / total;
+      const partsPct = parts / total;
+      const openPct = open / total;
+
+      const strokeClosed = circ * closedPct;
+      const strokeParts = circ * partsPct;
+      const strokeOpen = circ * openPct;
+
+      let offset = 0;
+      let html = `<circle cx="80" cy="80" r="60" fill="none" stroke="#f8fafc" stroke-width="26" />`;
+
+      // 1. Closed segment (Green)
+      if (closed > 0) {
+        html += `<circle cx="80" cy="80" r="${r}" fill="none" stroke="var(--success)" stroke-width="24" 
+                 stroke-dasharray="${strokeClosed} ${circ - strokeClosed}" stroke-dashoffset="${offset}" transform="rotate(-90 80 80)" />`;
+        offset -= strokeClosed;
+      }
+
+      // 2. Part Requests segment (Orange)
+      if (parts > 0) {
+        html += `<circle cx="80" cy="80" r="${r}" fill="none" stroke="var(--warning)" stroke-width="24" 
+                 stroke-dasharray="${strokeParts} ${circ - strokeParts}" stroke-dashoffset="${offset}" transform="rotate(-90 80 80)" />`;
+        offset -= strokeParts;
+      }
+
+      // 3. Open segment (Blue)
+      if (open > 0) {
+        html += `<circle cx="80" cy="80" r="${r}" fill="none" stroke="var(--info)" stroke-width="24" 
+                 stroke-dasharray="${strokeOpen} ${circ - strokeOpen}" stroke-dashoffset="${offset}" transform="rotate(-90 80 80)" />`;
+      }
+
+      // Donut hole text
+      html += `<circle cx="80" cy="80" r="38" fill="white" />
+               <text x="80" y="78" text-anchor="middle" font-size="18" font-weight="700" fill="var(--secondary)">${total}</text>
+               <text x="80" y="94" text-anchor="middle" font-size="10" font-weight="600" fill="var(--text-muted)">Total Tickets</text>`;
+
+      svg.innerHTML = html;
+    }
+
+    /* ==========================================================================
+       6. GLOBAL HELPER FUNCTIONS
+       ========================================================================== */
+    function switchView(viewName) {
+      currentView = viewName;
+      
+      // Update navigation tab highlights
+      document.querySelectorAll('.nav-tab').forEach(tab => {
+        if (tab.getAttribute('onclick').includes(viewName)) {
+          tab.classList.add('active');
+        } else {
+          tab.classList.remove('active');
+        }
+      });
+
+      // Show the selected view content container
+      document.querySelectorAll('.view-content').forEach(view => {
+        if (view.id === 'view_' + viewName) {
+          view.style.display = "block";
+        } else {
+          view.style.display = "none";
+        }
+      });
+
+      // Special initializations on view switch
+      if (viewName === 'database') {
+        renderDbTable();
+      } else if (viewName === 'dashboard') {
+        renderDashboard();
+      }
+    }
+
+    function showToast(message, type = 'info') {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.className = `toast show ${type}`;
+      
+      setTimeout(() => {
+        toast.className = 'toast';
+      }, 4000);
+    }
+
+    // Set today's date in form datepicker by default
+    document.getElementById('compDate').value = new Date().toISOString().split('T')[0];
+
+    // Initial renders
+    renderDashboard();
+    renderDbTable();
+
+  </script>
+</body>
+</html>
