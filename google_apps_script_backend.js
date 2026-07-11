@@ -383,6 +383,12 @@ function doPost(e) {
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
+    if (data.action === 'import_school_complaints') {
+      var importResult = importSchoolComplaints(ss, data);
+      return ContentService.createTextOutput(JSON.stringify(importResult))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
     if (data.action === 'resolve_department_complaint') {
       var resolveResult = resolveDepartmentComplaint(ss, data);
       return ContentService.createTextOutput(JSON.stringify(resolveResult))
@@ -552,6 +558,11 @@ function doGet(e) {
     if (action === 'get_school_updates') {
       var schoolUpdates = getSchoolUpdates(ss);
       return ContentService.createTextOutput(JSON.stringify(schoolUpdates))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (action === 'get_school_complaint_updates') {
+      return ContentService.createTextOutput(JSON.stringify([]))
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -3537,4 +3548,217 @@ function cleanupPhase1TestRows(ss, ticketIds) {
 function runTestEmailManual() {
   MailApp.sendEmail("jignesh.patel@armeeinfotech.com", "Auth Test", "This is a manual authorization test.");
   Logger.log("Test email sent!");
+}
+
+function getOrCreateSchoolComplaintSheets(ss) {
+  var master = ss.getSheetByName('SchoolComplaintMaster');
+  if (!master) {
+    master = ss.insertSheet('SchoolComplaintMaster');
+    master.appendRow([
+      'SR No.', 'Project', 'DISE Code', 'School Code', 'District', 'Taluka', 
+      'School Name', 'Principal Name', 'Principal Contact', 'Address', 'Pin Code', 
+      'Equipment', 'Nature of Complaint', 'Serial Number', 'State', 'Branch'
+    ]);
+    var header = master.getRange(1, 1, 1, 16);
+    header.setBackground('#1e3a8a');
+    header.setFontColor('#ffffff');
+    header.setFontWeight('bold');
+  }
+
+  var upload = ss.getSheetByName('SchoolComplaintUpload');
+  if (!upload) {
+    upload = ss.insertSheet('SchoolComplaintUpload');
+    upload.appendRow([
+      'Upload ID', 'Uploaded At', 'Product Serial No.', 'Customer Name', 
+      'Contact Person', 'Mobile No.', 'Address', 'PINCODE', 'City Name', 
+      'Nearby Major City', 'State', 'Product Category', 'Problem Description'
+    ]);
+    var header = upload.getRange(1, 1, 1, 13);
+    header.setBackground('#1e3a8a');
+    header.setFontColor('#ffffff');
+    header.setFontWeight('bold');
+  }
+
+  var log = ss.getSheetByName('SchoolComplaintMatchLog');
+  if (!log) {
+    log = ss.insertSheet('SchoolComplaintMatchLog');
+    log.appendRow([
+      'Log ID', 'Timestamp', 'DISE Code', 'Serial Number', 
+      'Match Type', 'Matched Case ID', 'Old Status', 'New Status', 'Details'
+    ]);
+    var header = log.getRange(1, 1, 1, 9);
+    header.setBackground('#1e3a8a');
+    header.setFontColor('#ffffff');
+    header.setFontWeight('bold');
+  }
+
+  var exceptions = ss.getSheetByName('SchoolComplaintExceptions');
+  if (!exceptions) {
+    exceptions = ss.insertSheet('SchoolComplaintExceptions');
+    exceptions.appendRow([
+      'Exception ID', 'Timestamp', 'Product Serial No.', 'Reason', 'Raw Data JSON'
+    ]);
+    var header = exceptions.getRange(1, 1, 1, 5);
+    header.setBackground('#dc2626');
+    header.setFontColor('#ffffff');
+    header.setFontWeight('bold');
+  }
+}
+
+function importSchoolComplaints(ss, data) {
+  var masterSheet = ss.getSheetByName('SchoolComplaintMaster');
+  var complaintsSheet = ss.getSheetByName('Complaints');
+  var matchLogSheet = ss.getSheetByName('SchoolComplaintMatchLog');
+  var exceptionsSheet = ss.getSheetByName('SchoolComplaintExceptions');
+  
+  if (!masterSheet || !complaintsSheet || !matchLogSheet || !exceptionsSheet) {
+    getOrCreateSchoolComplaintSheets(ss);
+    masterSheet = ss.getSheetByName('SchoolComplaintMaster');
+    complaintsSheet = ss.getSheetByName('Complaints');
+    matchLogSheet = ss.getSheetByName('SchoolComplaintMatchLog');
+    exceptionsSheet = ss.getSheetByName('SchoolComplaintExceptions');
+  }
+
+  var records = data.records || [];
+  var importedCount = 0;
+  var matchedCount = 0;
+  var exceptionCount = 0;
+
+  var masterRows = [];
+  if (masterSheet.getLastRow() > 1) {
+    masterRows = masterSheet.getRange(2, 1, masterSheet.getLastRow() - 1, masterSheet.getLastColumn()).getValues();
+  }
+
+  var complaints = [];
+  if (complaintsSheet.getLastRow() > 1) {
+    complaints = complaintsSheet.getRange(2, 1, complaintsSheet.getLastRow() - 1, complaintsSheet.getLastColumn()).getValues();
+  }
+
+  var now = new Date();
+  var thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(now.getDate() - 30);
+
+  for (var i = 0; i < records.length; i++) {
+    var rawRec = records[i];
+    var rawSerial = String(rawRec.serialNumber || rawRec.serial || '').trim();
+    if (!rawSerial) {
+      exceptionsSheet.appendRow(['EX-' + Date.now() + '-' + i, now.toISOString(), '', 'Missing Serial Number', JSON.stringify(rawRec)]);
+      exceptionCount++;
+      continue;
+    }
+
+    var matchedMaster = null;
+    for (var m = 0; m < masterRows.length; m++) {
+      var masterSerial = String(masterRows[m][13] || '').trim();
+      if (masterSerial && masterSerial.toUpperCase() === rawSerial.toUpperCase()) {
+        matchedMaster = masterRows[m];
+        break;
+      }
+    }
+
+    if (!matchedMaster) {
+      exceptionsSheet.appendRow(['EX-' + Date.now() + '-' + i, now.toISOString(), rawSerial, 'Missing DISE Code / No Master Match', JSON.stringify(rawRec)]);
+      exceptionCount++;
+      continue;
+    }
+
+    var dise = String(matchedMaster[2]).trim();
+
+    var existingMatchIndex = -1;
+    var existingCaseId = '';
+    var existingOldStatus = '';
+    
+    for (var c = 0; c < complaints.length; c++) {
+      var rowDateStr = complaints[c][1];
+      if (!rowDateStr) continue;
+      var rowDate = new Date(rowDateStr);
+      if (rowDate >= thirtyDaysAgo) {
+        var rowDise = String(complaints[c][6]).trim();
+        var rowSerial = String(complaints[c][17]).trim();
+        if (rowDise === dise && rowSerial.toUpperCase() === rawSerial.toUpperCase()) {
+          existingMatchIndex = c;
+          existingCaseId = String(complaints[c][24]).trim();
+          existingOldStatus = String(complaints[c][23]).trim();
+          break;
+        }
+      }
+    }
+
+    if (existingMatchIndex !== -1) {
+      var sheetRowIndex = existingMatchIndex + 2;
+      var newStatus = 'Closed'; 
+      complaintsSheet.getRange(sheetRowIndex, 24).setValue(newStatus);
+      
+      matchLogSheet.appendRow([
+        'LOG-' + Date.now() + '-' + i,
+        now.toISOString(),
+        dise,
+        rawSerial,
+        '30-Day Update Match',
+        existingCaseId,
+        existingOldStatus,
+        newStatus,
+        'Updated ticket ' + existingCaseId + ' status to ' + newStatus
+      ]);
+      matchedCount++;
+    } else {
+      var caseId = 'CASE-' + Date.now() + '-' + i;
+      var srNo = complaintsSheet.getLastRow() + 1;
+      var newComplaintRow = [
+        srNo,
+        now.toISOString(),
+        matchedMaster[7] || '',
+        matchedMaster[8] || '',
+        'engineer',
+        matchedMaster[1] || 'ICT',
+        dise,
+        matchedMaster[3] || '',
+        matchedMaster[4] || '',
+        matchedMaster[5] || '',
+        matchedMaster[6] || '',
+        matchedMaster[7] || '',
+        matchedMaster[8] || '',
+        matchedMaster[9] || '',
+        matchedMaster[10] || '',
+        matchedMaster[11] || rawRec.equipment || 'Desktop',
+        matchedMaster[12] || rawRec.nature || 'No Power',
+        rawSerial,
+        1,
+        now.toISOString().split('T')[0],
+        '',
+        rawRec.problem || 'No Power',
+        0,
+        'Open',
+        caseId,
+        '', '',
+        '', '', '',
+        'NO',
+        '', '', '',
+        '', '', ''
+      ];
+      
+      complaintsSheet.appendRow(newComplaintRow);
+      formatLastRow(complaintsSheet, complaintsSheet.getLastRow());
+
+      matchLogSheet.appendRow([
+        'LOG-' + Date.now() + '-' + i,
+        now.toISOString(),
+        dise,
+        rawSerial,
+        'New School Ticket Created',
+        caseId,
+        'None',
+        'Open',
+        'Created new ticket ' + caseId
+      ]);
+      importedCount++;
+    }
+  }
+
+  return {
+    status: 'ok',
+    importedCount: importedCount,
+    matchedCount: matchedCount,
+    exceptionCount: exceptionCount
+  };
 }
