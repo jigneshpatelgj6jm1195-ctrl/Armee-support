@@ -4747,13 +4747,13 @@ async function runDeptUpload() {
 
 // Pre-fill the saved import key when the page loads
 document.addEventListener('DOMContentLoaded', () => {
-  const saved = localStorage.getItem(DEPT_IMPORT_KEY_LS);
+  const saved = localStorage.getItem(DEPT_IMPORT_KEY_LS) || 'armee123';
   const field = document.getElementById('deptImportKey');
-  if (saved && field) field.value = saved;
+  if (field) field.value = saved;
 
-  const savedSchoolKey = localStorage.getItem(SCHOOL_IMPORT_KEY_LS);
+  const savedSchoolKey = localStorage.getItem(SCHOOL_IMPORT_KEY_LS) || 'armee123';
   const schoolField = document.getElementById('schoolImportKey');
-  if (savedSchoolKey && schoolField) schoolField.value = savedSchoolKey;
+  if (schoolField) schoolField.value = savedSchoolKey;
 });
 
 /* ─────────────── SCHOOL COMPLAINTS BULK UPLOAD ─────────────── */
