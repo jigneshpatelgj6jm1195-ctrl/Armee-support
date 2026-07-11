@@ -1628,6 +1628,7 @@ function showSegmentScreen(user) {
 }
 function enterAdvance() {
   appFlow = 'advance';
+  resetAll();
   document.getElementById('segmentScreen').style.display = 'none';
   startApp(getUser());
 }
@@ -1638,6 +1639,7 @@ function enterDepartment() {
 }
 function enterSchool() {
   appFlow = 'school';
+  resetAll();
   document.getElementById('segmentScreen').style.display = 'none';
   startApp(getUser());
 }
@@ -3137,7 +3139,7 @@ function resetAll() {
   document.getElementById('fSuspectedPart').value = '';
   onSuspectedPartChange();
   document.getElementById('fDesc').value   = '';
-  setAdvanceStatus('Open');
+  selectAdvanceStatus(((getUser() || {}).role || '').toLowerCase().trim() === 'teacher' ? 'Open' : 'Closed');
   document.getElementById('photoGrid').innerHTML = '';
   document.getElementById('noPhotosMsg').style.display = '';
   document.getElementById('qtyProgressBanner').style.display = 'none';
