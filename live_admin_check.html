@@ -1300,7 +1300,8 @@ tr:hover td { background: #f8fafc; }
     <!-- Update status buttons block -->
     <div id="deptDetUpdateStatusBlock" style="border-top:1px solid var(--border); padding-top:15px; display:flex; flex-direction:column; gap:10px;">
       <h4 style="margin:0; font-size:0.9rem; color:var(--primary);">✏️ Update Ticket Status</h4>
-      <div style="display:flex; gap:8px;">
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button type="button" class="btn btn-sm" onclick="submitDeptStatusUpdate('in_progress')" style="flex:1; background:#2563eb; color:white; font-weight:bold; height:40px; display:flex; align-items:center; justify-content:center; gap:6px; border:none; border-radius:8px; cursor:pointer;">🔵 In Progress</button>
         <button type="button" class="btn btn-sm" onclick="submitDeptStatusUpdate('closed_with_otp')" style="flex:1; background:#10b981; color:white; font-weight:bold; height:40px; display:flex; align-items:center; justify-content:center; gap:6px; border:none; border-radius:8px; cursor:pointer;">✅ Close with OTP</button>
         <button type="button" class="btn btn-sm" onclick="submitDeptStatusUpdate('closed_without_otp')" style="flex:1; background:#f59e0b; color:white; font-weight:bold; height:40px; display:flex; align-items:center; justify-content:center; gap:6px; border:none; border-radius:8px; cursor:pointer;">📩 Close without OTP</button>
         <button type="button" class="btn btn-sm" onclick="submitDeptStatusUpdate('part_request')" style="flex:1; background:#7c3aed; color:white; font-weight:bold; height:40px; display:flex; align-items:center; justify-content:center; gap:6px; border:none; border-radius:8px; cursor:pointer;">🔧 Part Request</button>
@@ -4863,6 +4864,7 @@ function updateDeptSelectionUI() {
       headerCol.innerHTML = `
         <select onchange="bulkUpdateDeptStatus(this.value); this.value='';" style="padding:4px; font-size:0.72rem; border-radius:4px; border:1px solid var(--border); font-weight:700; width:100%; cursor:pointer; background:#eff6ff; color:#1e40af;">
           <option value="">- Update (${chks.length}) -</option>
+          <option value="in_progress">🔵 In Progress</option>
           <option value="closed_with_otp">✅ Close with OTP</option>
           <option value="closed_without_otp">📩 Close without OTP</option>
           <option value="part_request">🔧 Part Request</option>

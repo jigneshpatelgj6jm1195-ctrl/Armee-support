@@ -2021,6 +2021,8 @@ function resolveDepartmentComplaint(ss, data) {
     internalStatus = 'PendingOTP'; closureType = 'ClosedWithoutOTP';
   } else if (action === 'part_request') {
     internalStatus = 'PartRequest'; closureType = '';
+  } else if (action === 'in_progress') {
+    internalStatus = 'InProgress'; closureType = '';
   } else {
     return { status: 'error', message: 'Unknown resolutionAction: ' + action };
   }
