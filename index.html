@@ -585,6 +585,14 @@ textarea { resize: none; min-height: 80px; }
         <div style="font-size:0.72rem; color:var(--muted); margin-top:2px;">Resolve government portal tickets on site (OTP closure / part request)</div>
       </div>
     </button>
+
+    <button onclick="enterSchool()" style="width:100%; background:white; border:2px solid var(--border); border-radius:16px; padding:18px 16px; margin-top:14px; cursor:pointer; text-align:left; display:flex; align-items:center; gap:14px; box-shadow:0 2px 8px rgba(0,0,0,0.05);">
+      <div style="font-size:2rem;">🏫</div>
+      <div>
+        <div style="font-size:0.95rem; font-weight:800; color:var(--text);">School Complaint</div>
+        <div style="font-size:0.72rem; color:var(--muted); margin-top:2px;">Look up school details by DISE code, auto-fill asset/serial details, and log resolution status.</div>
+      </div>
+    </button>
   </div>
 </div>
 
@@ -1615,6 +1623,9 @@ function enterDepartment() {
   document.getElementById('segmentScreen').style.display = 'none';
   document.getElementById('departmentScreen').style.display = 'flex';
   setTimeout(() => document.getElementById('deptDiseInput').focus(), 100);
+}
+function enterSchool() {
+  window.location.href = 'demo_school_system.html';
 }
 function backToSegment() {
   document.getElementById('departmentScreen').style.display = 'none';
