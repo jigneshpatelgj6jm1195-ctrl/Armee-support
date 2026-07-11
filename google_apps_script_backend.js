@@ -1450,6 +1450,32 @@ function setImportKey(key) {
   Logger.log('IMPORT_KEY has been set.');
 }
 
+/**
+ * Run this function from the Apps Script editor toolbar.
+ * It will read the import key from Script Properties (or generate a new one if missing)
+ * and print it in a new sheet tab named "IMPORT_KEY_INFO" in your Google Sheets file!
+ */
+function showImportKeyInSheet() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var key = PropertiesService.getScriptProperties().getProperty('IMPORT_KEY');
+  if (!key) {
+    key = "armee_import_key_" + Math.floor(Math.random() * 900000 + 100000);
+    PropertiesService.getScriptProperties().setProperty('IMPORT_KEY', key);
+  }
+  
+  var infoSheet = ss.getSheetByName('IMPORT_KEY_INFO');
+  if (!infoSheet) {
+    infoSheet = ss.insertSheet('IMPORT_KEY_INFO');
+  }
+  infoSheet.clear();
+  infoSheet.getRange('A1').setValue('Your Secret Import Key:');
+  infoSheet.getRange('B1').setValue(key);
+  infoSheet.getRange('A1:B1').setFontWeight('bold').setBackground('#f3f4f6');
+  infoSheet.autoResizeColumns(1, 2);
+  
+  Logger.log('The key has been written to the Google Sheets tab "IMPORT_KEY_INFO": ' + key);
+}
+
 function initDepartmentSheets() {
   var ss = SpreadsheetApp.openById(SHEET_ID);
   getOrCreateDeptSheet(ss);
