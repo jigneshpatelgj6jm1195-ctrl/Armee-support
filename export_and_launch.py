@@ -412,6 +412,68 @@ def export_data():
     return count
 
 
+def export_school_complaint_data():
+    try:
+        import openpyxl
+    except ImportError:
+        import openpyxl
+
+    excel_path = SCRIPT_DIR / "School complaint format 23.6.25.xlsx"
+    json_path = SCRIPT_DIR / "school_complaint_data.json"
+
+    if not excel_path.exists():
+        return 0
+
+    wb = openpyxl.load_workbook(str(excel_path), read_only=True, data_only=True)
+    if "Data" not in wb.sheetnames:
+        wb.close()
+        return 0
+
+    ws = wb["Data"]
+    data = {}
+    count = 0
+
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if not any(c is not None for c in row):
+            continue
+        dise_val = row[2]
+        if not dise_val or str(dise_val).strip() in ["", "-", "None"]:
+            continue
+        serial_val = row[13]
+        if not serial_val or str(serial_val).strip() in ["", "-", "None"]:
+            continue
+
+        dise = str(dise_val).strip()
+        record = {
+            "project":    str(row[1]).strip() if row[1] else "ICT",
+            "dise":       dise,
+            "schoolCode": str(row[3]).strip() if row[3] else "",
+            "district":   str(row[4]).strip() if row[4] else "",
+            "block":      str(row[5]).strip() if row[5] else "",
+            "school":     str(row[6]).strip() if row[6] else "",
+            "principal":  str(row[7]).strip() if row[7] else "",
+            "mobile":     str(row[8]).strip() if row[8] else "",
+            "address":    str(row[9]).strip() if row[9] else "",
+            "pincode":    str(row[10]).strip() if row[10] else "",
+            "equipment":  str(row[11]).strip() if row[11] else "",
+            "natureOfComplaint": str(row[12]).strip() if row[12] else "",
+            "serialNumber": str(serial_val).strip()
+        }
+
+        if dise not in data:
+            data[dise] = []
+        data[dise].append(record)
+        count += 1
+
+    wb.close()
+
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, separators=(',', ':'))
+
+    print(f"[OK] Exported {count} school complaint records -> school_complaint_data.json")
+    return count
+
+
 # ─────────────────────────────────────────────
 # LAUNCH LOCAL SERVER
 # ─────────────────────────────────────────────
@@ -464,5 +526,6 @@ if __name__ == "__main__":
     print()
 
     export_data()
+    export_school_complaint_data()
     print()
     launch_form()

@@ -628,6 +628,7 @@ textarea { resize: none; min-height: 80px; }
   <div class="app-bar">
     <div class="app-bar-top" style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
       <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+        <button id="btnAppBack" onclick="backToSegmentFromApp()" style="background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.25); border-radius: 8px; color: white; padding: 4px 8px; font-weight: bold; cursor: pointer; display: none; margin-right: 2px;">←</button>
         <img src="armee_logo.png" alt="ArMee Logo" style="height: 32px; width: auto; border-radius: 4px; background: white; padding: 2px; flex-shrink: 0;" />
         <div style="min-width: 0;">
           <div style="font-size: 0.82rem; font-weight: 800; color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.2px; line-height: 1.2;">ArMee Technology</div>
@@ -1128,6 +1129,8 @@ const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbykDdOGm-gO3h
 
 /* ─────────────── STATE ─────────────── */
 let SCHOOL_DB  = {};
+let SCHOOL_COMPLAINT_DB = {};
+let appFlow = 'advance';
 let MASTER_DB  = { equipment: [] };
 
 function isInvalidSerialNumber(serial) {
@@ -1272,6 +1275,14 @@ async function loadSchoolData() {
     const res = await fetch('./school_data.json');
     if (!res.ok) throw new Error('Fetch failed');
     SCHOOL_DB = await res.json();
+    try {
+      const resComp = await fetch('./school_complaint_data.json');
+      if (resComp.ok) {
+        SCHOOL_COMPLAINT_DB = await resComp.json();
+      }
+    } catch (e) {
+      console.warn("Could not load school complaint database:", e);
+    }
     const total = Object.values(SCHOOL_DB).reduce((s, v) => s + (Array.isArray(v) ? v.length : 1), 0);
     document.getElementById('loadingMsg').textContent = `Loaded ${total.toLocaleString()} school records ✓`;
     await delay(200);
@@ -1616,6 +1627,7 @@ function showSegmentScreen(user) {
   document.getElementById('segmentScreen').style.display = 'flex';
 }
 function enterAdvance() {
+  appFlow = 'advance';
   document.getElementById('segmentScreen').style.display = 'none';
   startApp(getUser());
 }
@@ -1625,7 +1637,13 @@ function enterDepartment() {
   setTimeout(() => document.getElementById('deptDiseInput').focus(), 100);
 }
 function enterSchool() {
-  window.location.href = 'demo_school_system.html';
+  appFlow = 'school';
+  document.getElementById('segmentScreen').style.display = 'none';
+  startApp(getUser());
+}
+function backToSegmentFromApp() {
+  document.getElementById('app').style.display = 'none';
+  showSegmentScreen(getUser());
 }
 function backToSegment() {
   document.getElementById('departmentScreen').style.display = 'none';
@@ -2092,6 +2110,11 @@ function startApp(user) {
   document.getElementById('loadingScreen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
   document.getElementById('userChipName').textContent = user.name.split(' ')[0];
+  const isEng = (user.role || '').toLowerCase().trim() === 'engineer';
+  const backBtn = document.getElementById('btnAppBack');
+  if (backBtn) {
+    backBtn.style.display = isEng ? 'inline-block' : 'none';
+  }
   loadRecentLookups();
   updateStepUI();
   applyRoleVisibility(user);
@@ -2257,7 +2280,13 @@ function triggerLookup() {
 
   if (!dise) { showStatus('error', '⚠️ Enter DISE Code'); return; }
 
-  const entries = SCHOOL_DB[dise];
+  let entries;
+  if (appFlow === 'school') {
+    entries = SCHOOL_COMPLAINT_DB[dise];
+  } else {
+    entries = SCHOOL_DB[dise];
+  }
+
   if (!entries || (Array.isArray(entries) && entries.length === 0)) {
     showStatus('error', `❌ No school found for "${dise}"`);
     foundRecord = null; return;
@@ -2281,6 +2310,30 @@ function triggerLookup() {
     showStatus('success', `✅ ${record.school}`);
   }
   saveRecentLookup(record);
+
+  if (appFlow === 'school') {
+    if (record.serialNumber) {
+      document.getElementById('fSerial').value = record.serialNumber;
+    }
+    if (record.equipment) {
+      const eqUpper = record.equipment.trim().toUpperCase();
+      let matchedEq = (MASTER_DB.equipment || []).find(e => e.name.toUpperCase() === eqUpper);
+      if (matchedEq) {
+        document.getElementById('fEquipment').value = matchedEq.name;
+        onEquipmentChange();
+        
+        if (record.natureOfComplaint) {
+          const natUpper = record.natureOfComplaint.trim().toUpperCase();
+          setTimeout(() => {
+            const matchedNat = (matchedEq.complaints || []).find(c => c.name.toUpperCase() === natUpper);
+            if (matchedNat) {
+              document.getElementById('fNature').value = matchedNat.name;
+            }
+          }, 100);
+        }
+      }
+    }
+  }
 }
 
 function showStatus(type, msg) {
@@ -2892,7 +2945,8 @@ async function proceedWithSubmission() {
     serialPhoto:       serialPhoto,
     latitude:          gpsLocation.latitude,
     longitude:         gpsLocation.longitude,
-    duplicateStatus:   pendingDuplicateStatus
+    duplicateStatus:   pendingDuplicateStatus,
+    source:            appFlow === 'school' ? 'School Complaint' : 'Advance Complaint'
   };
 
   lastComplaint = complaint;
