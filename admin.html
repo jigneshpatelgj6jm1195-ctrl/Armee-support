@@ -366,6 +366,8 @@ tr:hover td { background: #f8fafc; }
   <button class="tab-btn" id="btn-tab-access" onclick="switchTab('access')">🔒 Access Control</button>
   <button class="tab-btn" id="btn-tab-complaints" onclick="switchTab('complaints')">📋 Complaints &amp; Reports</button>
   <button class="tab-btn" id="btn-tab-dept" onclick="switchTab('dept')">🏛️ Dept Complaints</button>
+  <button class="tab-btn" id="btn-tab-schoolupload" onclick="switchTab('schoolupload')">📤 School Upload</button>
+  <button class="tab-btn" id="btn-tab-schooldash" onclick="switchTab('schooldash')">📊 School Dash</button>
   <button class="tab-btn" id="btn-tab-branch" onclick="switchTab('branch')">🏢 Branch Management</button>
   <button class="tab-btn" id="btn-tab-branchemails" onclick="switchTab('branchemails')">📧 Branch Emails</button>
   <button class="tab-btn" id="btn-tab-archive" onclick="switchTab('archive')">📦 Archive Manager</button>
@@ -1066,6 +1068,37 @@ tr:hover td { background: #f8fafc; }
       <div id="deptPreview" style="display:none;background:#f8faff;border:1.5px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:14px;font-size:0.82rem;"></div>
       <div id="deptResult" style="display:none;border-radius:12px;padding:14px 16px;font-size:0.82rem;font-weight:600;"></div>
     </div>
+  </div>
+
+  <!-- ================= TAB: SCHOOL UPLOAD ================= -->
+  <div class="tab-content" id="tab-schoolupload" style="display:none; padding:16px;">
+    <div class="card">
+      <div class="card-title">🏫 School Complaints — Bulk Upload</div>
+      <p style="color:var(--muted);font-size:0.82rem;margin-bottom:16px;">
+        Upload the School Complaint Excel sheet (Lot-2 format) to process the 30-day matching keys algorithm.
+        If a match is found within 30 days, the ticket is updated to Closed. If no match is found, a new complaint ticket is created.
+      </p>
+
+      <div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap;">
+        <div>
+          <label>Excel file (.xlsx)</label>
+          <input type="file" id="schoolFile" accept=".xlsx,.xls" style="display:block;padding:8px;border:2px dashed var(--border);border-radius:8px;background:white;" onchange="handleSchoolFileSelect()" />
+        </div>
+        <div>
+          <label>Import key</label>
+          <input type="password" id="schoolImportKey" placeholder="Paste the IMPORT_KEY" style="width:220px;" autocomplete="off" />
+        </div>
+        <button class="btn btn-primary" id="schoolUploadBtn" onclick="runSchoolUpload()" disabled>⬆️ Upload &amp; Process</button>
+      </div>
+
+      <div id="schoolPreview" style="display:none;background:#f8faff;border:1.5px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:14px;font-size:0.82rem;"></div>
+      <div id="schoolResult" style="display:none;border-radius:12px;padding:14px 16px;font-size:0.82rem;font-weight:600;"></div>
+    </div>
+  </div>
+
+  <!-- ================= TAB: SCHOOL DASHBOARD ================= -->
+  <div class="tab-content" id="tab-schooldash" style="display:none; padding:0;">
+    <iframe src="demo_school_system.html" style="width:100%; height:900px; border:none; border-radius:14px; box-shadow:0 4px 12px rgba(0,0,0,0.08);"></iframe>
   </div>
 
   <!-- ================= TAB: BRANCH MANAGEMENT ================= -->
@@ -2118,8 +2151,8 @@ async function saveAll() {
 function checkTabAccess(tabId) {
   if (!currentUser) return tabId === 'dash';
   if (currentUser.role === 'super_admin') return true;
-  // Non-super admin (district_admin, viewer) can access dash, complaints, and dept
-  const allowedTabs = ['dash', 'complaints', 'dept'];
+  // Non-super admin (district_admin, viewer) can access dash, complaints, dept, and schooldash
+  const allowedTabs = ['dash', 'complaints', 'dept', 'schooldash'];
   return allowedTabs.includes(tabId);
 }
 
@@ -2132,6 +2165,8 @@ function renderNavigationMenu() {
     'users': document.getElementById('btn-tab-users'),
     'access': document.getElementById('btn-tab-access'),
     'dept': document.getElementById('btn-tab-dept'),
+    'schoolupload': document.getElementById('btn-tab-schoolupload'),
+    'schooldash': document.getElementById('btn-tab-schooldash'),
     'branch': document.getElementById('btn-tab-branch'),
     'branchemails': document.getElementById('btn-tab-branchemails'),
     'archive': document.getElementById('btn-tab-archive'),
@@ -2162,6 +2197,8 @@ function applyUrlModule() {
       'accesscontrol': 'access',
       'complaints': 'complaints',
       'department': 'dept',
+      'schoolupload': 'schoolupload',
+      'schooldash': 'schooldash',
       'branchmanagement': 'branch',
       'archive': 'archive'
     };
@@ -2206,6 +2243,8 @@ function switchTab(tabId) {
     'access': 'accesscontrol',
     'complaints': 'complaints',
     'dept': 'department',
+    'schoolupload': 'schoolupload',
+    'schooldash': 'schooldash',
     'branch': 'branchmanagement',
     'branchemails': 'branchemails',
     'archive': 'archive'
@@ -4733,7 +4772,133 @@ document.addEventListener('DOMContentLoaded', () => {
   const saved = localStorage.getItem(DEPT_IMPORT_KEY_LS);
   const field = document.getElementById('deptImportKey');
   if (saved && field) field.value = saved;
+
+  const savedSchoolKey = localStorage.getItem(SCHOOL_IMPORT_KEY_LS);
+  const schoolField = document.getElementById('schoolImportKey');
+  if (savedSchoolKey && schoolField) schoolField.value = savedSchoolKey;
 });
+
+/* ─────────────── SCHOOL COMPLAINTS BULK UPLOAD ─────────────── */
+const SCHOOL_IMPORT_KEY_LS = 'armee_school_import_key';
+let schoolParsedRows = null;
+
+function handleSchoolFileSelect() {
+  const fileInput = document.getElementById('schoolFile');
+  const preview = document.getElementById('schoolPreview');
+  const result = document.getElementById('schoolResult');
+  const btn = document.getElementById('schoolUploadBtn');
+  schoolParsedRows = null;
+  btn.disabled = true;
+  result.style.display = 'none';
+
+  const file = fileInput.files && fileInput.files[0];
+  if (!file) { preview.style.display = 'none'; return; }
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { raw: false, defval: '' });
+
+      if (!rows.length) throw new Error('The file has no data rows.');
+
+      const sampleRow = rows[0];
+      const serialColKey = findSchoolColumn(sampleRow, ['Product Serial No', 'Serial Number', 'Serial No']);
+      if (!serialColKey) throw new Error('Could not find Product Serial No. column in the file.');
+
+      const customerColKey = findSchoolColumn(sampleRow, ['Customer Name', 'Company Name', 'School Name', 'School']);
+      const contactColKey = findSchoolColumn(sampleRow, ['Contact Person', 'NamePrincipal', 'Principal Name']);
+      const mobileColKey = findSchoolColumn(sampleRow, ['Mobile No', 'Contact No', 'MobilePrincipal']);
+      const addressColKey = findSchoolColumn(sampleRow, ['Customer Address', 'Address']);
+      const pincodeColKey = findSchoolColumn(sampleRow, ['PINCODE', 'Pin code', 'Pin Code']);
+      const categoryColKey = findSchoolColumn(sampleRow, ['Product Category', 'Equipment']);
+      const problemColKey = findSchoolColumn(sampleRow, ['Problem Description', 'Problem Description*', 'Nature of Complaint']);
+
+      const cleanRows = rows.map(r => {
+        return {
+          serialNumber: r[serialColKey] ? String(r[serialColKey]).trim() : '',
+          customerName: customerColKey ? String(r[customerColKey] || '').trim() : '',
+          contactPerson: contactColKey ? String(r[contactColKey] || '').trim() : '',
+          mobile: mobileColKey ? String(r[mobileColKey] || '').trim() : '',
+          address: addressColKey ? String(r[addressColKey] || '').trim() : '',
+          pincode: pincodeColKey ? String(r[pincodeColKey] || '').trim() : '',
+          equipment: categoryColKey ? String(r[categoryColKey] || '').trim() : '',
+          problem: problemColKey ? String(r[problemColKey] || '').trim() : ''
+        };
+      });
+
+      schoolParsedRows = cleanRows;
+
+      preview.style.display = 'block';
+      preview.innerHTML =
+        `<b>📄 ${file.name}</b><br>` +
+        `Total rows parsed: <b>${cleanRows.length}</b><br>` +
+        `<span style="color:var(--muted);">Review details, paste your Import Key, then click "Upload & Process".</span>`;
+      btn.disabled = cleanRows.length === 0;
+    } catch (err) {
+      preview.style.display = 'none';
+      showToast('❌ Could not read file: ' + err.message, 'danger');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function findSchoolColumn(row, candidates) {
+  const keys = Object.keys(row);
+  for (const cand of candidates) {
+    const normCand = cand.toLowerCase().replace(/[^a-z0-9]/g, '');
+    for (const key of keys) {
+      const normKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (normKey.indexOf(normCand) !== -1 || normCand.indexOf(normKey) !== -1) {
+        return key;
+      }
+    }
+  }
+  return null;
+}
+
+async function runSchoolUpload() {
+  const btn = document.getElementById('schoolUploadBtn');
+  const result = document.getElementById('schoolResult');
+  const keyField = document.getElementById('schoolImportKey');
+
+  const importKey = keyField.value.trim() || localStorage.getItem(SCHOOL_IMPORT_KEY_LS) || '';
+  if (!importKey) { showToast('⚠️ Paste the import key first.', 'warn'); keyField.focus(); return; }
+  if (!schoolParsedRows || !schoolParsedRows.length) { showToast('⚠️ Select an Excel file first.', 'warn'); return; }
+
+  if (!confirm(`Process upload of ${schoolParsedRows.length} school complaint records?`)) return;
+
+  btn.disabled = true;
+  result.style.display = 'block';
+  result.style.background = '#eff6ff'; result.style.color = '#1e40af'; result.style.border = '1.5px solid #bfdbfe';
+  result.textContent = `⏳ Uploading and matching records…`;
+
+  try {
+    const res = await fetch(GOOGLE_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'import_school_complaints',
+        importKey: importKey,
+        records: schoolParsedRows
+      }),
+    });
+    const out = await res.json();
+    if (out.status !== 'ok') throw new Error(out.message || 'Server rejected the upload');
+
+    localStorage.setItem(SCHOOL_IMPORT_KEY_LS, importKey);
+    result.style.background = '#f0fdf4'; result.style.color = '#166534'; result.style.border = '1.5px solid #bbf7d0';
+    result.textContent = `✅ Success! New tickets created: ${out.importedCount || 0}, existing matched & updated: ${out.matchedCount || 0}, validation errors: ${out.exceptionCount || 0}. Check SchoolComplaintMatchLog and SchoolComplaintExceptions tabs in Google Sheet.`;
+    showToast('✅ School complaints processed successfully!', 'success');
+  } catch (err) {
+    result.style.background = '#fef2f2'; result.style.color = '#b91c1c'; result.style.border = '1.5px solid #fecaca';
+    result.textContent = `❌ Upload failed: ${err.message}`;
+    showToast('❌ Upload failed: ' + err.message, 'danger');
+  } finally {
+    btn.disabled = false;
+  }
+}
 
 /* ─────────────── DEPARTMENT DASHBOARD (pendency + branch aging) ─────────────── */
 let deptDash = null, deptList = [], deptDrillFilter = null;
