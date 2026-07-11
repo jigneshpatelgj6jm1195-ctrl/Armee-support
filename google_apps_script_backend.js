@@ -336,6 +336,11 @@ function doPost(e) {
     var data = JSON.parse(e.postData.contents);
     var ss   = SpreadsheetApp.openById(SHEET_ID);
 
+    if (data.action === 'login') {
+      return ContentService.createTextOutput(JSON.stringify(handleLogin(ss, data)))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
     if (data.action === 'update_master') {
       saveMasterData(ss, data.masterData);
       return ContentService.createTextOutput(JSON.stringify({ status: 'ok' }))
@@ -531,7 +536,10 @@ function doGet(e) {
 
     if (action === 'get_master') {
       var masterData = getMasterData(ss);
-      return ContentService.createTextOutput(JSON.stringify(masterData || { equipment: [], users: [], accessUsers: [] }))
+      // SECURITY (QA finding C1): never ship passwords to the client. Auth is
+      // done server-side via the 'login' action; the client only needs the
+      // non-secret fields to render the Access Control list.
+      return ContentService.createTextOutput(JSON.stringify(sanitizeMasterForClient(masterData)))
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -874,7 +882,29 @@ function getFileIdFromUrl(url) {
   return url;
 }
 
+function isInvalidSerialNumber(serial) {
+  if (!serial) return true;
+  var s = String(serial).trim().toUpperCase();
+  var invalidList = [
+    '', 'N/A', 'NA', 'NULL', 'NONE', 'N.A', 'N.A.', 'N/A.', 'N / A', 'N/ A', 'N /A',
+    'N. A.', 'N. A', 'N A', 'NOT AVAILABLE', 'NOTAPPLICABLE', 'NOT APPLICABLE',
+    'NIL', 'BLANK', 'EMPTY', 'NO', 'NOT', 'UNDEFINED', 'NaN', '0', '-'
+  ];
+  if (invalidList.indexOf(s) !== -1) return true;
+  var regex = /[A-Z0-9]/i;
+  if (!regex.test(s)) return true;
+  return false;
+}
+
 function handleSubmitComplaint(ss, data) {
+  var serial = String(data.serialNumber || '').trim();
+  if (!serial || isInvalidSerialNumber(serial)) {
+    return ContentService.createTextOutput(JSON.stringify({
+      status: 'error',
+      message: 'Invalid Serial Number: cannot be blank, null, or N/A.'
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+
   var sheet = ss.getSheetByName(SHEET_TAB_NAME);
 
   if (!sheet) {
@@ -983,6 +1013,58 @@ function handleSubmitComplaint(ss, data) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+// Fallback super admin. Verified server-side ONLY — never sent to any client.
+var SUPER_ADMIN = { email: 'admin@armee.in', password: 'armee@2026' };
+
+/**
+ * Server-side login (QA finding C1). Verifies credentials against MasterData and
+ * returns the user WITHOUT the password. This replaces the old client-side
+ * plaintext comparison so passwords never have to reach the browser.
+ */
+function handleLogin(ss, data) {
+  var email = String(data.email || '').trim().toLowerCase();
+  var pass  = String(data.password || '');
+  if (!email || !pass) return { status: 'error', message: 'Email and password required' };
+
+  if (email === SUPER_ADMIN.email && pass === SUPER_ADMIN.password) {
+    return { status: 'ok', user: {
+      id: 'USR100', name: 'Super Admin', email: SUPER_ADMIN.email,
+      role: 'super_admin', assignedDistricts: ['ALL'], status: 'active'
+    } };
+  }
+
+  var users = (getMasterData(ss).accessUsers) || [];
+  for (var i = 0; i < users.length; i++) {
+    var u = users[i];
+    if (String(u.email || '').trim().toLowerCase() === email &&
+        String(u.password) === pass && u.status === 'active') {
+      return { status: 'ok', user: {
+        id: u.id, name: u.name, email: u.email, phone: u.phone,
+        role: u.role, assignedDistricts: u.assignedDistricts || [], status: u.status
+      } };
+    }
+  }
+  return { status: 'error', message: 'Invalid email, password, or account inactive' };
+}
+
+/**
+ * Deep-ish clone of master data with all accessUsers passwords removed — the only
+ * form of master data that may be returned to a browser.
+ */
+function sanitizeMasterForClient(md) {
+  if (!md) return { equipment: [], users: [], accessUsers: [] };
+  var clone = {};
+  for (var k in md) clone[k] = md[k];
+  if (Array.isArray(md.accessUsers)) {
+    clone.accessUsers = md.accessUsers.map(function(u) {
+      var c = {};
+      for (var kk in u) { if (kk !== 'password') c[kk] = u[kk]; }
+      return c;
+    });
+  }
+  return clone;
+}
+
 function getMasterData(ss) {
   var sheet = ss.getSheetByName('MasterData');
   var masterData = null;
@@ -1070,6 +1152,33 @@ function getDefaultDistricts() {
 function saveMasterData(ss, data) {
   // Stamp a version timestamp so the complaint form can detect changes cheaply
   data._v = new Date().getTime().toString();
+
+  // NON-DESTRUCTIVE PASSWORD MERGE (QA finding C1): the client no longer receives
+  // passwords (stripped by sanitizeMasterForClient), so any accessUser it sends
+  // back with a missing/blank password must keep its existing stored one — otherwise
+  // the first "Save Data" after this change would wipe every password.
+  try {
+    var existing = getMasterData(ss);
+    var byId = {}, byEmail = {};
+    (existing.accessUsers || []).forEach(function(u) {
+      if (u && u.password) {
+        if (u.id) byId[u.id] = u.password;
+        if (u.email) byEmail[String(u.email).toLowerCase()] = u.password;
+      }
+    });
+    if (Array.isArray(data.accessUsers)) {
+      data.accessUsers.forEach(function(u) {
+        if (!u) return;
+        if (u.password === undefined || u.password === null || u.password === '') {
+          var keep = byId[u.id] || byEmail[String(u.email || '').toLowerCase()];
+          if (keep) u.password = keep;
+        }
+      });
+    }
+  } catch (mergeErr) {
+    Logger.log('Password merge skipped (saving as-is): ' + mergeErr.toString());
+  }
+
   var sheet = ss.getSheetByName('MasterData');
   if (!sheet) {
     sheet = ss.insertSheet('MasterData');
@@ -1598,19 +1707,31 @@ function syncDepartmentToComplaints(ss, ticketId) {
 
   if (mainRowIndex !== -1) {
     // Update existing row
+    var existingSerial = String(mainRows[mainRowIndex - 2][17] || '').trim();
+    var existingSerialPhoto = String(mainRows[mainRowIndex - 2][33] || '').trim();
+
     mainSheet.getRange(mainRowIndex, 24).setValue(status); // Status
     mainSheet.getRange(mainRowIndex, 16).setValue(equipment);
     mainSheet.getRange(mainRowIndex, 17).setValue(nature);
-    mainSheet.getRange(mainRowIndex, 18).setValue(serialNumber);
+    
+    if (serialNumber || !existingSerial) {
+      mainSheet.getRange(mainRowIndex, 18).setValue(serialNumber);
+    }
+    
     mainSheet.getRange(mainRowIndex, 19).setValue(quantity);
     mainSheet.getRange(mainRowIndex, 21).setValue(suspectedPart);
+    
     // Photos & Formulas
     mainSheet.getRange(mainRowIndex, 28).setValue(photoPreview); 
     mainSheet.getRange(mainRowIndex, 29).setValue(viewPhoto); 
     mainSheet.getRange(mainRowIndex, 30).setValue(partPhotoUrl); 
-    mainSheet.getRange(mainRowIndex, 32).setValue(serialPhotoPreview); 
-    mainSheet.getRange(mainRowIndex, 33).setValue(viewSerialPhoto); 
-    mainSheet.getRange(mainRowIndex, 34).setValue(serialPhotoUrl); 
+    
+    if (serialPhotoUrl || !existingSerialPhoto) {
+      mainSheet.getRange(mainRowIndex, 32).setValue(serialPhotoPreview); 
+      mainSheet.getRange(mainRowIndex, 33).setValue(viewSerialPhoto); 
+      mainSheet.getRange(mainRowIndex, 34).setValue(serialPhotoUrl); 
+    }
+    
     mainSheet.getRange(mainRowIndex, 36).setValue(otp);
     mainSheet.getRange(mainRowIndex, 37).setValue(closureType);
     if (resolvedAt) {
@@ -1741,27 +1862,38 @@ function syncAllDepartmentToComplaints(ss, ticketIds) {
     var serialPhotoPreview = serialPhotoUrl ? '=IMAGE("' + serialPhotoUrl + '")' : '';
     var viewSerialPhoto = serialPhotoUrl ? '=HYPERLINK("' + serialPhotoUrl + '", "🔗 View Serial Photo")' : '';
 
-    var mainInfo = mainMap[ticketId];
-    if (mainInfo) {
-      var rowNum = mainInfo.rowNumber;
-      mainSheet.getRange(rowNum, 24).setValue(status);
-      mainSheet.getRange(rowNum, 16).setValue(equipment);
-      mainSheet.getRange(rowNum, 17).setValue(nature);
-      mainSheet.getRange(rowNum, 18).setValue(serialNumber);
-      mainSheet.getRange(rowNum, 19).setValue(quantity);
-      mainSheet.getRange(rowNum, 21).setValue(suspectedPart);
-      
-      mainSheet.getRange(rowNum, 28).setValue(photoPreview); 
-      mainSheet.getRange(rowNum, 29).setValue(viewPhoto); 
-      mainSheet.getRange(rowNum, 30).setValue(partPhotoUrl); 
-      mainSheet.getRange(rowNum, 32).setValue(serialPhotoPreview); 
-      mainSheet.getRange(rowNum, 33).setValue(viewSerialPhoto); 
-      mainSheet.getRange(rowNum, 34).setValue(serialPhotoUrl); 
-      mainSheet.getRange(rowNum, 36).setValue(otp);
-      mainSheet.getRange(rowNum, 37).setValue(closureType);
-      if (resolvedAt) {
-        mainSheet.getRange(rowNum, 20).setValue(resolvedAt);
-      }
+     var mainInfo = mainMap[ticketId];
+     if (mainInfo) {
+       var rowNum = mainInfo.rowNumber;
+       var existingSerial = String(mainInfo.row[17] || '').trim();
+       var existingSerialPhoto = String(mainInfo.row[33] || '').trim();
+
+       mainSheet.getRange(rowNum, 24).setValue(status);
+       mainSheet.getRange(rowNum, 16).setValue(equipment);
+       mainSheet.getRange(rowNum, 17).setValue(nature);
+       
+       if (serialNumber || !existingSerial) {
+         mainSheet.getRange(rowNum, 18).setValue(serialNumber);
+       }
+       
+       mainSheet.getRange(rowNum, 19).setValue(quantity);
+       mainSheet.getRange(rowNum, 21).setValue(suspectedPart);
+       
+       mainSheet.getRange(rowNum, 28).setValue(photoPreview); 
+       mainSheet.getRange(rowNum, 29).setValue(viewPhoto); 
+       mainSheet.getRange(rowNum, 30).setValue(partPhotoUrl); 
+       
+       if (serialPhotoUrl || !existingSerialPhoto) {
+         mainSheet.getRange(rowNum, 32).setValue(serialPhotoPreview); 
+         mainSheet.getRange(rowNum, 33).setValue(viewSerialPhoto); 
+         mainSheet.getRange(rowNum, 34).setValue(serialPhotoUrl); 
+       }
+       
+       mainSheet.getRange(rowNum, 36).setValue(otp);
+       mainSheet.getRange(rowNum, 37).setValue(closureType);
+       if (resolvedAt) {
+         mainSheet.getRange(rowNum, 20).setValue(resolvedAt);
+       }
     } else {
       var complainantName = String(deptRow[16] || '').trim() || 'SSG Scraper';
       var complainantPhone = String(deptRow[17] || '').trim();
@@ -2002,6 +2134,17 @@ function resolveDepartmentComplaint(ss, data) {
   var now = new Date().toISOString();
   var action = data.resolutionAction;
 
+  if (action === 'closed_with_otp' || action === 'closed_without_otp' || action === 'part_request') {
+    var serial = String(data.serialNumber || '').trim();
+    if (!serial && existing) {
+      serial = String(existing.serialNumber || '').trim();
+    }
+    if (!serial || isInvalidSerialNumber(serial)) {
+      return { status: 'error', message: 'Invalid Serial Number: cannot be blank, null, or N/A.' };
+    }
+    data.serialNumber = serial;
+  }
+
   if (action === 'finalize_otp') {
     if (!existing || existing.internalStatus !== 'PendingOTP') {
       return { status: 'error', message: 'Ticket is not awaiting OTP finalization' };
@@ -2065,19 +2208,19 @@ function resolveDepartmentComplaint(ss, data) {
     ticketId, 
     internalStatus, 
     closureType,
-    action === 'closed_with_otp' ? (data.otp || '') : '',
-    data.resolvedBy || '', 
-    data.technicianName || '', 
-    data.diagnosisNotes || '',
-    internalStatus === 'PartRequest' ? '' : now,
+    action === 'closed_with_otp' ? (data.otp || '') : (existing ? (existing.otpValue || '') : ''),
+    data.resolvedBy || (existing ? (existing.resolvedBy || '') : ''), 
+    data.technicianName || (existing ? (existing.technicianName || '') : ''), 
+    data.diagnosisNotes || (existing ? (existing.diagnosisNotes || '') : ''),
+    internalStatus === 'PartRequest' ? '' : (existing && existing.resolvedAt ? existing.resolvedAt : now),
     existing ? existing.owningDistrictAdmin : '',
-    data.equipment || '',
-    data.natureOfComplaint || '',
-    data.quantity || 1,
-    data.resolutionDate || '',
-    data.serialNumber || '',
+    data.equipment || (existing ? (existing.equipment || '') : ''),
+    data.natureOfComplaint || (existing ? (existing.natureOfComplaint || '') : ''),
+    data.quantity || (existing ? (existing.quantity || 1) : 1),
+    data.resolutionDate || (existing ? (existing.resolutionDate || '') : ''),
+    data.serialNumber || (existing ? (existing.serialNumber || '') : ''),
     serialPhotoUrl,
-    data.suspectedPart || '',
+    data.suspectedPart || (existing ? (existing.suspectedPart || '') : ''),
     suspectedPartPhotoUrl
   ];
 

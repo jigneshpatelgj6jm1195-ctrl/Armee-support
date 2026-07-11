@@ -1766,6 +1766,19 @@ let isDirty = false;
 let currentTab = 'dash';
 let deleteModeUnlocked = false;
 
+function isInvalidSerialNumber(serial) {
+  if (!serial) return true;
+  const s = String(serial).trim().toUpperCase();
+  const invalidList = [
+    '', 'N/A', 'NA', 'NULL', 'NONE', 'N.A', 'N.A.', 'N/A.', 'N / A', 'N/ A', 'N /A',
+    'N. A.', 'N. A', 'N A', 'NOT AVAILABLE', 'NOTAPPLICABLE', 'NOT APPLICABLE',
+    'NIL', 'BLANK', 'EMPTY', 'NO', 'NOT', 'UNDEFINED', 'NaN', '0', '-'
+  ];
+  if (invalidList.includes(s)) return true;
+  if (!/[A-Z0-9]/i.test(s)) return true;
+  return false;
+}
+
 function isLocal() {
   const hn = window.location.hostname;
   if (!hn) return true; // file:// protocol
@@ -4488,9 +4501,15 @@ function saveComplaintEdit() {
   const dise = document.getElementById('editDise').value.trim();
   const equipment = document.getElementById('editEquipment').value;
   const nature = document.getElementById('editNatureOfComplaint').value;
+  const serial = document.getElementById('editSerialNumber').value.trim();
   
   if (!dise || !equipment || !nature) {
     showToast('⚠️ DISE Code, Equipment, and Nature of Complaint are required!', 'warn');
+    return;
+  }
+  
+  if (!serial || isInvalidSerialNumber(serial)) {
+    showToast('⚠️ Please enter a valid Serial Number (cannot be blank, null, or N/A)', 'warn');
     return;
   }
   

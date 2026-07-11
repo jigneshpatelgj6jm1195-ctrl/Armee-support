@@ -1122,6 +1122,19 @@ const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbykDdOGm-gO3h
 let SCHOOL_DB  = {};
 let MASTER_DB  = { equipment: [] };
 
+function isInvalidSerialNumber(serial) {
+  if (!serial) return true;
+  const s = String(serial).trim().toUpperCase();
+  const invalidList = [
+    '', 'N/A', 'NA', 'NULL', 'NONE', 'N.A', 'N.A.', 'N/A.', 'N / A', 'N/ A', 'N /A',
+    'N. A.', 'N. A', 'N A', 'NOT AVAILABLE', 'NOTAPPLICABLE', 'NOT APPLICABLE',
+    'NIL', 'BLANK', 'EMPTY', 'NO', 'NOT', 'UNDEFINED', 'NaN', '0', '-'
+  ];
+  if (invalidList.includes(s)) return true;
+  if (!/[A-Z0-9]/i.test(s)) return true;
+  return false;
+}
+
 function isLocal() {
   const hn = window.location.hostname;
   if (!hn) return true; // file:// protocol
@@ -2014,7 +2027,10 @@ async function submitDeptResolution(i, action) {
   if (!nature) { showToast('Select Nature of Complaint', 'warn'); return; }
   if (!qty || parseInt(qty) < 1) { showToast('Enter valid quantity', 'warn'); return; }
   if (!date) { showToast('Select Date', 'warn'); return; }
-  if (!serial) { showToast('Enter Serial Number', 'warn'); return; }
+  if (!serial || isInvalidSerialNumber(serial)) {
+    showToast('⚠️ Please enter a valid Serial Number (cannot be blank, null, or N/A)', 'warn');
+    return;
+  }
   if (!serialPhoto) { showToast('Please attach Serial Number Photo', 'warn'); return; }
 
   if (action === 'part_request') {
@@ -2343,7 +2359,10 @@ function validateStep(step) {
     if (!nature)    { showToast('⚠️ Select Nature of Complaint', 'warn'); return false; }
     if (qty < 1)    { showToast('⚠️ Enter valid Quantity', 'warn'); return false; }
     if (!date)      { showToast('⚠️ Select Complaint Date', 'warn'); return false; }
-    if (!serial)    { showToast('⚠️ Enter or scan Serial Number', 'warn'); return false; }
+    if (!serial || isInvalidSerialNumber(serial)) {
+      showToast('⚠️ Please enter a valid Serial Number (cannot be blank, null, or N/A)', 'warn');
+      return false;
+    }
     if (!serialPhoto) { showToast('⚠️ Please attach Serial Number Photo', 'warn'); return false; }
     
     // Status-specific validations
