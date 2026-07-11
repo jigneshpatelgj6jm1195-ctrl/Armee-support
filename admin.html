@@ -4964,7 +4964,8 @@ async function bulkUpdateDeptStatus(action) {
           action: 'resolve_department_complaint',
           ticketId: ticketId,
           resolutionAction: action,
-          resolvedBy: (currentUser && currentUser.name) || 'admin'
+          resolvedBy: (currentUser && currentUser.name) || 'admin',
+          source: 'admin_portal'
         })
       });
       const out = await res.json();
@@ -5005,7 +5006,8 @@ async function submitDeptStatusUpdate(action) {
         action: 'resolve_department_complaint',
         ticketId: ticketId,
         resolutionAction: action,
-        resolvedBy: (currentUser && currentUser.name) || 'admin'
+        resolvedBy: (currentUser && currentUser.name) || 'admin',
+        source: 'admin_portal'
       })
     });
     const out = await res.json();

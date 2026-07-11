@@ -1706,6 +1706,13 @@ function syncDepartmentToComplaints(ss, ticketId) {
   var viewSerialPhoto = serialPhotoUrl ? '=HYPERLINK("' + serialPhotoUrl + '", "🔗 View Serial Photo")' : '';
 
   if (mainRowIndex !== -1) {
+    // If ticket is closed (or pending OTP) without a serial number, delete it from the main sheet
+    if ((status === 'Closed' || status === 'PendingOTP') && (!serialNumber || isInvalidSerialNumber(serialNumber))) {
+      mainSheet.deleteRow(mainRowIndex);
+      Logger.log('syncDepartmentToComplaints: Deleted ticket ' + ticketId + ' from Complaints sheet (closed from admin portal without serial).');
+      return;
+    }
+
     // Update existing row
     var existingSerial = String(mainRows[mainRowIndex - 2][17] || '').trim();
     var existingSerialPhoto = String(mainRows[mainRowIndex - 2][33] || '').trim();
@@ -1740,6 +1747,12 @@ function syncDepartmentToComplaints(ss, ticketId) {
     
     Logger.log('syncDepartmentToComplaints: Updated existing ticket ' + ticketId + ' in Complaints sheet.');
   } else {
+    // Do NOT append if it is Closed/PendingOTP without a valid serial number
+    if ((status === 'Closed' || status === 'PendingOTP') && (!serialNumber || isInvalidSerialNumber(serialNumber))) {
+      Logger.log('syncDepartmentToComplaints: Skipped appending ticket ' + ticketId + ' to Complaints sheet (closed from admin portal without serial).');
+      return;
+    }
+
     // Append new row
     var complainantName = String(deptRow[16] || '').trim() || 'SSG Scraper';
     var complainantPhone = String(deptRow[17] || '').trim();
@@ -1804,6 +1817,8 @@ function syncAllDepartmentToComplaints(ss, ticketIds) {
   var mainSheet = ss.getSheetByName('Complaints');
   if (!deptSheet || !mainSheet) return;
 
+  var rowsToDelete = [];
+
   var deptRows = deptSheet.getLastRow() > 1 
     ? deptSheet.getRange(2, 1, deptSheet.getLastRow() - 1, deptSheet.getLastColumn()).getValues() 
     : [];
@@ -1865,6 +1880,12 @@ function syncAllDepartmentToComplaints(ss, ticketIds) {
      var mainInfo = mainMap[ticketId];
      if (mainInfo) {
        var rowNum = mainInfo.rowNumber;
+       // If ticket is closed (or pending OTP) without a serial number, delete it from the main sheet
+       if ((status === 'Closed' || status === 'PendingOTP') && (!serialNumber || isInvalidSerialNumber(serialNumber))) {
+         rowsToDelete.push(rowNum);
+         continue;
+       }
+
        var existingSerial = String(mainInfo.row[17] || '').trim();
        var existingSerialPhoto = String(mainInfo.row[33] || '').trim();
 
@@ -1895,6 +1916,12 @@ function syncAllDepartmentToComplaints(ss, ticketIds) {
          mainSheet.getRange(rowNum, 20).setValue(resolvedAt);
        }
     } else {
+      // Do NOT append if it is Closed/PendingOTP without a valid serial number
+      if ((status === 'Closed' || status === 'PendingOTP') && (!serialNumber || isInvalidSerialNumber(serialNumber))) {
+        Logger.log('syncAllDepartmentToComplaints: Skipped appending ticket ' + ticketId + ' to Complaints sheet (closed from admin portal without serial).');
+        continue;
+      }
+
       var complainantName = String(deptRow[16] || '').trim() || 'SSG Scraper';
       var complainantPhone = String(deptRow[17] || '').trim();
       var submittedAt = deptRow[21] || new Date();
@@ -1949,6 +1976,17 @@ function syncAllDepartmentToComplaints(ss, ticketIds) {
       mainMap[ticketId] = { row: newRow, rowNumber: mainSheet.getLastRow() };
     }
   }
+
+  // Delete rows in descending order to avoid shifting issues
+  rowsToDelete.sort(function(a, b) { return b - a; });
+  rowsToDelete.forEach(function(rowNum) {
+    try {
+      mainSheet.deleteRow(rowNum);
+      Logger.log('syncAllDepartmentToComplaints: Deleted row ' + rowNum + ' from Complaints sheet (closed from admin portal without serial).');
+    } catch(e) {
+      Logger.log('syncAllDepartmentToComplaints: Error deleting row ' + rowNum + ': ' + e.toString());
+    }
+  });
 }
 
 function getBranchEmailsMap(ss) {
@@ -2139,8 +2177,11 @@ function resolveDepartmentComplaint(ss, data) {
     if (!serial && existing) {
       serial = String(existing.serialNumber || '').trim();
     }
-    if (!serial || isInvalidSerialNumber(serial)) {
-      return { status: 'error', message: 'Invalid Serial Number: cannot be blank, null, or N/A.' };
+    // Only validate the serial number if the request is NOT from the admin portal
+    if (data.source !== 'admin_portal') {
+      if (!serial || isInvalidSerialNumber(serial)) {
+        return { status: 'error', message: 'Invalid Serial Number: cannot be blank, null, or N/A.' };
+      }
     }
     data.serialNumber = serial;
   }
