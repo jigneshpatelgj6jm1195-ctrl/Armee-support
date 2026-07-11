@@ -3632,14 +3632,12 @@ function getOrCreateSchoolComplaintSheets(ss) {
 }
 
 function importSchoolComplaints(ss, data) {
-  var masterSheet = ss.getSheetByName('SchoolComplaintMaster');
   var complaintsSheet = ss.getSheetByName('Complaints');
   var matchLogSheet = ss.getSheetByName('SchoolComplaintMatchLog');
   var exceptionsSheet = ss.getSheetByName('SchoolComplaintExceptions');
   
-  if (!masterSheet || !complaintsSheet || !matchLogSheet || !exceptionsSheet) {
+  if (!complaintsSheet || !matchLogSheet || !exceptionsSheet) {
     getOrCreateSchoolComplaintSheets(ss);
-    masterSheet = ss.getSheetByName('SchoolComplaintMaster');
     complaintsSheet = ss.getSheetByName('Complaints');
     matchLogSheet = ss.getSheetByName('SchoolComplaintMatchLog');
     exceptionsSheet = ss.getSheetByName('SchoolComplaintExceptions');
@@ -3647,22 +3645,20 @@ function importSchoolComplaints(ss, data) {
 
   var records = data.records || [];
   var importedCount = 0;
-  var matchedCount = 0;
+  var skippedCount = 0;
   var exceptionCount = 0;
 
-  var masterRows = [];
-  if (masterSheet.getLastRow() > 1) {
-    masterRows = masterSheet.getRange(2, 1, masterSheet.getLastRow() - 1, masterSheet.getLastColumn()).getValues();
-  }
-
-  var complaints = [];
+  // Build a Set of all existing serial numbers in Complaints (column 18 = Serial Number, 1-indexed)
+  var existingSerials = {};
   if (complaintsSheet.getLastRow() > 1) {
-    complaints = complaintsSheet.getRange(2, 1, complaintsSheet.getLastRow() - 1, complaintsSheet.getLastColumn()).getValues();
+    var complaints = complaintsSheet.getRange(2, 1, complaintsSheet.getLastRow() - 1, complaintsSheet.getLastColumn()).getValues();
+    for (var c = 0; c < complaints.length; c++) {
+      var s = String(complaints[c][17] || '').trim().toUpperCase(); // Column 18 (0-indexed = 17) = Serial Number
+      if (s) existingSerials[s] = true;
+    }
   }
 
   var now = new Date();
-  var thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(now.getDate() - 30);
 
   for (var i = 0; i < records.length; i++) {
     var rawRec = records[i];
@@ -3673,118 +3669,83 @@ function importSchoolComplaints(ss, data) {
       continue;
     }
 
-    var matchedMaster = null;
-    for (var m = 0; m < masterRows.length; m++) {
-      var masterSerial = String(masterRows[m][13] || '').trim();
-      if (masterSerial && masterSerial.toUpperCase() === rawSerial.toUpperCase()) {
-        matchedMaster = masterRows[m];
-        break;
-      }
-    }
-
-    if (!matchedMaster) {
-      exceptionsSheet.appendRow(['EX-' + Date.now() + '-' + i, now.toISOString(), rawSerial, 'Missing DISE Code / No Master Match', JSON.stringify(rawRec)]);
-      exceptionCount++;
+    // CHECK: If serial already exists in Complaints → SKIP (no duplicate upload)
+    if (existingSerials[rawSerial.toUpperCase()]) {
+      matchLogSheet.appendRow([
+        'LOG-' + Date.now() + '-' + i,
+        now.toISOString(),
+        '',
+        rawSerial,
+        'Already Exists - Skipped',
+        '',
+        '',
+        'Skipped',
+        'Serial ' + rawSerial + ' already exists in Complaints sheet, skipped.'
+      ]);
+      skippedCount++;
       continue;
     }
 
-    var dise = String(matchedMaster[2]).trim();
-
-    var existingMatchIndex = -1;
-    var existingCaseId = '';
-    var existingOldStatus = '';
+    // Serial does NOT exist → Create a new complaint ticket from the Excel data
+    var caseId = 'CASE-' + Date.now() + '-' + i;
+    var srNo = complaintsSheet.getLastRow() + 1;
+    var newComplaintRow = [
+      srNo,                                                    // SR No.
+      now.toISOString(),                                       // Submitted At
+      rawRec.customerName || '',                               // Complainant Name (School Name from Excel)
+      rawRec.mobile || '',                                     // Complainant Phone
+      'School',                                                // Complainant Role
+      'ICT',                                                   // Project
+      '',                                                      // DISE Code (not available in Excel)
+      '',                                                      // School Code (not available in Excel)
+      '',                                                      // District
+      '',                                                      // Taluka
+      rawRec.customerName || '',                               // School Name
+      rawRec.contactPerson || '',                              // Principal Name
+      rawRec.mobile || '',                                     // Principal Contact
+      rawRec.address || '',                                    // Address
+      rawRec.pincode || '',                                    // Pin Code
+      rawRec.equipment || 'Desktop',                           // Equipment (Product Category from Excel)
+      rawRec.problem || 'No Power',                            // Nature of Complaint
+      rawSerial,                                               // Serial Number
+      1,                                                       // Quantity
+      now.toISOString().split('T')[0],                         // Complaint Date
+      '',                                                      // Suspected Part
+      rawRec.problem || 'No Power',                            // Description
+      0,                                                       // Photo Count
+      'Open',                                                  // Status
+      caseId,                                                  // Case ID
+      '', '',                                                  // Latitude, Longitude
+      '', '', '',                                              // Photo Preview, View Photo, Photo URL
+      'NO',                                                    // Duplicate Status
+      '', '', '',                                              // Serial Photo Preview, View Serial Photo, Serial Photo URL
+      '', '', ''                                               // Archived, OtpValue, ClosureType
+    ];
     
-    for (var c = 0; c < complaints.length; c++) {
-      var rowDateStr = complaints[c][1];
-      if (!rowDateStr) continue;
-      var rowDate = new Date(rowDateStr);
-      if (rowDate >= thirtyDaysAgo) {
-        var rowDise = String(complaints[c][6]).trim();
-        var rowSerial = String(complaints[c][17]).trim();
-        if (rowDise === dise && rowSerial.toUpperCase() === rawSerial.toUpperCase()) {
-          existingMatchIndex = c;
-          existingCaseId = String(complaints[c][24]).trim();
-          existingOldStatus = String(complaints[c][23]).trim();
-          break;
-        }
-      }
-    }
+    complaintsSheet.appendRow(newComplaintRow);
+    formatLastRow(complaintsSheet, complaintsSheet.getLastRow());
 
-    if (existingMatchIndex !== -1) {
-      var sheetRowIndex = existingMatchIndex + 2;
-      var newStatus = 'Closed'; 
-      complaintsSheet.getRange(sheetRowIndex, 24).setValue(newStatus);
-      
-      matchLogSheet.appendRow([
-        'LOG-' + Date.now() + '-' + i,
-        now.toISOString(),
-        dise,
-        rawSerial,
-        '30-Day Update Match',
-        existingCaseId,
-        existingOldStatus,
-        newStatus,
-        'Updated ticket ' + existingCaseId + ' status to ' + newStatus
-      ]);
-      matchedCount++;
-    } else {
-      var caseId = 'CASE-' + Date.now() + '-' + i;
-      var srNo = complaintsSheet.getLastRow() + 1;
-      var newComplaintRow = [
-        srNo,
-        now.toISOString(),
-        matchedMaster[7] || '',
-        matchedMaster[8] || '',
-        'engineer',
-        matchedMaster[1] || 'ICT',
-        dise,
-        matchedMaster[3] || '',
-        matchedMaster[4] || '',
-        matchedMaster[5] || '',
-        matchedMaster[6] || '',
-        matchedMaster[7] || '',
-        matchedMaster[8] || '',
-        matchedMaster[9] || '',
-        matchedMaster[10] || '',
-        matchedMaster[11] || rawRec.equipment || 'Desktop',
-        matchedMaster[12] || rawRec.nature || 'No Power',
-        rawSerial,
-        1,
-        now.toISOString().split('T')[0],
-        '',
-        rawRec.problem || 'No Power',
-        0,
-        'Open',
-        caseId,
-        '', '',
-        '', '', '',
-        'NO',
-        '', '', '',
-        '', '', ''
-      ];
-      
-      complaintsSheet.appendRow(newComplaintRow);
-      formatLastRow(complaintsSheet, complaintsSheet.getLastRow());
+    // Also mark it as existing so duplicates within the same upload batch are caught
+    existingSerials[rawSerial.toUpperCase()] = true;
 
-      matchLogSheet.appendRow([
-        'LOG-' + Date.now() + '-' + i,
-        now.toISOString(),
-        dise,
-        rawSerial,
-        'New School Ticket Created',
-        caseId,
-        'None',
-        'Open',
-        'Created new ticket ' + caseId
-      ]);
-      importedCount++;
-    }
+    matchLogSheet.appendRow([
+      'LOG-' + Date.now() + '-' + i,
+      now.toISOString(),
+      '',
+      rawSerial,
+      'New School Ticket Created',
+      caseId,
+      'None',
+      'Open',
+      'Created new ticket ' + caseId
+    ]);
+    importedCount++;
   }
 
   return {
     status: 'ok',
     importedCount: importedCount,
-    matchedCount: matchedCount,
+    skippedCount: skippedCount,
     exceptionCount: exceptionCount
   };
 }

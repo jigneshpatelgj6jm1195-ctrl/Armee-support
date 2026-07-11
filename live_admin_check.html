@@ -1076,8 +1076,8 @@ tr:hover td { background: #f8fafc; }
     <div class="card">
       <div class="card-title">🏫 School Complaints — Bulk Upload</div>
       <p style="color:var(--muted);font-size:0.82rem;margin-bottom:16px;">
-        Upload the School Complaint Excel sheet (Lot-2 format) to process the 30-day matching keys algorithm.
-        If a match is found within 30 days, the ticket is updated to Closed. If no match is found, a new complaint ticket is created.
+        Upload the School Complaint Excel sheet (Lot-2 format). If the Serial Number already exists in the system, it will be skipped.
+        If the Serial Number is new, a complaint ticket will be created with status "Open".
       </p>
 
       <div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap;">
@@ -4867,7 +4867,7 @@ async function runSchoolUpload() {
 
     localStorage.setItem(SCHOOL_IMPORT_KEY_LS, importKey);
     result.style.background = '#f0fdf4'; result.style.color = '#166534'; result.style.border = '1.5px solid #bbf7d0';
-    result.textContent = `✅ Success! New tickets created: ${out.importedCount || 0}, existing matched & updated: ${out.matchedCount || 0}, validation errors: ${out.exceptionCount || 0}. Check SchoolComplaintMatchLog and SchoolComplaintExceptions tabs in Google Sheet.`;
+    result.textContent = `✅ Success! New tickets created: ${out.importedCount || 0}, already existing (skipped): ${out.skippedCount || 0}, validation errors: ${out.exceptionCount || 0}. Check SchoolComplaintMatchLog and SchoolComplaintExceptions tabs in Google Sheet.`;
     showToast('✅ School complaints processed successfully!', 'success');
   } catch (err) {
     result.style.background = '#fef2f2'; result.style.color = '#b91c1c'; result.style.border = '1.5px solid #fecaca';
