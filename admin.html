@@ -823,8 +823,9 @@ tr:hover td { background: #f8fafc; }
           <label>Filter by Status</label>
           <select id="filterStatus" onchange="filterComplaints()">
             <option value="">All Statuses</option>
-            <option value="Closed">Closed</option>
+            <option value="Open">Open</option>
             <option value="Part Request">Part Request</option>
+            <option value="Closed">Closed</option>
           </select>
         </div>
         <div>
@@ -3953,9 +3954,14 @@ function renderComplaintsTable() {
           <span style="font-size:0.72rem; color:var(--muted);">${esc(c.complainantPhone)}</span>
         </td>
         <td>
-          <select onchange="updateComplaintStatus(${origIndex}, this.value)" style="padding:4px 8px; font-size:0.75rem; border-radius:6px; font-weight:700;">
-            <option value="Closed" ${c.status === 'Closed' ? 'selected' : ''}>Closed</option>
+          <select onchange="updateComplaintStatus(${origIndex}, this.value)" 
+                  style="padding:4px 8px; font-size:0.75rem; border-radius:6px; font-weight:700; 
+                         background-color: ${c.status === 'Closed' ? '#dcfce7' : c.status === 'Part Request' ? '#fef9c3' : '#fee2e2'}; 
+                         color: ${c.status === 'Closed' ? '#15803d' : c.status === 'Part Request' ? '#a16207' : '#b91c1c'}; 
+                         border: 1px solid ${c.status === 'Closed' ? '#bbf7d0' : c.status === 'Part Request' ? '#fef08a' : '#fecaca'};">
+            <option value="Open" ${c.status === 'Open' || !c.status ? 'selected' : ''}>Open</option>
             <option value="Part Request" ${c.status === 'Part Request' ? 'selected' : ''}>Part Request</option>
+            <option value="Closed" ${c.status === 'Closed' ? 'selected' : ''}>Closed</option>
           </select>
         </td>
         <td>
