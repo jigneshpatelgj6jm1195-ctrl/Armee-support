@@ -567,6 +567,12 @@ function doGet(e) {
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
+    if (action === 'get_all_school_complaints') {
+      var list = getAllSchoolComplaints(ss);
+      return ContentService.createTextOutput(JSON.stringify(list))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
     if (action === 'check_duplicate') {
       var serial = String(e.parameter.serial || '').trim().toUpperCase();
       var result = checkDuplicateSerial(ss, serial);
@@ -3920,6 +3926,49 @@ function getSchoolComplaints(ss, dise) {
         branch:            String(rows[i][15] || '').trim()
       });
     }
+  }
+
+  return results;
+}
+
+/**
+ * Returns all school complaints from SchoolComplaintMaster sheet
+ */
+function getAllSchoolComplaints(ss) {
+  // Sync first to ensure we have up-to-date statuses
+  syncSchoolComplaintMasterStatus(ss);
+
+  var master = ss.getSheetByName('SchoolComplaintMaster');
+  if (!master) return [];
+
+  var lastRow = master.getLastRow();
+  if (lastRow <= 1) return [];
+
+  var rows = master.getRange(2, 1, lastRow - 1, 19).getValues();
+  var results = [];
+
+  for (var i = 0; i < rows.length; i++) {
+    results.push({
+      srNo:              rows[i][0],
+      project:           String(rows[i][1] || 'ICT').trim(),
+      dise:              String(rows[i][2] || '').trim(),
+      schoolCode:        String(rows[i][3] || '').trim(),
+      district:          String(rows[i][4] || '').trim(),
+      block:             String(rows[i][5] || '').trim(),
+      school:            String(rows[i][6] || '').trim(),
+      principal:         String(rows[i][7] || '').trim(),
+      mobile:            String(rows[i][8] || '').trim(),
+      address:           String(rows[i][9] || '').trim(),
+      pincode:           String(rows[i][10] || '').trim(),
+      equipment:         String(rows[i][11] || '').trim(),
+      natureOfComplaint: String(rows[i][12] || '').trim(),
+      serialNumber:      String(rows[i][13] || '').trim(),
+      state:             String(rows[i][14] || 'GUJARAT').trim(),
+      branch:            String(rows[i][15] || '').trim(),
+      status:            String(rows[i][16] || '').trim(),
+      suspectedPart:     String(rows[i][17] || '').trim(),
+      importDate:        rows[i][18] ? (rows[i][18] instanceof Date ? rows[i][18].toISOString().split('T')[0] : String(rows[i][18]).trim()) : ''
+    });
   }
 
   return results;

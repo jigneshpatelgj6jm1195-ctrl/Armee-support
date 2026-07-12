@@ -1496,21 +1496,26 @@
       if (currentDbTab === 1) {
         // Complaints
         html += `<thead><tr><th>Case ID</th><th>Date</th><th>School Name</th><th>DISE Code</th><th>District</th><th>Branch</th><th>Serial</th><th>Status</th><th>Source</th></tr></thead><tbody>`;
-        var renderList = dbComplaints;
-        if (window.parent && window.parent.complaintsList && window.parent.complaintsList.length > 0) {
-          renderList = window.parent.complaintsList.map(c => {
+        let renderList = [];
+        let parentList = window.parent && window.parent.parentSchoolComplaintsList;
+        if (parentList && parentList.length > 0) {
+          renderList = parentList.map(c => {
+            let statusVal = String(c.status || '').trim();
+            if (!statusVal) statusVal = 'Open';
             return {
-              id: c.caseId || 'TKT-' + c.srNo,
-              date: c.submittedAt ? c.submittedAt.split('T')[0] : (c.complaintDate || ''),
-              name: c.school || c.complainantName || '',
+              id: c.srNo ? 'TKT-' + c.srNo : '',
+              date: c.importDate || c.complaintDate || '',
+              name: c.school || c.principal || '',
               diseCode: c.dise || '',
-              district: c.district || '',
+              district: String(c.district || '').trim().toUpperCase(),
               branch: c.branch || '',
               serial: c.serialNumber || '',
-              status: c.status || 'Open',
-              source: c.source || 'School Complaint'
+              status: statusVal,
+              source: 'School Complaint'
             };
           });
+        } else {
+          renderList = dbComplaints;
         }
         renderList.forEach(r => {
           html += `<tr>
@@ -1631,21 +1636,56 @@
       const filterDistrict = document.getElementById('filtDistrict').value;
 
       // Filtered Complaints List
-      let list = dbComplaints.slice();
-      if (window.parent && window.parent.complaintsList && window.parent.complaintsList.length > 0) {
-        list = window.parent.complaintsList.map(c => {
+      let list = [];
+      let parentList = window.parent && window.parent.parentSchoolComplaintsList;
+      if (parentList && parentList.length > 0) {
+        list = parentList.map(c => {
+          let statusVal = String(c.status || '').trim();
+          if (!statusVal) statusVal = 'Open';
           return {
-            id: c.caseId || 'TKT-' + c.srNo,
-            date: c.submittedAt ? c.submittedAt.split('T')[0] : (c.complaintDate || ''),
-            name: c.school || c.complainantName || '',
+            id: c.srNo ? 'TKT-' + c.srNo : '',
+            date: c.importDate || c.complaintDate || '',
+            name: c.school || c.principal || '',
             diseCode: c.dise || '',
-            district: c.district || '',
+            district: String(c.district || '').trim().toUpperCase(),
             branch: c.branch || '',
             serial: c.serialNumber || '',
-            status: c.status || 'Open',
-            source: c.source || 'School Complaint'
+            status: statusVal,
+            source: 'School Complaint'
           };
         });
+      } else {
+        list = dbComplaints.slice();
+      }
+
+      // Dynamically populate branch filter if parent data exists and dropdown options are not built
+      const filtBranchDropdown = document.getElementById('filtBranch');
+      if (!window.branchOptionsLoaded && filtBranchDropdown && window.parent && window.parent.parentBmBranches && window.parent.parentBmBranches.length > 0) {
+        const activeBranches = window.parent.parentBmBranches.filter(b => b.status === 'Active');
+        const currentSel = filtBranchDropdown.value;
+        let html = '<option value="ALL">All Branches</option>';
+        activeBranches.forEach(b => {
+          html += `<option value="${b.name}">${b.name}</option>`;
+        });
+        filtBranchDropdown.innerHTML = html;
+        filtBranchDropdown.value = currentSel || 'ALL';
+        window.branchOptionsLoaded = true;
+      }
+
+      // Dynamically populate district filter if list has districts and not loaded
+      const filtDistrictDropdown = document.getElementById('filtDistrict');
+      if (!window.districtOptionsLoaded && filtDistrictDropdown && list.length > 0) {
+        const uniqueDistricts = [...new Set(list
+          .map(r => String(r.district || '').trim().toUpperCase())
+          .filter(Boolean))].sort();
+        const currentSel = filtDistrictDropdown.value;
+        let html = '<option value="ALL">All Districts</option>';
+        uniqueDistricts.forEach(d => {
+          html += `<option value="${d}">${d}</option>`;
+        });
+        filtDistrictDropdown.innerHTML = html;
+        filtDistrictDropdown.value = currentSel || 'ALL';
+        window.districtOptionsLoaded = true;
       }
 
       // Enforce role-based branch restriction
@@ -1681,7 +1721,6 @@
       // Pending > 30 Days (Ageing Simulation)
       const ageing = list.filter(r => {
         if (r.status === 'Closed') return false;
-        // Simulate checking if ticket is older than 30 days
         const tDate = new Date(r.date);
         const now = new Date();
         const diffTime = Math.abs(now - tDate);
@@ -1702,7 +1741,13 @@
       const branchTbody = document.getElementById('dashBranchSummaryTable');
       branchTbody.innerHTML = "";
       
-      const branchNames = ["Ahmedabad Branch", "Vadodara Branch", "Rajkot Branch"];
+      let branchNames = ["Ahmedabad Branch", "Vadodara Branch", "Rajkot Branch"];
+      if (window.parent && window.parent.parentBmBranches && window.parent.parentBmBranches.length > 0) {
+        branchNames = window.parent.parentBmBranches
+          .filter(b => b.status === 'Active')
+          .map(b => b.name);
+      }
+
       let branchRowsHtml = "";
       branchNames.forEach(bname => {
         // If role restricted, skip other branches
@@ -1712,7 +1757,7 @@
           if (bname !== userBranch) return;
         }
 
-        const bList = dbComplaints.filter(r => r.branch === bname);
+        const bList = list.filter(r => r.branch === bname);
         const bTotal = bList.length;
         const bOpen = bList.filter(r => r.status === 'Open').length;
         const bParts = bList.filter(r => r.status === 'Part Request').length;
