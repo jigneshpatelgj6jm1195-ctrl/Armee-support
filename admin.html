@@ -14,20 +14,23 @@
 /* ═══════════════ CSS RESET & VARIABLE SYSTEM ═══════════════ */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
-  --primary:       #1a56db;
-  --primary-dark:  #1240ab;
-  --primary-light: #dbeafe;
-  --accent:        #06b6d4;
+  --primary:       #0E7C45;
+  --primary-dark:  #0A5C33;
+  --primary-light: #E5F2EA;
+  --accent:        #F2790F;
   --success:       #10b981;
   --warning:       #f59e0b;
   --danger:        #ef4444;
-  --bg:            #f8fafc;
+  --bg:            #F4F6F3;
   --card:          #ffffff;
   --border:        #e2e8f0;
   --text:          #1e293b;
   --muted:         #64748b;
   --label:         #374151;
-  --grad:          linear-gradient(135deg, #1a56db, #06b6d4);
+  --grad:          linear-gradient(135deg, #0E7C45, #0A5C33);
+  --side:          #10231A;
+  --side-ink:      #B7C8BC;
+  --side-active:   #1B3A29;
 }
 
 body {
@@ -35,9 +38,11 @@ body {
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr);
+  grid-template-rows: auto auto 1fr auto;
 }
+#localFileWarning, .header, .footer { grid-column: 1 / -1; }
 
 /* ═══════════════ BRAND HEADER ═══════════════ */
 .header {
@@ -71,51 +76,70 @@ body {
 }
 .header-link:hover { background: rgba(255,255,255,0.28); }
 
-/* ═══════════════ TABS SYSTEM ═══════════════ */
+/* ═══════════════ SIDEBAR NAVIGATION (was horizontal tabs) ═══════════════ */
 .tabs-bar {
-  background: white;
-  border-bottom: 1px solid var(--border);
-  padding: 0 32px;
+  grid-row: 3;
+  grid-column: 1;
+  background: var(--side);
+  padding: 8px 10px 20px;
   display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  white-space: nowrap;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
+  position: sticky;
+  top: 74px;
+  height: calc(100vh - 74px);
+  align-self: start;
 }
 .tabs-bar::-webkit-scrollbar {
-  height: 4px;
+  width: 4px;
 }
 .tabs-bar::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: rgba(255,255,255,0.15);
   border-radius: 2px;
+}
+.nav-group {
+  font-size: 0.62rem; font-weight: 800; letter-spacing: 0.14em;
+  text-transform: uppercase; color: #5F7566; padding: 14px 12px 5px;
+  flex-shrink: 0;
 }
 .tab-btn {
   flex-shrink: 0;
+  width: 100%;
+  text-align: left;
   background: none;
   border: none;
-  padding: 16px 20px;
+  border-radius: 9px;
+  padding: 9px 12px;
   font-family: inherit;
-  font-size: 0.88rem;
+  font-size: 0.84rem;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--side-ink);
   cursor: pointer;
   position: relative;
-  transition: color 0.2s;
+  transition: color 0.15s, background 0.15s;
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.tab-btn:hover { color: var(--primary); }
-.tab-btn.active { color: var(--primary); font-weight: 800; }
-.tab-btn.active::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: var(--grad);
-  border-radius: 3px 3px 0 0;
+.tab-btn:hover { color: #fff; background: rgba(255,255,255,0.07); }
+.tab-btn.active { color: #fff; font-weight: 800; background: var(--side-active); box-shadow: inset 3px 0 0 #3FBB7E; }
+.tab-btn.active::after { display: none; }
+.container {
+  grid-row: 3;
+  grid-column: 2;
+}
+@media (max-width: 900px) {
+  body { display: flex; flex-direction: column; }
+  .tabs-bar {
+    position: static; height: auto; flex-direction: row;
+    overflow-x: auto; overflow-y: hidden; padding: 6px 10px;
+    gap: 4px; white-space: nowrap; min-width: 0; max-width: 100vw;
+  }
+  .tab-btn { width: auto; }
+  .nav-group { display: none; }
 }
 .tab-content { display: none; }
 .tab-content.active { display: block; }
@@ -357,20 +381,24 @@ tr:hover td { background: #f8fafc; }
 
 <!-- TABS BAR -->
 <div class="tabs-bar">
+  <div class="nav-group">Overview</div>
   <button class="tab-btn active" id="btn-tab-dash" onclick="switchTab('dash')">📊 Dashboard</button>
+  <button class="tab-btn" id="btn-tab-schooldash" onclick="switchTab('schooldash')">📈 School Dash</button>
+  <div class="nav-group">Operations</div>
+  <button class="tab-btn" id="btn-tab-complaints" onclick="switchTab('complaints')">📋 Complaints &amp; Reports</button>
+  <button class="tab-btn" id="btn-tab-dept" onclick="switchTab('dept')">🏛️ Dept Complaints</button>
+  <button class="tab-btn" id="btn-tab-schoolupload" onclick="switchTab('schoolupload')">📤 School Upload</button>
+  <button class="tab-btn" id="btn-tab-archive" onclick="switchTab('archive')">📦 Archive Manager</button>
+  <div class="nav-group">Masters</div>
   <button class="tab-btn" id="btn-tab-schools" onclick="switchTab('schools')">🏫 School Master</button>
   <button class="tab-btn" id="btn-tab-projects" onclick="switchTab('projects')">🏗️ Project Master</button>
   <button class="tab-btn" id="btn-tab-equip" onclick="switchTab('equip')">🖥️ Equipment Master</button>
   <button class="tab-btn" id="btn-tab-parts" onclick="switchTab('parts')">🔧 Parts Master</button>
   <button class="tab-btn" id="btn-tab-users" onclick="switchTab('users')">👤 User Master</button>
+  <div class="nav-group">Administration</div>
   <button class="tab-btn" id="btn-tab-access" onclick="switchTab('access')">🔒 Access Control</button>
-  <button class="tab-btn" id="btn-tab-complaints" onclick="switchTab('complaints')">📋 Complaints &amp; Reports</button>
-  <button class="tab-btn" id="btn-tab-dept" onclick="switchTab('dept')">🏛️ Dept Complaints</button>
-  <button class="tab-btn" id="btn-tab-schoolupload" onclick="switchTab('schoolupload')">📤 School Upload</button>
-  <button class="tab-btn" id="btn-tab-schooldash" onclick="switchTab('schooldash')">📊 School Dash</button>
   <button class="tab-btn" id="btn-tab-branch" onclick="switchTab('branch')">🏢 Branch Management</button>
   <button class="tab-btn" id="btn-tab-branchemails" onclick="switchTab('branchemails')">📧 Branch Emails</button>
-  <button class="tab-btn" id="btn-tab-archive" onclick="switchTab('archive')">📦 Archive Manager</button>
 </div>
 
 <!-- CONTAINER -->
@@ -2590,8 +2618,8 @@ function drawTrendChart(data) {
       datasets: [{
         label: 'Tickets Logged',
         data: values,
-        borderColor: '#1a56db',
-        backgroundColor: 'rgba(26, 86, 219, 0.1)',
+        borderColor: '#0E7C45',
+        backgroundColor: 'rgba(14, 124, 69, 0.1)',
         borderWidth: 2,
         fill: true,
         tension: 0.3
@@ -2628,7 +2656,7 @@ function drawDistrictChart(data) {
       datasets: [{
         label: 'Complaints',
         data: values,
-        backgroundColor: '#06b6d4',
+        backgroundColor: '#0E7C45',
         borderRadius: 4
       }]
     },
@@ -2865,7 +2893,7 @@ function drawProjectChart(data) {
       labels: labels,
       datasets: [{
         data: values,
-        backgroundColor: ['#10b981', '#1a56db', '#f59e0b', '#8b5cf6', '#ec4899']
+        backgroundColor: ['#0E7C45', '#F2790F', '#1D4ED8', '#8b5cf6', '#ec4899']
       }]
     },
     options: {
@@ -2930,7 +2958,7 @@ function drawPartChart(data) {
       labels: labels,
       datasets: [{
         data: values,
-        backgroundColor: ['#ec4899', '#f59e0b', '#8b5cf6', '#06b6d4', '#10b981']
+        backgroundColor: ['#ec4899', '#f59e0b', '#8b5cf6', '#1D4ED8', '#10b981']
       }]
     },
     options: {
