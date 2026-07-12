@@ -2334,6 +2334,7 @@ async function ensureBranchDataLoaded() {
       bmBranches = Array.isArray(branches) ? branches : [];
       bmAliases = Array.isArray(aliases) ? aliases : [];
       window.parentBmBranches = bmBranches;
+      window.parentBmAliases = bmAliases;
       logToDebug(`Loaded ${bmBranches.length} branches and ${bmAliases.length} alias mappings for dashboard summary.`, 'success');
     } catch (e) {
       console.error('Failed to load branch mapping data:', e);
@@ -5642,6 +5643,7 @@ async function loadBranchMgmt() {
     ]);
     bmOffices = offices; bmBranches = branches; bmAliases = aliases; bmUnmapped = unmapped;
     window.parentBmBranches = bmBranches;
+    window.parentBmAliases = bmAliases;
     renderDoTable(); renderBrTable(); renderUnmappedTable(); renderAliasTable();
   } catch (e) {
     showToast('❌ Could not load branch data: ' + e.message, 'danger');
