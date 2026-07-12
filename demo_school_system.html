@@ -1082,12 +1082,11 @@
 
       <!-- Dashboard KPIs -->
       <div class="kpi-grid">
-        <div class="kpi-card"><label>Total School Complaints</label><div class="value" id="kpiTotal">0</div><div class="trend">Overall tickets</div></div>
-        <div class="kpi-card"><label>New School Complaints</label><div class="value" id="kpiNew">0</div><div class="trend">Source: School</div></div>
-        <div class="kpi-card"><label>Matched as Advance</label><div class="value" id="kpiMatched">0</div><div class="trend">Source: Advance</div></div>
-        <div class="kpi-card"><label>Closed Complaints</label><div class="value" id="kpiClosed">0</div><div class="trend" id="kpiClosurePct">0% Closure</div></div>
-        <div class="kpi-card"><label>Part Requests</label><div class="value" id="kpiPart">0</div><div class="trend" id="kpiPartPct">0% Part Request</div></div>
-        <div class="kpi-card"><label>Pending >30 Days</label><div class="value" id="kpiAging" style="color:var(--danger);">0</div><div class="trend">Needs attention</div></div>
+        <div class="kpi-card" onclick="clearSchoolDrill()" style="cursor: pointer; position: relative;"><label>Total School Complaints</label><div class="value" id="kpiTotal">0</div><div class="trend">Overall tickets</div></div>
+        <div class="kpi-card" onclick="drillSchoolDash('status', 'Open')" style="cursor: pointer; position: relative;"><label>Open/Pending</label><div class="value" id="kpiNew">0</div><div class="trend">Needs attention</div></div>
+        <div class="kpi-card" onclick="drillSchoolDash('status', 'Part Request')" style="cursor: pointer; position: relative;"><label>Part Requests</label><div class="value" id="kpiPart">0</div><div class="trend" id="kpiPartPct">0% Part Request</div></div>
+        <div class="kpi-card" onclick="drillSchoolDash('status', 'Closed')" style="cursor: pointer; position: relative;"><label>Closed Complaints</label><div class="value" id="kpiClosed">0</div><div class="trend" id="kpiClosurePct">0% Closure</div></div>
+        <div class="kpi-card" onclick="drillSchoolDash('aging', '6+')" style="cursor: pointer; position: relative;"><label>Pending >30 Days</label><div class="value" id="kpiAging" style="color:var(--danger);">0</div><div class="trend">Needs attention</div></div>
       </div>
 
       <!-- Visuals Layout -->
@@ -1095,17 +1094,19 @@
         
         <!-- Ageing & pending tables -->
         <div class="chart-container">
-          <div class="chart-title">Branchwise Ageing & Pending Overview</div>
+          <div class="chart-title">🏢 Branch-wise Pending &amp; Aging (business days)</div>
           <div class="table-container">
-            <table style="font-size:0.85rem;">
+            <table style="font-size:0.85rem;" class="table-compact">
               <thead>
                 <tr>
-                  <th>Branch</th>
-                  <th>Open/Pending</th>
-                  <th>Part Requests</th>
-                  <th>Closed</th>
-                  <th>Total Complaints</th>
-                  <th>Closure %</th>
+                  <th rowspan="2" style="vertical-align: middle;">Branch</th>
+                  <th colspan="3" style="text-align:center; background:#eff6ff; border-bottom: 1px solid var(--border);">Pending Aging</th>
+                  <th rowspan="2" style="vertical-align: middle; text-align:center;">Total Pending</th>
+                </tr>
+                <tr>
+                  <th style="background:#eff6ff; text-align:center;">0–2</th>
+                  <th style="background:#eff6ff; text-align:center;">3–5</th>
+                  <th style="background:#eff6ff; text-align:center;">6+</th>
                 </tr>
               </thead>
               <tbody id="dashBranchSummaryTable">
@@ -1134,8 +1135,9 @@
 
       <!-- Drill-Down Table -->
       <div class="card">
-        <div class="card-title-bar">
-          <h2>School Complaint Drill-Down Table</h2>
+        <div class="card-title-bar" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+          <h2 style="margin:0;">School Complaint Drill-Down Table <span id="schoolDrillLabel" style="font-size:0.8rem; color:var(--primary); font-weight:600;"></span></h2>
+          <button class="btn btn-ghost btn-sm" id="schoolDrillClear" style="display:none; padding:4px 10px; font-size:0.75rem; border:1px solid var(--border); border-radius:6px; background:#f8fafc; cursor:pointer;" onclick="clearSchoolDrill()">✖ Clear filter</button>
         </div>
         <div class="table-container">
           <table>
@@ -1647,6 +1649,45 @@
       renderDashboard();
     }
 
+    let dashDrillFilter = null;
+
+    function drillSchoolDash(type, val) {
+      dashDrillFilter = { type: type, val: val };
+      const labelEl = document.getElementById('schoolDrillLabel');
+      if (labelEl) {
+        if (type === 'status') {
+          labelEl.innerHTML = ` (Filtered by Status: <strong>${val}</strong>)`;
+        } else if (type === 'branch') {
+          labelEl.innerHTML = ` (Filtered by Branch: <strong>${val}</strong>)`;
+        } else if (type === 'aging') {
+          labelEl.innerHTML = ` (Filtered by Age Group: <strong>${val} days</strong>)`;
+        } else if (type === 'cell') {
+          labelEl.innerHTML = ` (Filtered by Branch: <strong>${val.branch}</strong> &amp; Age Group: <strong>${val.agingGroup}</strong>)`;
+        }
+        document.getElementById('schoolDrillClear').style.display = 'inline-block';
+      }
+      renderDashboard();
+    }
+
+    function clearSchoolDrill() {
+      dashDrillFilter = null;
+      const labelEl = document.getElementById('schoolDrillLabel');
+      if (labelEl) labelEl.textContent = '';
+      const clearBtn = document.getElementById('schoolDrillClear');
+      if (clearBtn) clearBtn.style.display = 'none';
+      renderDashboard();
+    }
+
+    function getTicketAge(dateStr) {
+      if (!dateStr) return 99; // Default old if no date
+      const tDate = new Date(dateStr);
+      if (isNaN(tDate.getTime())) return 99;
+      const now = new Date();
+      const diffTime = now.getTime() - tDate.getTime();
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      return diffDays < 0 ? 0 : diffDays;
+    }
+
     function renderDashboard() {
       // 1. Gather filters
       const filterBranch = document.getElementById('filtBranch').value;
@@ -1767,7 +1808,21 @@
           .map(b => b.name);
       }
 
+      const cell = (v, warn, clickHandler) => {
+        let style = 'text-align:center; cursor:pointer;';
+        if (v > 0 && warn) {
+          style += 'color:#b91c1c; font-weight:700; text-decoration:underline;';
+        } else if (v > 0) {
+          style += 'color:var(--primary); font-weight:700; text-decoration:underline;';
+        } else {
+          style += 'color:#cbd5e1;';
+        }
+        return `<td style="${style}" ${v > 0 ? `onclick="${clickHandler}"` : ''}>${v}</td>`;
+      };
+
       let branchRowsHtml = "";
+      let totals = { d1: 0, d2: 0, d3: 0, total: 0 };
+
       branchNames.forEach(bname => {
         // If role restricted, skip other branches
         if (userRole.startsWith('branch_')) {
@@ -1777,21 +1832,38 @@
         }
 
         const bList = list.filter(r => r.branch === bname);
-        const bTotal = bList.length;
-        const bOpen = bList.filter(r => r.status === 'Open').length;
-        const bParts = bList.filter(r => r.status === 'Part Request').length;
-        const bClosed = bList.filter(r => r.status === 'Closed').length;
-        const bClosurePct = bTotal > 0 ? Math.round((bClosed / bTotal) * 100) : 0;
+        
+        // Calculate aging groups for pending tickets (status !== Closed)
+        const pendingList = bList.filter(r => r.status !== 'Closed');
+        
+        const a1 = pendingList.filter(r => getTicketAge(r.date) <= 2).length;
+        const a2 = pendingList.filter(r => getTicketAge(r.date) >= 3 && getTicketAge(r.date) <= 5).length;
+        const a3 = pendingList.filter(r => getTicketAge(r.date) >= 6).length;
+        const bTotal = a1 + a2 + a3;
+
+        totals.d1 += a1;
+        totals.d2 += a2;
+        totals.d3 += a3;
+        totals.total += bTotal;
 
         branchRowsHtml += `<tr>
-          <td><strong>${bname}</strong></td>
-          <td style="color:var(--info); font-weight:700;">${bOpen}</td>
-          <td style="color:var(--warning); font-weight:700;">${bParts}</td>
-          <td style="color:var(--success); font-weight:700;">${bClosed}</td>
-          <td>${bTotal}</td>
-          <td><strong>${bClosurePct}%</strong></td>
+          <td><strong style="cursor:pointer; color:var(--primary); text-decoration:underline;" onclick="drillSchoolDash('branch', '${bname}')">${bname}</strong></td>
+          ${cell(a1, false, `drillSchoolDash('cell', {branch: '${bname}', agingGroup: '0-2'})`)}
+          ${cell(a2, false, `drillSchoolDash('cell', {branch: '${bname}', agingGroup: '3-5'})`)}
+          ${cell(a3, true, `drillSchoolDash('cell', {branch: '${bname}', agingGroup: '6+'})`)}
+          <td style="text-align:center; font-weight:800; cursor:pointer; color:var(--primary); text-decoration:underline;" onclick="drillSchoolDash('branch', '${bname}')">${bTotal}</td>
         </tr>`;
       });
+
+      // Add Grand Total row
+      branchRowsHtml += `<tr style="background:#f8faff; font-weight:800; border-top:2px solid var(--border);">
+        <td>Grand Total</td>
+        ${cell(totals.d1, false, `drillSchoolDash('aging', '0-2')`)}
+        ${cell(totals.d2, false, `drillSchoolDash('aging', '3-5')`)}
+        ${cell(totals.d3, true, `drillSchoolDash('aging', '6+')`)}
+        <td style="text-align:center; font-weight:800; cursor:pointer; color:var(--primary); text-decoration:underline;" onclick="clearSchoolDrill()">${totals.total}</td>
+      </tr>`;
+
       branchTbody.innerHTML = branchRowsHtml;
 
       // 4. Render Donut Chart (Dynamic SVG)
@@ -1801,7 +1873,36 @@
       const drillTbody = document.getElementById('dashDrilldownTable');
       drillTbody.innerHTML = "";
       let drillHtml = "";
-      list.forEach(r => {
+      
+      let drilldownList = list.slice();
+      if (dashDrillFilter) {
+        const type = dashDrillFilter.type;
+        const val = dashDrillFilter.val;
+        if (type === 'status') {
+          drilldownList = drilldownList.filter(r => r.status === val);
+        } else if (type === 'branch') {
+          drilldownList = drilldownList.filter(r => r.branch === val);
+        } else if (type === 'aging') {
+          if (val === '0-2') {
+            drilldownList = drilldownList.filter(r => r.status !== 'Closed' && getTicketAge(r.date) <= 2);
+          } else if (val === '3-5') {
+            drilldownList = drilldownList.filter(r => r.status !== 'Closed' && getTicketAge(r.date) >= 3 && getTicketAge(r.date) <= 5);
+          } else if (val === '6+') {
+            drilldownList = drilldownList.filter(r => r.status !== 'Closed' && getTicketAge(r.date) >= 6);
+          }
+        } else if (type === 'cell') {
+          drilldownList = drilldownList.filter(r => r.branch === val.branch);
+          if (val.agingGroup === '0-2') {
+            drilldownList = drilldownList.filter(r => r.status !== 'Closed' && getTicketAge(r.date) <= 2);
+          } else if (val.agingGroup === '3-5') {
+            drilldownList = drilldownList.filter(r => r.status !== 'Closed' && getTicketAge(r.date) >= 3 && getTicketAge(r.date) <= 5);
+          } else if (val.agingGroup === '6+') {
+            drilldownList = drilldownList.filter(r => r.status !== 'Closed' && getTicketAge(r.date) >= 6);
+          }
+        }
+      }
+
+      drilldownList.forEach(r => {
         drillHtml += `<tr>
           <td>${r.diseCode}</td>
           <td><strong>${r.name}</strong></td>
@@ -1813,7 +1914,7 @@
           <td><span class="badge-source ${r.source === 'Advance Complaint' ? 'advance' : 'school'}">${r.source}</span></td>
         </tr>`;
       });
-      if (list.length === 0) {
+      if (drilldownList.length === 0) {
         drillHtml = `<tr><td colspan="8" style="text-align:center;color:var(--text-muted);">No records match the current filters.</td></tr>`;
       }
       drillTbody.innerHTML = drillHtml;
