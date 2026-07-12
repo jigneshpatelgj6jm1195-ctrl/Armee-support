@@ -1490,16 +1490,31 @@
       renderDbTable();
     }
 
+    function getParentData() {
+      let data = { branches: null, complaints: null, aliases: null };
+      try {
+        if (window.parent) {
+          data.branches = window.parent.parentBmBranches;
+          data.complaints = window.parent.parentSchoolComplaintsList;
+          data.aliases = window.parent.parentBmAliases;
+        }
+      } catch (e) {
+        console.warn("Cross-origin or local parent frame variables access blocked:", e);
+      }
+      return data;
+    }
+
     function resolveBranchForSchoolComplaint(c) {
       let mappedBranch = 'Unmapped';
       const distUpper = String(c.district || '').toUpperCase().trim();
+      const pData = getParentData();
       if (distUpper) {
-        if (window.parent && Array.isArray(window.parent.parentBmAliases)) {
-          const a = window.parent.parentBmAliases.find(x => x.aliasText.toUpperCase().trim() === distUpper);
+        if (Array.isArray(pData.aliases)) {
+          const a = pData.aliases.find(x => x.aliasText.toUpperCase().trim() === distUpper);
           if (a) mappedBranch = a.branchName || 'Unmapped';
         }
-        if (mappedBranch === 'Unmapped' && window.parent && Array.isArray(window.parent.parentBmBranches)) {
-          const b = window.parent.parentBmBranches.find(x => x.name.toUpperCase().trim() === distUpper);
+        if (mappedBranch === 'Unmapped' && Array.isArray(pData.branches)) {
+          const b = pData.branches.find(x => x.name.toUpperCase().trim() === distUpper);
           if (b) mappedBranch = b.name;
         }
       }
@@ -1518,7 +1533,7 @@
         // Complaints
         html += `<thead><tr><th>Case ID</th><th>Date</th><th>School Name</th><th>DISE Code</th><th>District</th><th>Branch</th><th>Serial</th><th>Status</th><th>Source</th></tr></thead><tbody>`;
         let renderList = [];
-        let parentList = window.parent && window.parent.parentSchoolComplaintsList;
+        let parentList = getParentData().complaints;
         if (parentList && parentList.length > 0) {
           renderList = parentList.map(c => {
             let statusVal = String(c.status || '').trim();
@@ -1697,7 +1712,8 @@
 
       // Filtered Complaints List
       let list = [];
-      let parentList = window.parent && window.parent.parentSchoolComplaintsList;
+      const pData = getParentData();
+      let parentList = pData.complaints;
       if (parentList && parentList.length > 0) {
         list = parentList.map(c => {
           let statusVal = String(c.status || '').trim();
@@ -1720,8 +1736,8 @@
 
       // Dynamically populate branch filter if parent data exists and dropdown options are not built
       const filtBranchDropdown = document.getElementById('filtBranch');
-      if (!window.branchOptionsLoaded && filtBranchDropdown && window.parent && window.parent.parentBmBranches && window.parent.parentBmBranches.length > 0) {
-        const activeBranches = window.parent.parentBmBranches.filter(b => b.status === 'Active');
+      if (!window.branchOptionsLoaded && filtBranchDropdown && pData.branches && pData.branches.length > 0) {
+        const activeBranches = pData.branches.filter(b => b.status === 'Active');
         const currentSel = filtBranchDropdown.value;
         let html = '<option value="ALL">All Branches</option>';
         activeBranches.forEach(b => {
@@ -1802,8 +1818,8 @@
       branchTbody.innerHTML = "";
       
       let branchNames = ["Ahmedabad Branch", "Vadodara Branch", "Rajkot Branch"];
-      if (window.parent && window.parent.parentBmBranches && window.parent.parentBmBranches.length > 0) {
-        branchNames = window.parent.parentBmBranches
+      if (pData.branches && pData.branches.length > 0) {
+        branchNames = pData.branches
           .filter(b => b.status === 'Active')
           .map(b => b.name);
       }
