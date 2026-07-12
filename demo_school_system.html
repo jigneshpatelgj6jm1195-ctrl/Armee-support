@@ -1083,10 +1083,11 @@
       <!-- Dashboard KPIs -->
       <div class="kpi-grid">
         <div class="kpi-card" onclick="clearSchoolDrill()" style="cursor: pointer; position: relative;"><label>Total School Complaints</label><div class="value" id="kpiTotal">0</div><div class="trend">Overall tickets</div></div>
-        <div class="kpi-card" onclick="drillSchoolDash('status', 'Open')" style="cursor: pointer; position: relative;"><label>Open/Pending</label><div class="value" id="kpiNew">0</div><div class="trend">Needs attention</div></div>
-        <div class="kpi-card" onclick="drillSchoolDash('status', 'Part Request')" style="cursor: pointer; position: relative;"><label>Part Requests</label><div class="value" id="kpiPart">0</div><div class="trend" id="kpiPartPct">0% Part Request</div></div>
+        <div class="kpi-card" onclick="drillSchoolDash('source', 'School Complaint')" style="cursor: pointer; position: relative;"><label>New School Complaints</label><div class="value" id="kpiNew">0</div><div class="trend">Source: School</div></div>
+        <div class="kpi-card" onclick="drillSchoolDash('source', 'Advance Complaint')" style="cursor: pointer; position: relative;"><label>Matched as Advance</label><div class="value" id="kpiMatched">0</div><div class="trend">Source: Advance</div></div>
         <div class="kpi-card" onclick="drillSchoolDash('status', 'Closed')" style="cursor: pointer; position: relative;"><label>Closed Complaints</label><div class="value" id="kpiClosed">0</div><div class="trend" id="kpiClosurePct">0% Closure</div></div>
-        <div class="kpi-card" onclick="drillSchoolDash('aging', '6+')" style="cursor: pointer; position: relative;"><label>Pending >30 Days</label><div class="value" id="kpiAging" style="color:var(--danger);">0</div><div class="trend">Needs attention</div></div>
+        <div class="kpi-card" onclick="drillSchoolDash('status', 'Part Request')" style="cursor: pointer; position: relative;"><label>Part Requests</label><div class="value" id="kpiPart">0</div><div class="trend" id="kpiPartPct">0% Part Request</div></div>
+        <div class="kpi-card" onclick="drillSchoolDash('aging30', 'true')" style="cursor: pointer; position: relative;"><label>Pending >30 Days</label><div class="value" id="kpiAging" style="color:var(--danger);">0</div><div class="trend">Needs attention</div></div>
       </div>
 
       <!-- Visuals Layout -->
@@ -1672,6 +1673,10 @@
       if (labelEl) {
         if (type === 'status') {
           labelEl.innerHTML = ` (Filtered by Status: <strong>${val}</strong>)`;
+        } else if (type === 'source') {
+          labelEl.innerHTML = ` (Filtered by Source: <strong>${val === 'School Complaint' ? 'School' : 'Advance'}</strong>)`;
+        } else if (type === 'aging30') {
+          labelEl.innerHTML = ` (Filtered by Age Group: <strong>&gt; 30 Days</strong>)`;
         } else if (type === 'branch') {
           labelEl.innerHTML = ` (Filtered by Branch: <strong>${val}</strong>)`;
         } else if (type === 'aging') {
@@ -1896,6 +1901,10 @@
         const val = dashDrillFilter.val;
         if (type === 'status') {
           drilldownList = drilldownList.filter(r => r.status === val);
+        } else if (type === 'source') {
+          drilldownList = drilldownList.filter(r => r.source === val);
+        } else if (type === 'aging30') {
+          drilldownList = drilldownList.filter(r => r.status !== 'Closed' && getTicketAge(r.date) > 30);
         } else if (type === 'branch') {
           drilldownList = drilldownList.filter(r => r.branch === val);
         } else if (type === 'aging') {
