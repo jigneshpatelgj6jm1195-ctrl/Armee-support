@@ -2276,12 +2276,27 @@ function onDiseInput(input) {
   if (val.length >= 11) triggerLookup();
 }
 
-function triggerLookup() {
+async function triggerLookup() {
   const dise    = document.getElementById('lookupDise').value.trim();
   const project = document.getElementById('lookupProject').value;
   document.getElementById('lookupStatus').className = 'status-banner';
 
   if (!dise) { showStatus('error', '⚠️ Enter DISE Code'); return; }
+
+  if (appFlow === 'school' && GOOGLE_SCRIPT_URL && navigator.onLine) {
+    showStatus('info', '⏳ Fetching live complaints from server...');
+    try {
+      const res = await fetch(GOOGLE_SCRIPT_URL + '?action=get_school_complaints&dise=' + encodeURIComponent(dise) + '&t=' + Date.now());
+      if (res.ok) {
+        const list = await res.json();
+        if (Array.isArray(list)) {
+          SCHOOL_COMPLAINT_DB[dise] = list;
+        }
+      }
+    } catch (err) {
+      console.warn("Could not load live school complaints:", err);
+    }
+  }
 
   let entries;
   if (appFlow === 'school') {

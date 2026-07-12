@@ -561,8 +561,9 @@ function doGet(e) {
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
-    if (action === 'get_school_complaint_updates') {
-      return ContentService.createTextOutput(JSON.stringify([]))
+    if (action === 'get_school_complaints') {
+      var list = getSchoolComplaints(ss, String(e.parameter.dise || '').trim());
+      return ContentService.createTextOutput(JSON.stringify(list))
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -1015,6 +1016,9 @@ function handleSubmitComplaint(ss, data) {
   var newRow = lastRow + 1;
   formatLastRow(sheet, newRow);
 
+  // Update status/suspectedPart of SchoolComplaintMaster
+  syncSchoolComplaintMasterStatus(ss);
+
   return ContentService
     .createTextOutput(JSON.stringify({
       status: 'ok',
@@ -1356,6 +1360,10 @@ function updateComplaintsStatus(ss, complaintsArray) {
         updatedCount++;
       }
     }
+  }
+
+  if (updatedCount > 0) {
+    syncSchoolComplaintMasterStatus(ss);
   }
 
   return updatedCount;
@@ -3583,12 +3591,18 @@ function getOrCreateSchoolComplaintSheets(ss) {
     master.appendRow([
       'SR No.', 'Project', 'DISE Code', 'School Code', 'District', 'Taluka', 
       'School Name', 'Principal Name', 'Principal Contact', 'Address', 'Pin Code', 
-      'Equipment', 'Nature of Complaint', 'Serial Number', 'State', 'Branch'
+      'Equipment', 'Nature of Complaint', 'Serial Number', 'State', 'Branch',
+      'Status', 'Suspected Part', 'Import Date'
     ]);
-    var header = master.getRange(1, 1, 1, 16);
+    var header = master.getRange(1, 1, 1, 19);
     header.setBackground('#1e3a8a');
     header.setFontColor('#ffffff');
     header.setFontWeight('bold');
+  } else {
+    var lastCol = master.getLastColumn();
+    if (lastCol < 17) master.getRange(1, 17).setValue('Status');
+    if (lastCol < 18) master.getRange(1, 18).setValue('Suspected Part');
+    if (lastCol < 19) master.getRange(1, 19).setValue('Import Date');
   }
 
   var upload = ss.getSheetByName('SchoolComplaintUpload');
@@ -3652,41 +3666,14 @@ function importSchoolComplaints(ss, data) {
   var masterCount = 0;
 
   var now = new Date();
-  var thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(now.getDate() - 30);
+  var importDate = data.importDate || now.toISOString().split('T')[0];
+  
+  // Calculate 30 days window from the selected import date
+  var importDateTime = new Date(importDate + 'T12:00:00Z');
+  var thirtyDaysAgo = new Date(importDateTime.getTime());
+  thirtyDaysAgo.setDate(importDateTime.getDate() - 30);
 
-  // ──────────────────────────────────────────────────────────────
-  // STEP 1: Import ALL rows into SchoolComplaintMaster (raw log)
-  // ──────────────────────────────────────────────────────────────
-  for (var i = 0; i < records.length; i++) {
-    var rec = records[i];
-    var serial = String(rec.serialNumber || rec.serial || '').trim();
-    var masterSrNo = masterSheet.getLastRow() + 1;
-    masterSheet.appendRow([
-      masterSrNo - 1,                        // SR No.
-      'ICT',                                 // Project
-      '',                                    // DISE Code
-      '',                                    // School Code
-      rec.cityName || '',                    // District (City Name from Excel)
-      rec.nearbyMajorCity || '',             // Taluka (Nearby Major City from Excel)
-      rec.customerName || '',                // School Name
-      rec.contactPerson || '',               // Principal Name
-      rec.mobile || '',                      // Principal Contact
-      rec.address || '',                     // Address
-      rec.pincode || '',                     // Pin Code
-      rec.equipment || 'Desktop',            // Equipment
-      rec.problem || 'No Power',             // Nature of Complaint
-      serial,                                // Serial Number
-      rec.state || 'GUJARAT',                // State
-      ''                                     // Branch
-    ]);
-    masterCount++;
-  }
-
-  // ──────────────────────────────────────────────────────────────
-  // STEP 2: Build lookup of existing S/N → latest complaint date
-  // ──────────────────────────────────────────────────────────────
-  // Key = serial (uppercase), Value = most recent complaint date
+  // 1. Build lookup of existing serials in Complaints with their latest submission date
   var existingSerialDates = {};
   if (complaintsSheet.getLastRow() > 1) {
     var complaints = complaintsSheet.getRange(2, 1, complaintsSheet.getLastRow() - 1, complaintsSheet.getLastColumn()).getValues();
@@ -3697,102 +3684,96 @@ function importSchoolComplaints(ss, data) {
       if (!dateStr) continue;
       var d = new Date(dateStr);
       if (!existingSerialDates[s] || d > existingSerialDates[s]) {
-        existingSerialDates[s] = d; // Keep the most recent date
+        existingSerialDates[s] = d;
       }
     }
   }
 
-  // ──────────────────────────────────────────────────────────────
-  // STEP 3: For each record, check S/N against Complaints
-  //   - S/N found within 30 days → SKIP (duplicate)
-  //   - S/N found but older than 30 days → CREATE (repeating issue)
-  //   - S/N not found → CREATE (new complaint)
-  // ──────────────────────────────────────────────────────────────
+  // 2. Build lookup of existing serials in SchoolComplaintMaster to avoid duplicate rows
+  var masterSerialsMap = {};
+  if (masterSheet.getLastRow() > 1) {
+    var masterRows = masterSheet.getRange(2, 1, masterSheet.getLastRow() - 1, Math.max(16, masterSheet.getLastColumn())).getValues();
+    for (var m = 0; m < masterRows.length; m++) {
+      var s = String(masterRows[m][13] || '').trim().toUpperCase(); // Column 14 (index 13)
+      if (s) {
+        masterSerialsMap[s] = m + 2; // Store row number (1-indexed, starting from 2)
+      }
+    }
+  }
+
+  // 3. Process records
   for (var i = 0; i < records.length; i++) {
-    var rawRec = records[i];
-    var rawSerial = String(rawRec.serialNumber || rawRec.serial || '').trim();
-    if (!rawSerial) {
-      exceptionsSheet.appendRow(['EX-' + Date.now() + '-' + i, now.toISOString(), '', 'Missing Serial Number', JSON.stringify(rawRec)]);
+    var rec = records[i];
+    var serial = String(rec.serialNumber || rec.serial || '').trim();
+    if (!serial) {
+      exceptionsSheet.appendRow(['EX-' + Date.now() + '-' + i, now.toISOString(), '', 'Missing Serial Number', JSON.stringify(rec)]);
       exceptionCount++;
       continue;
     }
 
-    var serialKey = rawSerial.toUpperCase();
+    var serialKey = serial.toUpperCase();
     var lastDate = existingSerialDates[serialKey] || null;
 
-    // If S/N exists and was filed within last 30 days → SKIP
-    if (lastDate && lastDate >= thirtyDaysAgo) {
+    // CHECK: If serial already has an active complaint within 30 days of the import date -> SKIP
+    if (lastDate && lastDate >= thirtyDaysAgo && lastDate <= importDateTime) {
       matchLogSheet.appendRow([
         'LOG-' + Date.now() + '-' + i,
         now.toISOString(),
         '',
-        rawSerial,
+        serial,
         'Duplicate within 30 days - Skipped',
         '',
         '',
         'Skipped',
-        'Serial ' + rawSerial + ' already has a complaint from ' + lastDate.toISOString().split('T')[0] + ' (within 30 days). Skipped.'
+        'Serial ' + serial + ' already has a complaint from ' + lastDate.toISOString().split('T')[0] + ' (within 30 days of import date ' + importDate + '). Skipped.'
       ]);
       skippedCount++;
       continue;
     }
 
-    // S/N not found OR found but older than 30 days → CREATE new Open ticket
-    var reason = lastDate ? 'Repeating after 30 days' : 'New Complaint';
-    var caseId = 'CASE-' + Date.now() + '-' + i;
-    var srNo = complaintsSheet.getLastRow() + 1;
-    var newComplaintRow = [
-      srNo,                                                    // SR No.
-      now.toISOString(),                                       // Submitted At
-      rawRec.customerName || '',                               // Complainant Name
-      rawRec.mobile || '',                                     // Complainant Phone
-      'School',                                                // Complainant Role
-      'ICT',                                                   // Project
-      '',                                                      // DISE Code
-      '',                                                      // School Code
-      rawRec.cityName || '',                                   // District
-      rawRec.nearbyMajorCity || '',                            // Taluka
-      rawRec.customerName || '',                               // School Name
-      rawRec.contactPerson || '',                              // Principal Name
-      rawRec.mobile || '',                                     // Principal Contact
-      rawRec.address || '',                                    // Address
-      rawRec.pincode || '',                                    // Pin Code
-      rawRec.equipment || 'Desktop',                           // Equipment
-      rawRec.problem || 'No Power',                            // Nature of Complaint
-      rawSerial,                                               // Serial Number
-      1,                                                       // Quantity
-      now.toISOString().split('T')[0],                         // Complaint Date
-      '',                                                      // Suspected Part
-      rawRec.problem || 'No Power',                            // Description
-      0,                                                       // Photo Count
-      'Open',                                                  // Status
-      caseId,                                                  // Case ID
-      '', '',                                                  // Latitude, Longitude
-      '', '', '',                                              // Photo Preview, View Photo, Photo URL
-      'NO',                                                    // Duplicate Status
-      '', '', '',                                              // Serial Photo Preview, View Serial Photo, Serial Photo URL
-      '', '', ''                                               // Archived, OtpValue, ClosureType
-    ];
-    
-    complaintsSheet.appendRow(newComplaintRow);
-    formatLastRow(complaintsSheet, complaintsSheet.getLastRow());
-
-    // Mark as existing so duplicates within the same upload batch are caught
-    existingSerialDates[serialKey] = now;
-
-    matchLogSheet.appendRow([
-      'LOG-' + Date.now() + '-' + i,
-      now.toISOString(),
-      '',
-      rawSerial,
-      reason,
-      caseId,
-      'None',
-      'Open',
-      'Created new ticket ' + caseId + ' (' + reason + ')'
-    ]);
+    // Save/Copy to SchoolComplaintMaster
+    var masterRowIndex = masterSerialsMap[serialKey];
+    if (masterRowIndex) {
+      // Exists in Master! Reset status/suspectedPart to blank and update Import Date
+      masterSheet.getRange(masterRowIndex, 17).setValue(''); // Status
+      masterSheet.getRange(masterRowIndex, 18).setValue(''); // Suspected Part
+      masterSheet.getRange(masterRowIndex, 19).setValue(importDate); // Import Date
+      masterCount++;
+    } else {
+      // New Serial! Attempt to match DISE code by school name
+      var diseCode = findDiseCodeBySchoolName(ss, rec.customerName);
+      var masterSrNo = masterSheet.getLastRow() + 1;
+      masterSheet.appendRow([
+        masterSrNo - 1,                        // SR No.
+        'ICT',                               // Project
+        diseCode,                            // DISE Code
+        '',                                  // School Code
+        rec.cityName || '',                    // District
+        rec.nearbyMajorCity || '',           // Taluka
+        rec.customerName || '',              // School Name
+        rec.contactPerson || '',               // Principal Name
+        rec.mobile || '',                      // Principal Contact
+        rec.address || '',                     // Address
+        rec.pincode || '',                     // Pin Code
+        rec.equipment || 'Desktop',            // Equipment
+        rec.problem || 'No Power',             // Nature of Complaint
+        serial,                                // Serial Number
+        rec.state || 'GUJARAT',                // State
+        '',                                    // Branch
+        '',                                    // Status (Blank)
+        '',                                    // Suspected Part (Blank)
+        importDate                             // Import Date
+      ]);
+      masterCount++;
+      
+      // Update our map in case there are duplicates within the same batch
+      masterSerialsMap[serialKey] = masterSrNo;
+    }
     importedCount++;
   }
+
+  // 4. Sync status/suspectedPart of SchoolComplaintMaster with Complaints sheet
+  syncSchoolComplaintMasterStatus(ss);
 
   return {
     status: 'ok',
@@ -3801,4 +3782,145 @@ function importSchoolComplaints(ss, data) {
     skippedCount: skippedCount,
     exceptionCount: exceptionCount
   };
+}
+
+/**
+ * Searches the SchoolComplaintMaster sheet by school name to find a DISE Code
+ */
+function findDiseCodeBySchoolName(ss, schoolName) {
+  if (!schoolName) return '';
+  var master = ss.getSheetByName('SchoolComplaintMaster');
+  if (master && master.getLastRow() > 1) {
+    var rows = master.getRange(2, 1, master.getLastRow() - 1, 16).getValues();
+    var query = String(schoolName).trim().toLowerCase();
+    for (var i = 0; i < rows.length; i++) {
+      var name = String(rows[i][6] || '').trim().toLowerCase();
+      if (name && (name === query || query.indexOf(name) !== -1 || name.indexOf(query) !== -1)) {
+        return String(rows[i][2] || '').trim();
+      }
+    }
+  }
+  return '';
+}
+
+/**
+ * Synchronizes the Status and Suspected Part columns of SchoolComplaintMaster
+ * by checking if the Serial Number exists in the Complaints sheet.
+ */
+function syncSchoolComplaintMasterStatus(ss) {
+  var masterSheet = ss.getSheetByName('SchoolComplaintMaster');
+  if (!masterSheet) return;
+  
+  // Ensure headers for Status, Suspected Part, and Import Date are set
+  var lastCol = masterSheet.getLastColumn();
+  if (lastCol < 17) masterSheet.getRange(1, 17).setValue('Status');
+  if (lastCol < 18) masterSheet.getRange(1, 18).setValue('Suspected Part');
+  if (lastCol < 19) masterSheet.getRange(1, 19).setValue('Import Date');
+  
+  // Build lookup map of Serial Number -> { suspectedPart, date } from Complaints
+  var complaintsSheet = ss.getSheetByName('Complaints');
+  var complaintsMap = {};
+  if (complaintsSheet && complaintsSheet.getLastRow() > 1) {
+    var complaints = complaintsSheet.getRange(2, 1, complaintsSheet.getLastRow() - 1, complaintsSheet.getLastColumn()).getValues();
+    for (var i = 0; i < complaints.length; i++) {
+      var serial = String(complaints[i][17] || '').trim().toUpperCase();
+      if (!serial) continue;
+      
+      var suspected = String(complaints[i][20] || '').trim();
+      var submittedAtStr = complaints[i][1];
+      var submittedAt = submittedAtStr ? new Date(submittedAtStr) : new Date(0);
+      
+      // Keep the most recent entry
+      if (!complaintsMap[serial] || submittedAt > complaintsMap[serial].date) {
+        complaintsMap[serial] = {
+          suspectedPart: suspected,
+          date: submittedAt
+        };
+      }
+    }
+  }
+  
+  // Read and update Master rows in bulk
+  var masterLastRow = masterSheet.getLastRow();
+  if (masterLastRow > 1) {
+    var masterRange = masterSheet.getRange(2, 1, masterLastRow - 1, 19);
+    var masterRows = masterRange.getValues();
+    var changed = false;
+    
+    for (var j = 0; j < masterRows.length; j++) {
+      var serial = String(masterRows[j][13] || '').trim().toUpperCase();
+      var expectedStatus = '';
+      var expectedSuspected = '';
+      
+      if (serial && complaintsMap[serial]) {
+        var match = complaintsMap[serial];
+        expectedSuspected = match.suspectedPart;
+        if (expectedSuspected) {
+          expectedStatus = 'Part Request';
+        } else {
+          expectedStatus = 'Closed';
+        }
+      }
+      
+      // Update values in memory if they differ
+      var currentStatus = String(masterRows[j][16] || '').trim();
+      var currentSuspected = String(masterRows[j][17] || '').trim();
+      
+      if (currentStatus !== expectedStatus || currentSuspected !== expectedSuspected) {
+        masterRows[j][16] = expectedStatus;
+        masterRows[j][17] = expectedSuspected;
+        changed = true;
+      }
+    }
+    
+    if (changed) {
+      masterRange.setValues(masterRows);
+    }
+  }
+}
+
+/**
+ * Returns school complaints from SchoolComplaintMaster matching the DISE code
+ * where the Status column is blank/empty.
+ */
+function getSchoolComplaints(ss, dise) {
+  // Sync first to ensure we have up-to-date statuses
+  syncSchoolComplaintMasterStatus(ss);
+
+  var master = ss.getSheetByName('SchoolComplaintMaster');
+  if (!master) return [];
+
+  var lastRow = master.getLastRow();
+  if (lastRow <= 1) return [];
+
+  var rows = master.getRange(2, 1, lastRow - 1, 19).getValues();
+  var results = [];
+
+  for (var i = 0; i < rows.length; i++) {
+    var rowDise = String(rows[i][2] || '').trim();
+    var status = String(rows[i][16] || '').trim(); // Status is in column 17 (0-indexed: 16)
+
+    // Only return rows matching the DISE Code where Status is blank
+    if (rowDise === dise && !status) {
+      results.push({
+        project:           String(rows[i][1] || 'ICT').trim(),
+        dise:              rowDise,
+        schoolCode:        String(rows[i][3] || '').trim(),
+        district:          String(rows[i][4] || '').trim(),
+        block:             String(rows[i][5] || '').trim(),
+        school:            String(rows[i][6] || '').trim(),
+        principal:         String(rows[i][7] || '').trim(),
+        mobile:            String(rows[i][8] || '').trim(),
+        address:           String(rows[i][9] || '').trim(),
+        pincode:           String(rows[i][10] || '').trim(),
+        equipment:         String(rows[i][11] || '').trim(),
+        natureOfComplaint: String(rows[i][12] || '').trim(),
+        serialNumber:      String(rows[i][13] || '').trim(),
+        state:             String(rows[i][14] || 'GUJARAT').trim(),
+        branch:            String(rows[i][15] || '').trim()
+      });
+    }
+  }
+
+  return results;
 }

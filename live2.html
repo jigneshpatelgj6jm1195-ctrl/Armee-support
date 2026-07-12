@@ -1086,6 +1086,10 @@ tr:hover td { background: #f8fafc; }
           <input type="file" id="schoolFile" accept=".xlsx,.xls" style="display:block;padding:8px;border:2px dashed var(--border);border-radius:8px;background:white;" onchange="handleSchoolFileSelect()" />
         </div>
         <div>
+          <label>Complaint Date Tag</label>
+          <input type="date" id="schoolImportDate" style="width:160px;padding:8px;border:1.5px solid var(--border);border-radius:8px;" />
+        </div>
+        <div>
           <label>Import key</label>
           <input type="password" id="schoolImportKey" placeholder="Paste the IMPORT_KEY" style="width:220px;" autocomplete="off" />
         </div>
@@ -1099,7 +1103,7 @@ tr:hover td { background: #f8fafc; }
 
   <!-- ================= TAB: SCHOOL DASHBOARD ================= -->
   <div class="tab-content" id="tab-schooldash" style="padding:0;">
-    <iframe src="demo_school_system.html" style="width:100%; height:900px; border:none; border-radius:14px; box-shadow:0 4px 12px rgba(0,0,0,0.08);"></iframe>
+    <iframe id="schoolDashIframe" src="demo_school_system.html" style="width:100%; height:900px; border:none; border-radius:14px; box-shadow:0 4px 12px rgba(0,0,0,0.08);"></iframe>
   </div>
 
   <!-- ================= TAB: BRANCH MANAGEMENT ================= -->
@@ -2038,6 +2042,15 @@ async function loadComplaints() {
   }
   renderDashboard();
   renderComplaintsTable();
+
+  // Refresh school dashboard iframe
+  const iframe = document.getElementById('schoolDashIframe');
+  if (iframe && iframe.contentWindow && typeof iframe.contentWindow.renderDashboard === 'function') {
+    iframe.contentWindow.renderDashboard();
+    if (typeof iframe.contentWindow.renderDbTable === 'function') {
+      iframe.contentWindow.renderDbTable();
+    }
+  }
 }
 
 async function loadSchoolList() {
@@ -4754,6 +4767,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const savedSchoolKey = localStorage.getItem(SCHOOL_IMPORT_KEY_LS) || 'armee123';
   const schoolField = document.getElementById('schoolImportKey');
   if (schoolField) schoolField.value = savedSchoolKey;
+
+  const dateField = document.getElementById('schoolImportDate');
+  if (dateField) dateField.value = new Date().toISOString().slice(0, 10);
 });
 
 /* ─────────────── SCHOOL COMPLAINTS BULK UPLOAD ─────────────── */
@@ -4846,8 +4862,11 @@ async function runSchoolUpload() {
   const btn = document.getElementById('schoolUploadBtn');
   const result = document.getElementById('schoolResult');
   const keyField = document.getElementById('schoolImportKey');
+  const dateField = document.getElementById('schoolImportDate');
 
   const importKey = keyField.value.trim() || localStorage.getItem(SCHOOL_IMPORT_KEY_LS) || '';
+  const importDate = dateField ? dateField.value : '';
+
   if (!importKey) { showToast('⚠️ Paste the import key first.', 'warn'); keyField.focus(); return; }
   if (!schoolParsedRows || !schoolParsedRows.length) { showToast('⚠️ Select an Excel file first.', 'warn'); return; }
 
@@ -4865,6 +4884,7 @@ async function runSchoolUpload() {
       body: JSON.stringify({
         action: 'import_school_complaints',
         importKey: importKey,
+        importDate: importDate,
         records: schoolParsedRows
       }),
     });

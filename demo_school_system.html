@@ -1496,7 +1496,23 @@
       if (currentDbTab === 1) {
         // Complaints
         html += `<thead><tr><th>Case ID</th><th>Date</th><th>School Name</th><th>DISE Code</th><th>District</th><th>Branch</th><th>Serial</th><th>Status</th><th>Source</th></tr></thead><tbody>`;
-        dbComplaints.forEach(r => {
+        var renderList = dbComplaints;
+        if (window.parent && window.parent.complaintsList && window.parent.complaintsList.length > 0) {
+          renderList = window.parent.complaintsList.map(c => {
+            return {
+              id: c.caseId || 'TKT-' + c.srNo,
+              date: c.submittedAt ? c.submittedAt.split('T')[0] : (c.complaintDate || ''),
+              name: c.school || c.complainantName || '',
+              diseCode: c.dise || '',
+              district: c.district || '',
+              branch: c.branch || '',
+              serial: c.serialNumber || '',
+              status: c.status || 'Open',
+              source: c.source || 'School Complaint'
+            };
+          });
+        }
+        renderList.forEach(r => {
           html += `<tr>
             <td><strong>${r.id}</strong></td>
             <td>${r.date}</td>
@@ -1616,6 +1632,21 @@
 
       // Filtered Complaints List
       let list = dbComplaints.slice();
+      if (window.parent && window.parent.complaintsList && window.parent.complaintsList.length > 0) {
+        list = window.parent.complaintsList.map(c => {
+          return {
+            id: c.caseId || 'TKT-' + c.srNo,
+            date: c.submittedAt ? c.submittedAt.split('T')[0] : (c.complaintDate || ''),
+            name: c.school || c.complainantName || '',
+            diseCode: c.dise || '',
+            district: c.district || '',
+            branch: c.branch || '',
+            serial: c.serialNumber || '',
+            status: c.status || 'Open',
+            source: c.source || 'School Complaint'
+          };
+        });
+      }
 
       // Enforce role-based branch restriction
       if (userRole.startsWith('branch_')) {
