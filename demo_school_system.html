@@ -8,11 +8,11 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --primary: #0284c7;
-      --primary-dark: #0369a1;
-      --primary-light: #e0f2fe;
-      --secondary: #0f172a;
-      --background: #f8fafc;
+      --primary: #0E7C45;
+      --primary-dark: #0A5C33;
+      --primary-light: #E5F2EA;
+      --secondary: #1B2A21;
+      --background: #F4F6F3;
       --card-bg: #ffffff;
       --border: #e2e8f0;
       --text: #334155;
@@ -25,7 +25,7 @@
       --danger-light: #fef2f2;
       --info: #3b82f6;
       --info-light: #eff6ff;
-      --gradient: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+      --gradient: linear-gradient(135deg, #0E7C45 0%, #0A5C33 100%);
       --radius: 12px;
       --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
       --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
@@ -614,28 +614,38 @@
     .kpi-card {
       background: white;
       border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 16px;
-      box-shadow: var(--shadow);
+      border-radius: 14px;
+      padding: 16px 18px;
+      box-shadow: 0 1px 3px rgba(16,40,26,0.06);
       display: flex;
       flex-direction: column;
       gap: 4px;
+      transition: var(--transition);
+    }
+    .kpi-card:hover {
+      border-color: var(--primary);
+      box-shadow: 0 6px 18px rgba(14,124,69,0.14);
+      transform: translateY(-1px);
     }
 
     .kpi-card label {
-      font-size: 0.8rem;
+      font-size: 0.66rem;
       color: var(--text-muted);
-      font-weight: 500;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
     }
 
     .kpi-card .value {
-      font-size: 1.6rem;
-      font-weight: 700;
+      font-size: 1.75rem;
+      font-weight: 800;
       color: var(--secondary);
+      letter-spacing: -0.02em;
+      font-variant-numeric: tabular-nums;
     }
 
     .kpi-card .trend {
-      font-size: 0.75rem;
+      font-size: 0.72rem;
       font-weight: 600;
       color: var(--text-muted);
     }
@@ -664,11 +674,25 @@
     }
 
     .chart-title {
-      font-size: 1rem;
-      font-weight: 600;
+      font-size: 0.95rem;
+      font-weight: 800;
+      letter-spacing: -0.01em;
       color: var(--secondary);
       margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
+    #view_dashboard table th {
+      font-size: 0.66rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      background: var(--background);
+    }
+    #view_dashboard tbody tr:hover td { background: #FAFBF9; }
+    #view_dashboard td { font-variant-numeric: tabular-nums; }
 
     /* --- Filter Bar --- */
     .filter-bar {
@@ -1684,6 +1708,12 @@
         document.getElementById('schoolDrillClear').style.display = 'inline-block';
       }
       renderDashboard();
+      // Bring the filtered records into view so the click visibly does something
+      const drillTable = document.getElementById('dashDrilldownTable');
+      if (drillTable) {
+        const panel = drillTable.closest('.chart-container') || drillTable;
+        setTimeout(() => panel.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+      }
     }
 
     function clearSchoolDrill() {
@@ -1870,12 +1900,12 @@
       });
 
       // Add Grand Total row
-      branchRowsHtml += `<tr style="background:#f8faff; font-weight:800; border-top:2px solid var(--border);">
-        <td>Grand Total</td>
+      branchRowsHtml += `<tr style="background:var(--primary-light); font-weight:800; border-top:2px solid var(--primary);">
+        <td style="text-transform:uppercase; letter-spacing:0.05em; font-size:0.78rem; color:var(--primary-dark);">Grand Total</td>
         ${cell(totals.open, false, `drillSchoolDash('status', 'Open')`)}
         ${cell(totals.part, false, `drillSchoolDash('status', 'Part Request')`)}
         ${cell(totals.closed, false, `drillSchoolDash('status', 'Closed')`)}
-        <td style="text-align:center; font-weight:800; cursor:pointer; color:var(--primary); text-decoration:underline;" onclick="clearSchoolDrill()">${totals.total}</td>
+        <td style="text-align:center; font-weight:800; cursor:pointer; color:var(--primary-dark); text-decoration:underline;" onclick="clearSchoolDrill()">${totals.total}</td>
       </tr>`;
 
       branchTbody.innerHTML = branchRowsHtml;
@@ -1921,7 +1951,18 @@
         drillHtml = `<tr><td colspan="8" style="text-align:center;color:var(--text-muted);">No records match the current filters.</td></tr>`;
       }
       drillTbody.innerHTML = drillHtml;
+      postEmbedHeight();
     }
+
+    // When embedded in the admin iframe, report our content height so the
+    // parent can size the iframe and nothing (e.g. the Grand Total row) gets clipped.
+    function postEmbedHeight() {
+      if (window.parent === window) return;
+      try {
+        window.parent.postMessage({ schoolDashHeight: document.documentElement.scrollHeight }, '*');
+      } catch (e) { /* cross-origin parent: ignore */ }
+    }
+    window.addEventListener('resize', postEmbedHeight);
 
     function renderDonutChart(closed, parts, open) {
       const total = closed + parts + open;
@@ -2045,6 +2086,10 @@
       }
       document.body.style.padding = '0';
       document.body.style.background = 'transparent';
+
+      // Report height once layout settles (renderDashboard also reports on every render)
+      setTimeout(postEmbedHeight, 300);
+      setTimeout(postEmbedHeight, 1200);
     } else {
       // Initial renders for standalone version
       renderDashboard();
