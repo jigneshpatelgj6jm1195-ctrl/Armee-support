@@ -1095,19 +1095,16 @@
         
         <!-- Ageing & pending tables -->
         <div class="chart-container">
-          <div class="chart-title">🏢 Branch-wise Pending &amp; Aging (business days)</div>
+          <div class="chart-title">🏢 Branch-wise Complaint Status Summary</div>
           <div class="table-container">
             <table style="font-size:0.85rem;" class="table-compact">
               <thead>
                 <tr>
-                  <th rowspan="2" style="vertical-align: middle;">Branch</th>
-                  <th colspan="3" style="text-align:center; background:#eff6ff; border-bottom: 1px solid var(--border);">Pending Aging</th>
-                  <th rowspan="2" style="vertical-align: middle; text-align:center;">Total Pending</th>
-                </tr>
-                <tr>
-                  <th style="background:#eff6ff; text-align:center;">0–2</th>
-                  <th style="background:#eff6ff; text-align:center;">3–5</th>
-                  <th style="background:#eff6ff; text-align:center;">6+</th>
+                  <th>Branch</th>
+                  <th style="text-align:center;">Open</th>
+                  <th style="text-align:center;">Part Request</th>
+                  <th style="text-align:center;">Closed</th>
+                  <th style="text-align:center;">Total</th>
                 </tr>
               </thead>
               <tbody id="dashBranchSummaryTable">
@@ -1682,7 +1679,7 @@
         } else if (type === 'aging') {
           labelEl.innerHTML = ` (Filtered by Age Group: <strong>${val} days</strong>)`;
         } else if (type === 'cell') {
-          labelEl.innerHTML = ` (Filtered by Branch: <strong>${val.branch}</strong> &amp; Age Group: <strong>${val.agingGroup}</strong>)`;
+          labelEl.innerHTML = ` (Filtered by Branch: <strong>${val.branch}</strong> &amp; Status: <strong>${val.status}</strong>)`;
         }
         document.getElementById('schoolDrillClear').style.display = 'inline-block';
       }
@@ -1842,7 +1839,7 @@
       };
 
       let branchRowsHtml = "";
-      let totals = { d1: 0, d2: 0, d3: 0, total: 0 };
+      let totals = { open: 0, part: 0, closed: 0, total: 0 };
 
       branchNames.forEach(bname => {
         // If role restricted, skip other branches
@@ -1853,25 +1850,21 @@
         }
 
         const bList = list.filter(r => r.branch === bname);
-        
-        // Calculate aging groups for pending tickets (status !== Closed)
-        const pendingList = bList.filter(r => r.status !== 'Closed');
-        
-        const a1 = pendingList.filter(r => getTicketAge(r.date) <= 2).length;
-        const a2 = pendingList.filter(r => getTicketAge(r.date) >= 3 && getTicketAge(r.date) <= 5).length;
-        const a3 = pendingList.filter(r => getTicketAge(r.date) >= 6).length;
-        const bTotal = a1 + a2 + a3;
+        const bOpen = bList.filter(r => r.status === 'Open').length;
+        const bPart = bList.filter(r => r.status === 'Part Request').length;
+        const bClosed = bList.filter(r => r.status === 'Closed').length;
+        const bTotal = bList.length;
 
-        totals.d1 += a1;
-        totals.d2 += a2;
-        totals.d3 += a3;
+        totals.open += bOpen;
+        totals.part += bPart;
+        totals.closed += bClosed;
         totals.total += bTotal;
 
         branchRowsHtml += `<tr>
           <td><strong style="cursor:pointer; color:var(--primary); text-decoration:underline;" onclick="drillSchoolDash('branch', '${bname}')">${bname}</strong></td>
-          ${cell(a1, false, `drillSchoolDash('cell', {branch: '${bname}', agingGroup: '0-2'})`)}
-          ${cell(a2, false, `drillSchoolDash('cell', {branch: '${bname}', agingGroup: '3-5'})`)}
-          ${cell(a3, true, `drillSchoolDash('cell', {branch: '${bname}', agingGroup: '6+'})`)}
+          ${cell(bOpen, false, `drillSchoolDash('cell', {branch: '${bname}', status: 'Open'})`)}
+          ${cell(bPart, false, `drillSchoolDash('cell', {branch: '${bname}', status: 'Part Request'})`)}
+          ${cell(bClosed, false, `drillSchoolDash('cell', {branch: '${bname}', status: 'Closed'})`)}
           <td style="text-align:center; font-weight:800; cursor:pointer; color:var(--primary); text-decoration:underline;" onclick="drillSchoolDash('branch', '${bname}')">${bTotal}</td>
         </tr>`;
       });
@@ -1879,9 +1872,9 @@
       // Add Grand Total row
       branchRowsHtml += `<tr style="background:#f8faff; font-weight:800; border-top:2px solid var(--border);">
         <td>Grand Total</td>
-        ${cell(totals.d1, false, `drillSchoolDash('aging', '0-2')`)}
-        ${cell(totals.d2, false, `drillSchoolDash('aging', '3-5')`)}
-        ${cell(totals.d3, true, `drillSchoolDash('aging', '6+')`)}
+        ${cell(totals.open, false, `drillSchoolDash('status', 'Open')`)}
+        ${cell(totals.part, false, `drillSchoolDash('status', 'Part Request')`)}
+        ${cell(totals.closed, false, `drillSchoolDash('status', 'Closed')`)}
         <td style="text-align:center; font-weight:800; cursor:pointer; color:var(--primary); text-decoration:underline;" onclick="clearSchoolDrill()">${totals.total}</td>
       </tr>`;
 
@@ -1907,23 +1900,8 @@
           drilldownList = drilldownList.filter(r => r.status !== 'Closed' && getTicketAge(r.date) > 30);
         } else if (type === 'branch') {
           drilldownList = drilldownList.filter(r => r.branch === val);
-        } else if (type === 'aging') {
-          if (val === '0-2') {
-            drilldownList = drilldownList.filter(r => r.status !== 'Closed' && getTicketAge(r.date) <= 2);
-          } else if (val === '3-5') {
-            drilldownList = drilldownList.filter(r => r.status !== 'Closed' && getTicketAge(r.date) >= 3 && getTicketAge(r.date) <= 5);
-          } else if (val === '6+') {
-            drilldownList = drilldownList.filter(r => r.status !== 'Closed' && getTicketAge(r.date) >= 6);
-          }
         } else if (type === 'cell') {
-          drilldownList = drilldownList.filter(r => r.branch === val.branch);
-          if (val.agingGroup === '0-2') {
-            drilldownList = drilldownList.filter(r => r.status !== 'Closed' && getTicketAge(r.date) <= 2);
-          } else if (val.agingGroup === '3-5') {
-            drilldownList = drilldownList.filter(r => r.status !== 'Closed' && getTicketAge(r.date) >= 3 && getTicketAge(r.date) <= 5);
-          } else if (val.agingGroup === '6+') {
-            drilldownList = drilldownList.filter(r => r.status !== 'Closed' && getTicketAge(r.date) >= 6);
-          }
+          drilldownList = drilldownList.filter(r => r.branch === val.branch && r.status === val.status);
         }
       }
 
