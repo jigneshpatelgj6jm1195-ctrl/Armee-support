@@ -677,6 +677,7 @@ textarea { resize: none; min-height: 80px; }
             oninput="onDiseInput(this)" />
         </div>
         <div class="status-banner" id="lookupStatus"></div>
+        <div id="scPicker"></div>
       </div>
 
       <div class="card" id="recentCard" style="display:none;">
@@ -2302,6 +2303,18 @@ function triggerLookup() {
   }
   foundRecord = record;
 
+  if (appFlow === 'school') {
+    // School Complaint flow: entries are individual complaints, not project variants.
+    showStatus('success', list.length > 1
+      ? `✅ ${record.school} — ${list.length} complaints on record. Tap the one you are fixing below.`
+      : `✅ ${record.school}`);
+    saveRecentLookup(record);
+    renderScPicker(dise, list, list.indexOf(record));
+    applySchoolComplaintRecord(record);
+    return;
+  }
+
+  clearScPicker();
   if (list.length > 1 && !project) {
     const projs = list.map(r => r.project).join(' & ');
     showStatus('success', `✅ ${record.school} — in ${projs}. Please select a Project above.`);
@@ -2312,30 +2325,86 @@ function triggerLookup() {
     showStatus('success', `✅ ${record.school}`);
   }
   saveRecentLookup(record);
+}
 
-  if (appFlow === 'school') {
-    if (record.serialNumber) {
-      document.getElementById('fSerial').value = record.serialNumber;
-    }
-    if (record.equipment) {
-      const eqUpper = record.equipment.trim().toUpperCase();
-      let matchedEq = (MASTER_DB.equipment || []).find(e => e.name.toUpperCase() === eqUpper);
-      if (matchedEq) {
-        document.getElementById('fEquipment').value = matchedEq.name;
-        onEquipmentChange();
-        
-        if (record.natureOfComplaint) {
-          const natUpper = record.natureOfComplaint.trim().toUpperCase();
-          setTimeout(() => {
-            const matchedNat = (matchedEq.complaints || []).find(c => c.name.toUpperCase() === natUpper);
-            if (matchedNat) {
-              document.getElementById('fNature').value = matchedNat.name;
-            }
-          }, 100);
-        }
-      }
-    }
+/* ── School Complaint flow: record picker + tolerant auto-fill ── */
+// Equipment names in the complaint sheet that differ from master data names.
+const SC_EQUIPMENT_ALIASES = { 'LCD': 'TFT', 'MONITOR': 'TFT', 'COMPUTER': 'DESKTOP', 'PC': 'DESKTOP' };
+// Nature names in the complaint sheet mapped to master data natures (first existing candidate wins).
+const SC_NATURE_ALIASES = {
+  'POWER PROBLEM':        ['POWER ISSUE', 'NO POWER', 'NOT STARTING', 'NOT STARTING / DEAD'],
+  'NO POWER':             ['NO POWER', 'POWER ISSUE', 'NOT STARTING', 'NOT STARTING / DEAD'],
+  'NO DISPLAY':           ['NO DISPLAY', 'DISPLAY ISSUE'],
+  'DISPLAY PROBLEM':      ['DISPLAY ISSUE', 'NO DISPLAY'],
+  'TOUCHPAD NOT WORKING': ['TOUCH NOT WORKING', 'TOUCHPAD ISSUE'],
+  'TOUCH PROBLEM':        ['TOUCH NOT WORKING', 'TOUCHPAD ISSUE'],
+  'OS PROBLEM':           ['SOFTWARE ISSUE'],
+  'LINE PROBLEM':         ['VERTICAL LINE', 'DISPLAY ISSUE', 'NO DISPLAY'],
+};
+
+function scResolveEquipment(rawName) {
+  const up = String(rawName || '').trim().toUpperCase();
+  if (!up) return null;
+  const eqList = MASTER_DB.equipment || [];
+  let eq = eqList.find(e => e.name.toUpperCase() === up);
+  if (eq) return eq;
+  const alias = SC_EQUIPMENT_ALIASES[up];
+  if (alias) eq = eqList.find(e => e.name.toUpperCase() === alias);
+  return eq || null;
+}
+
+function scResolveNature(rawNature, complaints) {
+  const up = String(rawNature || '').trim().toUpperCase();
+  if (!up || !complaints || !complaints.length) return '';
+  let m = complaints.find(c => c.name.toUpperCase() === up);
+  if (m) return m.name;
+  for (const cand of (SC_NATURE_ALIASES[up] || [])) {
+    m = complaints.find(c => c.name.toUpperCase() === cand);
+    if (m) return m.name;
   }
+  m = complaints.find(c => up.includes(c.name.toUpperCase()) || c.name.toUpperCase().includes(up));
+  return m ? m.name : '';
+}
+
+function applySchoolComplaintRecord(record) {
+  foundRecord = record;
+  document.getElementById('fSerial').value = record.serialNumber || '';
+  const eq = scResolveEquipment(record.equipment);
+  if (eq) {
+    document.getElementById('fEquipment').value = eq.name;
+    onEquipmentChange();
+    setTimeout(() => {
+      const natName = scResolveNature(record.natureOfComplaint, eq.complaints || []);
+      if (natName) document.getElementById('fNature').value = natName;
+    }, 120);
+  }
+}
+
+function renderScPicker(dise, list, activeIdx) {
+  const el = document.getElementById('scPicker');
+  if (!el) return;
+  if (!list || list.length < 2) { el.innerHTML = ''; return; }
+  el.innerHTML =
+    '<div style="font-size:0.72rem;font-weight:800;color:rgba(255,255,255,0.92);margin:10px 0 6px;">' + list.length + ' complaints at this school — tap the one you are fixing:</div>' +
+    list.map((r, i) =>
+      '<div onclick="scPickRecord(\'' + escDept(dise) + '\',' + i + ')" style="background:' + (i === activeIdx ? 'rgba(255,255,255,0.96)' : 'rgba(255,255,255,0.7)') + ';border:2px solid ' + (i === activeIdx ? '#10b981' : 'transparent') + ';border-radius:10px;padding:8px 10px;margin-bottom:6px;cursor:pointer;color:#1e293b;">' +
+        '<div style="font-size:0.78rem;font-weight:800;">' + (i + 1) + '. ' + escDept(r.equipment || '?') + ' — ' + escDept(r.natureOfComplaint || '?') + '</div>' +
+        '<div style="font-size:0.7rem;color:#475569;">S/N: ' + escDept(r.serialNumber || '—') + (i === activeIdx ? ' · ✅ selected' : '') + '</div>' +
+      '</div>'
+    ).join('');
+}
+
+function scPickRecord(dise, idx) {
+  const list = SCHOOL_COMPLAINT_DB[dise];
+  if (!list || !list[idx]) return;
+  applySchoolComplaintRecord(list[idx]);
+  renderScPicker(dise, list, idx);
+  showToast('Complaint ' + (idx + 1) + ' selected — details auto-filled', 'success');
+}
+
+function clearScPicker() {
+  const el = document.getElementById('scPicker');
+  if (el) el.innerHTML = '';
 }
 
 function showStatus(type, msg) {
@@ -3127,6 +3196,7 @@ function resetAll() {
   document.getElementById('lookupDise').value    = '';
   document.getElementById('lookupProject').value = '';
   document.getElementById('lookupStatus').className = 'status-banner';
+  clearScPicker();
   document.getElementById('fEquipment').value = '';
   document.getElementById('fNature').innerHTML = '<option value="">— Select Equipment First —</option>';
   const qtyInp = document.getElementById('fQty');
