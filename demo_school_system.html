@@ -1854,9 +1854,32 @@
     // Set today's date in form datepicker by default
     document.getElementById('compDate').value = new Date().toISOString().split('T')[0];
 
-    // Initial renders
-    renderDashboard();
-    renderDbTable();
+    // Check if embedded in the admin iframe
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('embed') === 'true' || urlParams.get('view') === 'dashboard') {
+      // Hide header and main tab bar
+      const header = document.querySelector('header');
+      if (header) header.style.display = 'none';
+      const navTabs = document.getElementById('mainNavTabs');
+      if (navTabs) navTabs.style.display = 'none';
+      
+      // Automatically navigate to dashboard view
+      switchView('dashboard');
+      
+      // Remove page padding or container limits to blend in perfectly
+      const container = document.querySelector('.container');
+      if (container) {
+        container.style.maxWidth = '100%';
+        container.style.padding = '0';
+        container.style.marginTop = '0';
+      }
+      document.body.style.padding = '0';
+      document.body.style.background = 'transparent';
+    } else {
+      // Initial renders for standalone version
+      renderDashboard();
+      renderDbTable();
+    }
 
   </script>
 </body>
