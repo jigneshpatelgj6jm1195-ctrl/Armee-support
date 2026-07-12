@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Complaint Form" />
-  <meta name="theme-color" content="#1a56db" />
+  <meta name="theme-color" content="#0E7C45" />
   <title>School Complaint Form</title>
   <link rel="icon" type="image/png" href="armee_logo_square.png" />
   <link rel="apple-touch-icon" href="armee_logo_square.png" />
@@ -21,14 +21,14 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
 :root {
-  --primary:       #1a56db;
-  --primary-dark:  #1240ab;
-  --primary-light: #dbeafe;
-  --accent:        #06b6d4;
+  --primary:       #0E7C45;
+  --primary-dark:  #0A5C33;
+  --primary-light: #E5F2EA;
+  --accent:        #F2790F;
   --success:       #10b981;
   --warning:       #f59e0b;
   --danger:        #ef4444;
-  --bg:            #f0f4ff;
+  --bg:            #F2F5F1;
   --card:          #ffffff;
   --border:        #e2e8f0;
   --text:          #1e293b;
@@ -36,7 +36,7 @@
   --label:         #374151;
   --safe-top:      env(safe-area-inset-top, 0px);
   --safe-bottom:   env(safe-area-inset-bottom, 0px);
-  --grad:          linear-gradient(135deg, #1a56db, #06b6d4);
+  --grad:          linear-gradient(135deg, #0E7C45, #0A5C33);
 }
 
 html, body {
@@ -197,9 +197,9 @@ input[type=number], select, textarea {
 }
 input:focus, select:focus, textarea:focus {
   border-color: var(--primary); background: white;
-  box-shadow: 0 0 0 3px rgba(26,86,219,0.12);
+  box-shadow: 0 0 0 3px rgba(14,124,69,0.14);
 }
-input[readonly] { background: #eef5ff !important; border-color: #b8d3fc !important; color: #1e40af; font-weight: 600; }
+input[readonly] { background: #EEF6F0 !important; border-color: #BFDCC9 !important; color: #0A5C33; font-weight: 600; }
 select {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: right 14px center; padding-right: 40px; cursor: pointer;
@@ -232,13 +232,13 @@ textarea { resize: none; min-height: 80px; }
 .info-chip-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px; }
 .info-chip {
   background: var(--primary-light); border-radius: 10px;
-  padding: 10px 12px; border: 1px solid #bfdbfe;
+  padding: 10px 12px; border: 1px solid #CBE3D4;
 }
 .info-chip-label {
   font-size: 0.65rem; color: var(--primary); font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px;
 }
-.info-chip-value { font-size: 0.82rem; font-weight: 600; color: #1e40af; word-break: break-word; }
+.info-chip-value { font-size: 0.82rem; font-weight: 600; color: #0A5C33; word-break: break-word; }
 .info-chip.full { grid-column: span 2; }
 
 /* ── Editable chip with edit button ── */
@@ -528,19 +528,6 @@ textarea { resize: none; min-height: 80px; }
     <h2 style="font-size:1.1rem; font-weight:800; color:var(--primary); margin-bottom:2px; text-align:center;">ArMee Technology Services</h2>
     <div style="font-size:0.75rem; font-weight:700; color:var(--muted); margin-bottom:16px; text-align:center;">School Complaint Management System</div>
     
-    <!-- PWA Install Accordion -->
-    <div style="width:100%; background:#f1f5f9; border-radius:12px; border:1px solid var(--border); padding:12px; margin-bottom:16px; text-align:left;">
-      <div style="font-size:0.75rem; font-weight:800; color:var(--text); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
-        📲 PWA Installation Guide
-      </div>
-      <div style="font-size:0.72rem; line-height:1.45; color:var(--muted);">
-        <b>Android Mobile:</b><br>
-        1️⃣ Open link. 2️⃣ Click "Add to Home Screen" / "Install App". 3️⃣ Launch App and login.<br>
-        <b>Windows Laptop:</b><br>
-        1️⃣ Open link. 2️⃣ Click "Install App" in address bar. 3️⃣ Pin to Taskbar.
-      </div>
-    </div>
-
     <div class="setup-form" style="width:100%;">
       <div class="field">
         <label for="setupName">Your Full Name <span class="req">*</span></label>
@@ -560,6 +547,19 @@ textarea { resize: none; min-height: 80px; }
       </div>
       <button class="btn-setup-start" onclick="saveUser()">Continue →</button>
     </div>
+
+    <!-- PWA install guide: collapsed by default so sign-in stays front and center -->
+    <details style="width:100%; background:var(--primary-light); border-radius:12px; border:1px solid #CBE3D4; padding:12px 14px; margin-top:16px; text-align:left;">
+      <summary style="font-size:0.78rem; font-weight:800; color:var(--primary-dark); cursor:pointer; list-style-position:inside;">
+        📲 Install this app on your phone <span style="display:block; font-weight:600; color:#4C7A5F; font-size:0.7rem; margin-left:18px;">Works offline · opens like a normal app · tap for steps</span>
+      </summary>
+      <div style="font-size:0.72rem; line-height:1.5; color:var(--muted); margin-top:8px;">
+        <b>Android Mobile:</b><br>
+        1️⃣ Open link. 2️⃣ Click "Add to Home Screen" / "Install App". 3️⃣ Launch App and login.<br>
+        <b>Windows Laptop:</b><br>
+        1️⃣ Open link. 2️⃣ Click "Install App" in address bar. 3️⃣ Pin to Taskbar.
+      </div>
+    </details>
   </div>
 </div>
 
@@ -571,7 +571,7 @@ textarea { resize: none; min-height: 80px; }
     <div style="font-size:0.75rem; font-weight:700; color:var(--muted); margin-bottom:24px; text-align:center;">What would you like to work on?</div>
 
     <button onclick="enterAdvance()" style="width:100%; background:white; border:2px solid var(--border); border-radius:16px; padding:18px 16px; margin-bottom:14px; cursor:pointer; text-align:left; display:flex; align-items:center; gap:14px; box-shadow:0 2px 8px rgba(0,0,0,0.05);">
-      <div style="font-size:2rem;">📝</div>
+      <div style="width:48px; height:48px; border-radius:14px; background:var(--primary-light); display:flex; align-items:center; justify-content:center; font-size:1.5rem; flex-shrink:0;">📝</div>
       <div>
         <div style="font-size:0.95rem; font-weight:800; color:var(--text);">Advance Complaint</div>
         <div style="font-size:0.72rem; color:var(--muted); margin-top:2px;">Register a new school equipment complaint (DISE lookup, photos, serial number)</div>
@@ -579,7 +579,7 @@ textarea { resize: none; min-height: 80px; }
     </button>
 
     <button onclick="enterDepartment()" style="width:100%; background:white; border:2px solid var(--border); border-radius:16px; padding:18px 16px; cursor:pointer; text-align:left; display:flex; align-items:center; gap:14px; box-shadow:0 2px 8px rgba(0,0,0,0.05);">
-      <div style="font-size:2rem;">🏛️</div>
+      <div style="width:48px; height:48px; border-radius:14px; background:#FDEBD9; display:flex; align-items:center; justify-content:center; font-size:1.5rem; flex-shrink:0;">🏛️</div>
       <div>
         <div style="font-size:0.95rem; font-weight:800; color:var(--text);">Department Complaint</div>
         <div style="font-size:0.72rem; color:var(--muted); margin-top:2px;">Resolve government portal tickets on site (OTP closure / part request)</div>
@@ -587,7 +587,7 @@ textarea { resize: none; min-height: 80px; }
     </button>
 
     <button onclick="enterSchool()" style="width:100%; background:white; border:2px solid var(--border); border-radius:16px; padding:18px 16px; margin-top:14px; cursor:pointer; text-align:left; display:flex; align-items:center; gap:14px; box-shadow:0 2px 8px rgba(0,0,0,0.05);">
-      <div style="font-size:2rem;">🏫</div>
+      <div style="width:48px; height:48px; border-radius:14px; background:#EAF0FA; display:flex; align-items:center; justify-content:center; font-size:1.5rem; flex-shrink:0;">🏫</div>
       <div>
         <div style="font-size:0.95rem; font-weight:800; color:var(--text);">School Complaint</div>
         <div style="font-size:0.72rem; color:var(--muted); margin-top:2px;">Look up school details by DISE code, auto-fill asset/serial details, and log resolution status.</div>
@@ -1004,7 +1004,7 @@ textarea { resize: none; min-height: 80px; }
     <div class="sheet-handle"></div>
     <div class="sheet-title" id="editFieldTitle">✏️ Edit Principal</div>
     <div class="sheet-body">
-      <div id="editFieldCurrentBox" style="background:#f0f4ff;border-radius:10px;padding:10px 12px;margin-bottom:14px;border:1px solid var(--border);">
+      <div id="editFieldCurrentBox" style="background:var(--bg);border-radius:10px;padding:10px 12px;margin-bottom:14px;border:1px solid var(--border);">
         <div style="font-size:0.65rem;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">Current Value</div>
         <div style="font-size:0.9rem;font-weight:600;color:var(--text);" id="editFieldCurrentVal">—</div>
       </div>
@@ -1051,7 +1051,7 @@ textarea { resize: none; min-height: 80px; }
       <button onclick="document.getElementById('helpSheetOverlay').classList.remove('show')" style="background:none; border:none; color:var(--danger); font-weight:700; cursor:pointer; font-size:1rem;">✕ Close</button>
     </div>
     <div class="sheet-body" style="padding: 16px; font-size: 0.82rem; line-height: 1.6; color: var(--text); max-height: 70vh; overflow-y: auto;">
-      <div style="background:#f0f4ff; border-radius:12px; border:1px solid #bfdbfe; padding:12px; margin-bottom:16px;">
+      <div style="background:var(--primary-light); border-radius:12px; border:1px solid #CBE3D4; padding:12px; margin-bottom:16px;">
         <div style="font-weight:800; color:var(--primary); font-size:0.85rem; margin-bottom:4px;">ArMee Technology Services Pvt. Ltd.</div>
         <div style="font-size:0.75rem; color:var(--muted); font-weight:600;">School Complaint Management Manual</div>
       </div>
@@ -1697,7 +1697,7 @@ function renderDeptTickets() {
   }
   const t0 = deptTickets[0];
   results.innerHTML =
-    '<div style="background:#f0f4ff; border:1.5px solid var(--border); border-radius:14px; padding:12px 14px; margin-bottom:12px;">' +
+    '<div style="background:var(--primary-light); border:1.5px solid #CBE3D4; border-radius:14px; padding:12px 14px; margin-bottom:12px;">' +
       '<div style="font-weight:800; font-size:0.88rem;">' + escDept(t0.school) + '</div>' +
       '<div style="font-size:0.7rem; color:var(--muted);">' + escDept(t0.district) + ' · ' + escDept(t0.block) + ' · ' + escDept(t0.village) + ' — ' + deptTickets.length + ' open ticket(s)</div>' +
     '</div>' +
