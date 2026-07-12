@@ -1853,9 +1853,11 @@ window.addEventListener('DOMContentLoaded', async () => {
   updateUserProfileUI(session);
   renderNavigationMenu();
   applyUrlModule();
-  await loadComplaints();
-  await loadSchoolList();
-  await ensureBranchDataLoaded();
+  await Promise.all([
+    loadComplaints(),
+    loadSchoolList(),
+    ensureBranchDataLoaded()
+  ]);
   startAutoRefresh();
 });
 
@@ -2336,6 +2338,14 @@ async function ensureBranchDataLoaded() {
       window.parentBmBranches = bmBranches;
       window.parentBmAliases = bmAliases;
       logToDebug(`Loaded ${bmBranches.length} branches and ${bmAliases.length} alias mappings for dashboard summary.`, 'success');
+      
+      const iframe = document.getElementById('schoolDashIframe');
+      if (iframe && iframe.contentWindow && typeof iframe.contentWindow.renderDashboard === 'function') {
+        iframe.contentWindow.renderDashboard();
+        if (typeof iframe.contentWindow.renderDbTable === 'function') {
+          iframe.contentWindow.renderDbTable();
+        }
+      }
     } catch (e) {
       console.error('Failed to load branch mapping data:', e);
     } finally {
@@ -5617,6 +5627,14 @@ async function loadBranchMgmt() {
     window.parentBmBranches = bmBranches;
     window.parentBmAliases = bmAliases;
     renderDoTable(); renderBrTable(); renderUnmappedTable(); renderAliasTable();
+    
+    const iframe = document.getElementById('schoolDashIframe');
+    if (iframe && iframe.contentWindow && typeof iframe.contentWindow.renderDashboard === 'function') {
+      iframe.contentWindow.renderDashboard();
+      if (typeof iframe.contentWindow.renderDbTable === 'function') {
+        iframe.contentWindow.renderDbTable();
+      }
+    }
   } catch (e) {
     showToast('❌ Could not load branch data: ' + e.message, 'danger');
   }
