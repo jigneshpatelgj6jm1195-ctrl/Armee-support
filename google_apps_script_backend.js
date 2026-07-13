@@ -365,6 +365,15 @@ function doPost(e) {
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
+    if (data.action === 'update_school_complaint_status') {
+      var authErrS = requireAdminAuth_(data, false); // any admin can update
+      if (authErrS) return ContentService.createTextOutput(JSON.stringify(authErrS))
+                                         .setMimeType(ContentService.MimeType.JSON);
+      var count = updateSchoolComplaintStatusInSheet(ss, data.srNos, data.status);
+      return ContentService.createTextOutput(JSON.stringify({ status: 'ok', updatedCount: count }))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
     if (data.action === 'delete_complaint') {
       var authErrD = requireAdminAuth_(data, true); // super admin only
       if (authErrD) return ContentService.createTextOutput(JSON.stringify(authErrD))
@@ -3924,27 +3933,19 @@ function syncSchoolComplaintMasterStatus(ss) {
     
     for (var j = 0; j < masterRows.length; j++) {
       var serial = String(masterRows[j][13] || '').trim().toUpperCase();
-      var expectedStatus = '';
-      var expectedSuspected = '';
-      
       if (serial && complaintsMap[serial]) {
         var match = complaintsMap[serial];
-        expectedSuspected = match.suspectedPart;
-        if (expectedSuspected) {
-          expectedStatus = 'Part Request';
-        } else {
-          expectedStatus = 'Closed';
+        var expectedSuspected = match.suspectedPart;
+        var expectedStatus = expectedSuspected ? 'Part Request' : 'Closed';
+        
+        var currentStatus = String(masterRows[j][16] || '').trim();
+        var currentSuspected = String(masterRows[j][17] || '').trim();
+        
+        if (currentStatus !== expectedStatus || currentSuspected !== expectedSuspected) {
+          masterRows[j][16] = expectedStatus;
+          masterRows[j][17] = expectedSuspected;
+          changed = true;
         }
-      }
-      
-      // Update values in memory if they differ
-      var currentStatus = String(masterRows[j][16] || '').trim();
-      var currentSuspected = String(masterRows[j][17] || '').trim();
-      
-      if (currentStatus !== expectedStatus || currentSuspected !== expectedSuspected) {
-        masterRows[j][16] = expectedStatus;
-        masterRows[j][17] = expectedSuspected;
-        changed = true;
       }
     }
     
@@ -4041,4 +4042,37 @@ function getAllSchoolComplaints(ss) {
   }
 
   return results;
+}
+
+function updateSchoolComplaintStatusInSheet(ss, srNos, status) {
+  var sheet = ss.getSheetByName('SchoolComplaintMaster');
+  if (!sheet) return 0;
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return 0;
+  
+  var range = sheet.getRange(2, 1, lastRow - 1, 19);
+  var values = range.getValues();
+  var updatedCount = 0;
+  
+  var srNoMap = {};
+  if (Array.isArray(srNos)) {
+    srNos.forEach(function(s) { srNoMap[String(s).trim()] = true; });
+  } else {
+    srNoMap[String(srNos).trim()] = true;
+  }
+  
+  for (var i = 0; i < values.length; i++) {
+    var sheetSrNo = String(values[i][0]).trim();
+    if (srNoMap[sheetSrNo]) {
+      var rowNum = i + 2;
+      sheet.getRange(rowNum, 17).setValue(status); // Column Q: Status
+      
+      // If closing, clear the suspected part so sync doesn't overwrite it
+      if (status === 'Closed') {
+        sheet.getRange(rowNum, 18).setValue(''); // Column R: Suspected Part
+      }
+      updatedCount++;
+    }
+  }
+  return updatedCount;
 }

@@ -1159,16 +1159,20 @@
       <div class="card">
         <div class="card-title-bar" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
           <h2 style="margin:0;">School Complaint Drill-Down Table <span id="schoolDrillLabel" style="font-size:0.8rem; color:var(--primary); font-weight:600;"></span></h2>
-          <button class="btn btn-ghost btn-sm" id="schoolDrillClear" style="display:none; padding:4px 10px; font-size:0.75rem; border:1px solid var(--border); border-radius:6px; background:#f8fafc; cursor:pointer;" onclick="clearSchoolDrill()">✖ Clear filter</button>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <button class="btn btn-primary btn-sm" onclick="exportSchoolComplaintsCSV()" style="padding:4px 10px; font-size:0.75rem; border-radius:6px; cursor:pointer; display:flex; align-items:center; gap:4px; font-weight:700; background-color:var(--primary); color:white; border:none;">📥 Export CSV</button>
+            <button class="btn btn-ghost btn-sm" id="schoolDrillClear" style="display:none; padding:4px 10px; font-size:0.75rem; border:1px solid var(--border); border-radius:6px; background:#f8fafc; cursor:pointer;" onclick="clearSchoolDrill()">✖ Clear filter</button>
+          </div>
         </div>
         <div class="table-container">
           <table>
             <thead>
               <tr>
+                <th style="text-align:center; width:40px;"><input type="checkbox" id="selectAllSchool" onchange="toggleSelectAllSchool(this)" style="transform: scale(1.2); cursor: pointer;" /></th>
                 <th>DISE Code</th>
                 <th>School Name</th>
                 <th>Serial Number</th>
-                <th>Status</th>
+                <th id="schoolStatusHeaderCol" style="text-align:center;">Status</th>
                 <th>Branch</th>
                 <th>District</th>
                 <th>Complaint Date</th>
@@ -1198,6 +1202,7 @@
     let wizardStep = 1;
     let selectedResolutionStatus = 'Closed';
     let userRole = 'admin';
+    let lastDrilldownList = [];
 
     // Mock data structures (representing Google Sheets)
     let dbComplaints = [
@@ -1935,8 +1940,18 @@
         }
       }
 
+      // Save globally for CSV export
+      lastDrilldownList = drilldownList;
+
+      // Reset Select All check
+      const selectAll = document.getElementById('selectAllSchool');
+      if (selectAll) selectAll.checked = false;
+      const headerCol = document.getElementById('schoolStatusHeaderCol');
+      if (headerCol) headerCol.textContent = 'Status';
+
       drilldownList.forEach(r => {
         drillHtml += `<tr>
+          <td style="text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" class="school-select-chk" data-sr-no="${r.srNo}" onchange="updateSchoolSelectionUI()" style="transform: scale(1.2); cursor: pointer;" /></td>
           <td>${r.diseCode}</td>
           <td><strong>${r.name}</strong></td>
           <td><code>${r.serial}</code></td>
@@ -1948,7 +1963,7 @@
         </tr>`;
       });
       if (drilldownList.length === 0) {
-        drillHtml = `<tr><td colspan="8" style="text-align:center;color:var(--text-muted);">No records match the current filters.</td></tr>`;
+        drillHtml = `<tr><td colspan="9" style="text-align:center;color:var(--text-muted);">No records match the current filters.</td></tr>`;
       }
       drillTbody.innerHTML = drillHtml;
       postEmbedHeight();
@@ -1963,6 +1978,155 @@
       } catch (e) { /* cross-origin parent: ignore */ }
     }
     window.addEventListener('resize', postEmbedHeight);
+
+    function getAdminAuthToken() {
+      try {
+        if (window.parent && window.parent.localStorage) {
+          const session = JSON.parse(window.parent.localStorage.getItem('armee_admin_session') || '{}');
+          return session.authToken || '';
+        }
+      } catch (e) {
+        console.warn("Failed to retrieve admin token from parent localStorage:", e);
+      }
+      return '';
+    }
+
+    function exportSchoolComplaintsCSV() {
+      if (!lastDrilldownList || lastDrilldownList.length === 0) {
+        showToast('⚠️ No records to export.', 'warn');
+        return;
+      }
+      
+      const csvHeaders = ['Sr No', 'Project', 'DISE Code', 'School Name', 'Serial Number', 'Status', 'Branch', 'District', 'Complaint Date', 'Source Tag'];
+      
+      const csvRows = lastDrilldownList.map(r => [
+        r.srNo || '',
+        r.project || 'ICT',
+        r.diseCode || '',
+        r.name || '',
+        r.serial || '',
+        r.status || 'Open',
+        r.branch || '',
+        r.district || '',
+        r.date || '',
+        r.source || 'School Complaint'
+      ]);
+      
+      const escapeCSV = val => {
+        let str = String(val === null || val === undefined ? '' : val);
+        str = str.replace(/"/g, '""');
+        if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+          str = `"${str}"`;
+        }
+        return str;
+      };
+      
+      const headerRow = csvHeaders.map(escapeCSV).join(',');
+      const dataRows = csvRows.map(row => row.map(escapeCSV).join(',')).join('\n');
+      const csvContent = '\uFEFF' + headerRow + '\n' + dataRows;
+      
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const filename = `school_complaints_export_${dateStr}.csv`;
+      
+      link.setAttribute('href', url);
+      link.setAttribute('download', filename);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showToast('📥 School complaints CSV exported successfully!', 'success');
+    }
+
+    function toggleSelectAllSchool(master) {
+      const checked = master ? !!master.checked : false;
+      const allChks = document.querySelectorAll('.school-select-chk');
+      allChks.forEach(chk => chk.checked = checked);
+      updateSchoolSelectionUI();
+    }
+
+    function updateSchoolSelectionUI() {
+      const chks = document.querySelectorAll('.school-select-chk:checked');
+      const selectAll = document.getElementById('selectAllSchool');
+      const headerCol = document.getElementById('schoolStatusHeaderCol');
+      
+      if (headerCol) {
+        if (chks.length > 0) {
+          headerCol.innerHTML = `
+            <select onchange="bulkUpdateSchoolStatus(this.value); this.value='';" style="padding:4px; font-size:0.72rem; border-radius:4px; border:1px solid var(--border); font-weight:700; width:100%; cursor:pointer; background:#eff6ff; color:#1e40af;">
+              <option value="">- Update (${chks.length}) -</option>
+              <option value="Open">🔵 Open</option>
+              <option value="Part Request">🔧 Part Request</option>
+              <option value="Closed">✅ Closed</option>
+            </select>
+          `;
+        } else {
+          headerCol.textContent = 'Status';
+        }
+      }
+      
+      const allChks = document.querySelectorAll('.school-select-chk');
+      if (allChks.length > 0 && selectAll) {
+        selectAll.checked = (chks.length === allChks.length);
+      }
+    }
+
+    async function bulkUpdateSchoolStatus(status) {
+      if (!status) return;
+      const chks = document.querySelectorAll('.school-select-chk:checked');
+      if (chks.length === 0) return;
+      
+      const srNos = Array.from(chks).map(chk => chk.getAttribute('data-sr-no'));
+      const confirmMsg = `Are you sure you want to update the status of ${srNos.length} selected school complaint(s) to "${status.toUpperCase()}"?`;
+      if (!confirm(confirmMsg)) return;
+      
+      const headerCol = document.getElementById('schoolStatusHeaderCol');
+      if (headerCol) {
+        headerCol.innerHTML = `<span style="font-size:0.7rem; color:var(--primary); font-weight:bold;">⏳ Updating...</span>`;
+      }
+      
+      const token = getAdminAuthToken();
+      if (!token) {
+        showToast('❌ Unauthorized. Please log in to the admin panel.', 'danger');
+        renderDashboard();
+        return;
+      }
+      
+      try {
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbykDdOGm-gO3hlKZ10q4weOXxv-YYxIBLmHkiG2bDVE1bTK1ZKKM-4MwWWaHoznRii4SA/exec';
+        
+        const res = await fetch(GOOGLE_SCRIPT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({
+            action: 'update_school_complaint_status',
+            srNos: srNos,
+            status: status,
+            authToken: token
+          })
+        });
+        const out = await res.json();
+        if (out.status === 'ok') {
+          showToast(`✅ Successfully updated ${out.updatedCount} school complaint(s)!`, 'success');
+        } else {
+          showToast(`❌ Error: ${out.message || 'Update failed'}`, 'danger');
+        }
+      } catch (e) {
+        showToast('❌ Network error during update. Please try again.', 'danger');
+      }
+      
+      const selectAll = document.getElementById('selectAllSchool');
+      if (selectAll) selectAll.checked = false;
+      
+      if (window.parent && typeof window.parent.loadComplaints === 'function') {
+        await window.parent.loadComplaints();
+      } else {
+        renderDashboard();
+      }
+    }
 
     function renderDonutChart(closed, parts, open) {
       const total = closed + parts + open;
