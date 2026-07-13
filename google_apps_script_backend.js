@@ -374,6 +374,15 @@ function doPost(e) {
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
+    if (data.action === 'update_school_complaint_dise_bulk') {
+      var authErrD = requireAdminAuth_(data, false); // any admin can update
+      if (authErrD) return ContentService.createTextOutput(JSON.stringify(authErrD))
+                                         .setMimeType(ContentService.MimeType.JSON);
+      var count = updateSchoolComplaintDiseBulkInSheet(ss, data.updates);
+      return ContentService.createTextOutput(JSON.stringify({ status: 'ok', updatedCount: count }))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
     if (data.action === 'delete_complaint') {
       var authErrD = requireAdminAuth_(data, true); // super admin only
       if (authErrD) return ContentService.createTextOutput(JSON.stringify(authErrD))
@@ -586,7 +595,7 @@ function doGet(e) {
     }
 
     if (action === 'get_school_complaints') {
-      var list = getSchoolComplaints(ss, String(e.parameter.dise || '').trim());
+      var list = getSchoolComplaints(ss, String(e.parameter.dise || '').trim(), String(e.parameter.schoolName || '').trim());
       return ContentService.createTextOutput(JSON.stringify(list))
                            .setMimeType(ContentService.MimeType.JSON);
     }
@@ -3931,7 +3940,29 @@ function syncSchoolComplaintMasterStatus(ss) {
     var masterRows = masterRange.getValues();
     var changed = false;
     
+    // Build lookup of School Name -> DISE Code from existing non-blank rows
+    var schoolNameDiseMap = {};
+    for (var k = 0; k < masterRows.length; k++) {
+      var d = String(masterRows[k][2] || '').trim();
+      var name = String(masterRows[k][6] || '').trim().toLowerCase();
+      if (d && name && !schoolNameDiseMap[name]) {
+        schoolNameDiseMap[name] = d;
+      }
+    }
+    
     for (var j = 0; j < masterRows.length; j++) {
+      // 1. Auto-fill blank DISE code if we have a match in other rows
+      var currentDise = String(masterRows[j][2] || '').trim();
+      if (!currentDise) {
+        var schoolName = String(masterRows[j][6] || '').trim().toLowerCase();
+        var matchedDise = schoolNameDiseMap[schoolName];
+        if (matchedDise) {
+          masterRows[j][2] = matchedDise;
+          changed = true;
+        }
+      }
+      
+      // 2. Sync status/suspectedPart from Complaints
       var serial = String(masterRows[j][13] || '').trim().toUpperCase();
       if (serial && complaintsMap[serial]) {
         var match = complaintsMap[serial];
@@ -3959,7 +3990,7 @@ function syncSchoolComplaintMasterStatus(ss) {
  * Returns school complaints from SchoolComplaintMaster matching the DISE code
  * where the Status column is blank/empty.
  */
-function getSchoolComplaints(ss, dise) {
+function getSchoolComplaints(ss, dise, schoolName) {
   // Sync first to ensure we have up-to-date statuses
   syncSchoolComplaintMasterStatus(ss);
 
@@ -3971,20 +4002,41 @@ function getSchoolComplaints(ss, dise) {
 
   var rows = master.getRange(2, 1, lastRow - 1, 19).getValues();
   var results = [];
+  
+  var targetDise = String(dise || '').trim();
+  var targetName = String(schoolName || '').trim().toLowerCase();
+  
+  var cleanName = function(n) {
+    return String(n || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  };
+  var cleanTargetName = cleanName(targetName);
 
   for (var i = 0; i < rows.length; i++) {
+    var rowSrNo = rows[i][0];
     var rowDise = String(rows[i][2] || '').trim();
+    var rowSchool = String(rows[i][6] || '').trim();
     var status = String(rows[i][16] || '').trim(); // Status is in column 17 (0-indexed: 16)
 
-    // Only return rows matching the DISE Code where Status is blank
-    if (rowDise === dise && !status) {
+    // Only return rows matching the DISE Code or School Name (when DISE is blank) where Status is blank
+    var isDiseMatch = (targetDise && rowDise === targetDise);
+    
+    var isNameMatch = false;
+    if (cleanTargetName && !rowDise && rowSchool) {
+      var cleanRowSchool = cleanName(rowSchool);
+      if (cleanRowSchool === cleanTargetName || cleanRowSchool.indexOf(cleanTargetName) !== -1 || cleanTargetName.indexOf(cleanRowSchool) !== -1) {
+        isNameMatch = true;
+      }
+    }
+
+    if ((isDiseMatch || isNameMatch) && !status) {
       results.push({
+        srNo:              rowSrNo,
         project:           String(rows[i][1] || 'ICT').trim(),
         dise:              rowDise,
         schoolCode:        String(rows[i][3] || '').trim(),
         district:          String(rows[i][4] || '').trim(),
         block:             String(rows[i][5] || '').trim(),
-        school:            String(rows[i][6] || '').trim(),
+        school:            rowSchool,
         principal:         String(rows[i][7] || '').trim(),
         mobile:            String(rows[i][8] || '').trim(),
         address:           String(rows[i][9] || '').trim(),
@@ -4073,6 +4125,44 @@ function updateSchoolComplaintStatusInSheet(ss, srNos, status) {
       }
       updatedCount++;
     }
+  }
+  return updatedCount;
+}
+
+function updateSchoolComplaintDiseBulkInSheet(ss, updates) {
+  var sheet = ss.getSheetByName('SchoolComplaintMaster');
+  if (!sheet) return 0;
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return 0;
+  
+  var range = sheet.getRange(2, 1, lastRow - 1, 19);
+  var values = range.getValues();
+  var updatedCount = 0;
+  
+  var updateMap = {};
+  if (Array.isArray(updates)) {
+    updates.forEach(function(u) {
+      if (u && u.srNo && u.dise) {
+        updateMap[String(u.srNo).trim()] = String(u.dise).trim();
+      }
+    });
+  }
+  
+  var changed = false;
+  for (var i = 0; i < values.length; i++) {
+    var sheetSrNo = String(values[i][0]).trim();
+    if (updateMap[sheetSrNo]) {
+      var newDise = updateMap[sheetSrNo];
+      if (String(values[i][2]).trim() !== newDise) {
+        values[i][2] = newDise; // Column C: DISE Code (index 2)
+        changed = true;
+        updatedCount++;
+      }
+    }
+  }
+  
+  if (changed) {
+    range.setValues(values);
   }
   return updatedCount;
 }

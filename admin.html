@@ -2014,6 +2014,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     loadSchoolList(),
     ensureBranchDataLoaded()
   ]);
+  if (typeof autoHealSchoolDiseCodes === 'function') {
+    await autoHealSchoolDiseCodes();
+  }
   startAutoRefresh();
 });
 
@@ -2176,6 +2179,9 @@ async function loadComplaints() {
           if (Array.isArray(schoolData)) {
             window.parentSchoolComplaintsList = schoolData;
             logToDebug(`Loaded ${schoolData.length} school master complaints for dashboard.`, 'success');
+            if (typeof autoHealSchoolDiseCodes === 'function') {
+              autoHealSchoolDiseCodes();
+            }
           }
         }
       } catch (schoolErr) {
@@ -2448,6 +2454,7 @@ function sdGetList() {
     let statusVal = String(c.status || '').trim();
     if (!statusVal) statusVal = 'Open';
     return {
+      srNo: c.srNo || '',
       date: c.importDate || c.complaintDate || '',
       name: c.school || c.principal || '',
       diseCode: c.dise || '',
@@ -2636,12 +2643,21 @@ function renderSchoolDash() {
   const chipClass = s => 'sd-chip ' + s.toLowerCase().replace(/\s+/g, '');
   let dHtml = '';
   drillList.forEach(r => {
+    const escName = sdEsc(r.name).replace(/'/g, "\\'");
     dHtml += `<tr>
       <td style="text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" class="school-select-chk" data-sr-no="${r.srNo}" onchange="updateSchoolSelectionUI()" style="transform: scale(1.2); cursor: pointer;" /></td>
-      <td>${sdEsc(r.diseCode)}</td>
+      <td onclick="promptUpdateDiseCode(${r.srNo}, '${sdEsc(r.diseCode)}', '${escName}')" style="cursor: pointer; text-decoration: underline; color: var(--primary);" title="Click to link/update DISE code">
+        ${sdEsc(r.diseCode) || '<span style="color:var(--danger); font-weight:bold;">⚠️ Blank (Link)</span>'}
+      </td>
       <td style="font-weight:700; white-space:normal;">${sdEsc(r.name)}</td>
       <td style="font-family:monospace; font-size:0.76rem;">${sdEsc(r.serial)}</td>
-      <td><span class="${chipClass(r.status)}">${sdEsc(r.status)}</span></td>
+      <td>
+        <select onchange="updateSingleSchoolStatus(${r.srNo}, this.value)" style="padding: 4px; font-size: 0.72rem; border-radius: 4px; border: 1px solid var(--border); font-weight: 700; cursor: pointer; background: white; color: var(--text);">
+          <option value="Open" ${r.status === 'Open' ? 'selected' : ''}>🔵 Open</option>
+          <option value="Part Request" ${r.status === 'Part Request' ? 'selected' : ''}>🔧 Part Request</option>
+          <option value="Closed" ${r.status === 'Closed' ? 'selected' : ''}>✅ Closed</option>
+        </select>
+      </td>
       <td>${sdEsc(r.branch)}</td>
       <td>${sdEsc(r.district)}</td>
       <td>${sdEsc(String(r.date).slice(0, 10))}</td>
@@ -2782,6 +2798,148 @@ async function bulkUpdateSchoolStatus(status) {
   if (selectAll) selectAll.checked = false;
   
   await loadComplaints();
+}
+
+async function updateSingleSchoolStatus(srNo, status) {
+  if (!status) return;
+  const confirmMsg = `Are you sure you want to update the status of this school complaint to "${status.toUpperCase()}"?`;
+  if (!confirm(confirmMsg)) {
+    renderSchoolDash();
+    return;
+  }
+  
+  const token = typeof adminAuthToken === 'function' ? adminAuthToken() : '';
+  try {
+    const res = await fetch(GOOGLE_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'update_school_complaint_status',
+        srNos: [srNo],
+        status: status,
+        authToken: token
+      })
+    });
+    const out = await res.json();
+    if (out.status === 'ok') {
+      showToast(`✅ Successfully updated school complaint status!`, 'success');
+    } else {
+      showToast(`❌ Error: ${out.message || 'Update failed'}`, 'danger');
+    }
+  } catch (e) {
+    showToast('❌ Network error during update. Please try again.', 'danger');
+  }
+  await loadComplaints();
+}
+
+async function promptUpdateDiseCode(srNo, currentDise, schoolName) {
+  let suggestedDise = '';
+  const nameQuery = String(schoolName).trim().toLowerCase();
+  
+  if (schoolDataRaw && Object.keys(schoolDataRaw).length > 0) {
+    for (const [dise, entries] of Object.entries(schoolDataRaw)) {
+      const arr = Array.isArray(entries) ? entries : [entries];
+      if (arr.some(e => String(e.school || '').trim().toLowerCase() === nameQuery)) {
+        suggestedDise = dise;
+        break;
+      }
+    }
+  }
+  
+  const promptVal = prompt(
+    `Enter 11-digit DISE code for school: "${schoolName}"\n` + 
+    (suggestedDise ? `(Suggested match found in database: ${suggestedDise})` : ''), 
+    suggestedDise || currentDise || ''
+  );
+  
+  if (promptVal === null) return;
+  const newDise = promptVal.trim();
+  if (newDise && !/^\d{11}$/.test(newDise)) {
+    alert('DISE Code must be exactly 11 digits!');
+    return;
+  }
+  
+  const token = typeof adminAuthToken === 'function' ? adminAuthToken() : '';
+  try {
+    showToast('⏳ Updating DISE code...', 'info');
+    const res = await fetch(GOOGLE_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'update_school_complaint_dise_bulk',
+        updates: [{ srNo: srNo, dise: newDise }],
+        authToken: token
+      })
+    });
+    const out = await res.json();
+    if (out.status === 'ok') {
+      showToast('✅ DISE Code updated successfully!', 'success');
+      await loadComplaints();
+    } else {
+      showToast('❌ Update failed: ' + (out.message || 'unknown error'), 'danger');
+    }
+  } catch (e) {
+    showToast('❌ Network error updating DISE code', 'danger');
+  }
+}
+
+async function autoHealSchoolDiseCodes() {
+  if (!window.parentSchoolComplaintsList || !window.parentSchoolComplaintsList.length) return;
+  if (!schoolDataRaw || Object.keys(schoolDataRaw).length === 0) return;
+  
+  const updates = [];
+  const schoolNameToDiseMap = {};
+  for (const [dise, entries] of Object.entries(schoolDataRaw)) {
+    const arr = Array.isArray(entries) ? entries : [entries];
+    arr.forEach(entry => {
+      const name = String(entry.school || '').trim().toLowerCase();
+      if (name) schoolNameToDiseMap[name] = dise;
+    });
+  }
+  
+  window.parentSchoolComplaintsList.forEach(c => {
+    const currentDise = String(c.dise || c.diseCode || '').trim();
+    if (!currentDise && c.srNo) {
+      const schoolName = String(c.school || c.name || '').trim().toLowerCase();
+      const matchedDise = schoolNameToDiseMap[schoolName];
+      if (matchedDise) {
+        updates.push({ srNo: c.srNo, dise: matchedDise });
+      }
+    }
+  });
+  
+  if (updates.length > 0) {
+    console.log(`[AUTO-HEAL] Found ${updates.length} school complaints with blank DISE codes matching school database.`);
+    const token = typeof adminAuthToken === 'function' ? adminAuthToken() : '';
+    try {
+      const res = await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          action: 'update_school_complaint_dise_bulk',
+          updates: updates,
+          authToken: token
+        })
+      });
+      const out = await res.json();
+      if (out.status === 'ok') {
+        logToDebug(`[AUTO-HEAL] Successfully populated ${out.updatedCount} blank school DISE codes in Google Sheet!`, 'success');
+        showToast(`📡 Auto-healed ${out.updatedCount} blank school DISE codes`, 'success');
+        
+        // Update local memory list directly so we don't have to trigger a network reload immediately
+        window.parentSchoolComplaintsList.forEach(c => {
+          const match = updates.find(u => u.srNo === c.srNo);
+          if (match) {
+            c.dise = match.dise;
+            c.diseCode = match.dise;
+          }
+        });
+        renderSchoolDash();
+      }
+    } catch (e) {
+      console.warn('Failed to auto-heal blank school DISE codes:', e);
+    }
+  }
 }
 
 function exportSchoolComplaintsCSV() {

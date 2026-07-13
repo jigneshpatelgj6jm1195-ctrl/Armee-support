@@ -2286,11 +2286,31 @@ async function triggerLookup() {
   if (appFlow === 'school' && GOOGLE_SCRIPT_URL && navigator.onLine) {
     showStatus('info', '⏳ Fetching live complaints from server...');
     try {
-      const res = await fetch(GOOGLE_SCRIPT_URL + '?action=get_school_complaints&dise=' + encodeURIComponent(dise) + '&t=' + Date.now());
+      const schoolRecs = SCHOOL_DB[dise];
+      const schoolName = (Array.isArray(schoolRecs) ? schoolRecs[0] : schoolRecs)?.school || '';
+      
+      const res = await fetch(GOOGLE_SCRIPT_URL + '?action=get_school_complaints&dise=' + encodeURIComponent(dise) + '&schoolName=' + encodeURIComponent(schoolName) + '&t=' + Date.now());
       if (res.ok) {
         const list = await res.json();
         if (Array.isArray(list)) {
           SCHOOL_COMPLAINT_DB[dise] = list;
+          
+          // Auto-sync missing DISE codes back to sheet
+          const missingDiseList = list.filter(r => !r.dise && r.srNo);
+          if (missingDiseList.length > 0) {
+            console.log(`Auto-healing: writing back DISE Code ${dise} for ${missingDiseList.length} complaints.`);
+            fetch(GOOGLE_SCRIPT_URL, {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain' },
+              body: JSON.stringify({
+                action: 'update_school_complaint_dise_bulk',
+                updates: missingDiseList.map(r => ({ srNo: r.srNo, dise: dise }))
+              })
+            }).catch(e => console.warn("Failed to auto-heal DISE code on server:", e));
+          }
+          
+          // Ensure all local entries have the DISE code populated
+          list.forEach(r => { r.dise = dise; });
         }
       }
     } catch (err) {
