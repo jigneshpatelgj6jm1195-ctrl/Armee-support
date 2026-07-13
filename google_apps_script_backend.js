@@ -342,12 +342,18 @@ function doPost(e) {
     }
 
     if (data.action === 'update_master') {
+      var authErr = requireAdminAuth_(data, true); // super admin only
+      if (authErr) return ContentService.createTextOutput(JSON.stringify(authErr))
+                                        .setMimeType(ContentService.MimeType.JSON);
       saveMasterData(ss, data.masterData);
       return ContentService.createTextOutput(JSON.stringify({ status: 'ok' }))
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
     if (data.action === 'update_complaints') {
+      var authErrC = requireAdminAuth_(data, false); // any logged-in admin
+      if (authErrC) return ContentService.createTextOutput(JSON.stringify(authErrC))
+                                         .setMimeType(ContentService.MimeType.JSON);
       var count = updateComplaintsStatus(ss, data.complaints);
       return ContentService.createTextOutput(JSON.stringify({ status: 'ok', updatedCount: count }))
                            .setMimeType(ContentService.MimeType.JSON);
@@ -360,18 +366,27 @@ function doPost(e) {
     }
 
     if (data.action === 'delete_complaint') {
+      var authErrD = requireAdminAuth_(data, true); // super admin only
+      if (authErrD) return ContentService.createTextOutput(JSON.stringify(authErrD))
+                                         .setMimeType(ContentService.MimeType.JSON);
       var success = deleteComplaintRow(ss, data.caseId, data.submittedAt, data.dise);
       return ContentService.createTextOutput(JSON.stringify({ status: success ? 'ok' : 'not_found' }))
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
     if (data.action === 'archive_complaints') {
+      var authErrA = requireAdminAuth_(data, true); // super admin only
+      if (authErrA) return ContentService.createTextOutput(JSON.stringify(authErrA))
+                                         .setMimeType(ContentService.MimeType.JSON);
       var archResult = archiveComplaints(ss, data.fromDate, data.toDate);
       return ContentService.createTextOutput(JSON.stringify({status: 'ok', archived: archResult.archived}))
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
     if (data.action === 'restore_complaints') {
+      var authErrR = requireAdminAuth_(data, true); // super admin only
+      if (authErrR) return ContentService.createTextOutput(JSON.stringify(authErrR))
+                                         .setMimeType(ContentService.MimeType.JSON);
       var restResult = restoreComplaints(ss, data.caseIds);
       return ContentService.createTextOutput(JSON.stringify({status: 'ok', restored: restResult.restored}))
                            .setMimeType(ContentService.MimeType.JSON);
@@ -1048,10 +1063,11 @@ function handleLogin(ss, data) {
   if (!email || !pass) return { status: 'error', message: 'Email and password required' };
 
   if (email === SUPER_ADMIN.email && pass === SUPER_ADMIN.password) {
-    return { status: 'ok', user: {
+    var suUser = {
       id: 'USR100', name: 'Super Admin', email: SUPER_ADMIN.email,
       role: 'super_admin', assignedDistricts: ['ALL'], status: 'active'
-    } };
+    };
+    return { status: 'ok', user: suUser, authToken: issueAuthToken_(suUser) };
   }
 
   var users = (getMasterData(ss).accessUsers) || [];
@@ -1059,13 +1075,66 @@ function handleLogin(ss, data) {
     var u = users[i];
     if (String(u.email || '').trim().toLowerCase() === email &&
         String(u.password) === pass && u.status === 'active') {
-      return { status: 'ok', user: {
+      var okUser = {
         id: u.id, name: u.name, email: u.email, phone: u.phone,
         role: u.role, assignedDistricts: u.assignedDistricts || [], status: u.status
-      } };
+      };
+      return { status: 'ok', user: okUser, authToken: issueAuthToken_(okUser) };
     }
   }
   return { status: 'error', message: 'Invalid email, password, or account inactive' };
+}
+
+/* ── Stateless signed session tokens (QA hardening: authenticated admin mutations) ── */
+
+function getSessionSecret_() {
+  var props = PropertiesService.getScriptProperties();
+  var s = props.getProperty('SESSION_SECRET');
+  if (!s) {
+    s = Utilities.getUuid() + Utilities.getUuid();
+    props.setProperty('SESSION_SECRET', s);
+  }
+  return s;
+}
+
+// Token format: base64(email|role|expiryMs) + '.' + base64(HMAC-SHA256 of payload)
+function issueAuthToken_(user) {
+  var exp = new Date().getTime() + 12 * 60 * 60 * 1000; // 12 hours
+  var payload = String(user.email) + '|' + String(user.role) + '|' + exp;
+  var sig = Utilities.computeHmacSha256Signature(payload, getSessionSecret_());
+  return Utilities.base64EncodeWebSafe(payload) + '.' + Utilities.base64EncodeWebSafe(sig);
+}
+
+// Returns {email, role} when the token is valid and unexpired, else null.
+function verifyAuthToken_(token) {
+  try {
+    if (!token) return null;
+    var parts = String(token).split('.');
+    if (parts.length !== 2) return null;
+    var payload = Utilities.newBlob(Utilities.base64DecodeWebSafe(parts[0])).getDataAsString();
+    var expected = Utilities.base64EncodeWebSafe(
+      Utilities.computeHmacSha256Signature(payload, getSessionSecret_()));
+    if (expected !== parts[1]) return null;
+    var bits = payload.split('|');
+    if (bits.length !== 3) return null;
+    if (new Date().getTime() > Number(bits[2])) return null;
+    return { email: bits[0], role: bits[1] };
+  } catch (e) {
+    return null;
+  }
+}
+
+// Guard for admin-only mutations. Returns null when authorized, or an error
+// response object to send back. superOnly restricts to super_admin.
+function requireAdminAuth_(data, superOnly) {
+  var who = verifyAuthToken_(data && data.authToken);
+  if (!who) {
+    return { status: 'error', code: 'auth', message: 'Session expired or unauthorized. Please log in again.' };
+  }
+  if (superOnly && who.role !== 'super_admin') {
+    return { status: 'error', code: 'auth', message: 'Only a super admin can perform this action.' };
+  }
+  return null;
 }
 
 /**

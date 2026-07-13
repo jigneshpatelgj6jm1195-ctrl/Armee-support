@@ -1960,6 +1960,15 @@ function isInvalidSerialNumber(serial) {
   return false;
 }
 
+// Signed session token issued by the backend at login; sent with admin mutations.
+function adminAuthToken() {
+  if (window.__adminAuthToken) return window.__adminAuthToken;
+  try {
+    const s = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}');
+    return s.authToken || '';
+  } catch (e) { return ''; }
+}
+
 function isLocal() {
   const hn = window.location.hostname;
   if (!hn) return true; // file:// protocol
@@ -2285,7 +2294,7 @@ async function saveAll() {
       method: 'POST',
       mode: 'no-cors',
       headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ action: 'update_master', masterData: masterData }),
+      body: JSON.stringify({ action: 'update_master', masterData: masterData, authToken: adminAuthToken() }),
     }).catch(() => {}); // fire and forget
   }
 
@@ -2313,7 +2322,7 @@ async function saveAll() {
       method: 'POST',
       mode: 'no-cors',
       headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ action: 'update_complaints', complaints: complaintsList }),
+      body: JSON.stringify({ action: 'update_complaints', complaints: complaintsList, authToken: adminAuthToken() }),
     }).catch(() => {});
   }
 
@@ -4035,7 +4044,7 @@ async function archiveDataRange() {
     const res = await fetch(GOOGLE_SCRIPT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ action: 'archive_complaints', fromDate, toDate }),
+      body: JSON.stringify({ action: 'archive_complaints', fromDate, toDate, authToken: adminAuthToken() }),
     });
     const result = await res.json();
     if (result.status === 'ok') {
@@ -4067,7 +4076,7 @@ async function restoreArchiveRecord(caseId) {
     const res = await fetch(GOOGLE_SCRIPT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ action: 'restore_complaints', caseIds: [caseId] }),
+      body: JSON.stringify({ action: 'restore_complaints', caseIds: [caseId], authToken: adminAuthToken() }),
     });
     const result = await res.json();
     if (result.status === 'ok') {
@@ -4455,6 +4464,7 @@ async function submitAdminLogin() {
       const out = await res.json();
       if (out.status === 'ok' && out.user) {
         user = out.user;
+        window.__adminAuthToken = out.authToken || '';
       } else {
         if (btnLogin) { btnLogin.disabled = false; }
         showToast('❌ ' + (out.message || 'Invalid email, password, or account inactive'), 'danger');
@@ -4483,6 +4493,7 @@ async function submitAdminLogin() {
     currentUser = user;
     const session = {
       user: user,
+      authToken: window.__adminAuthToken || '',
       timestamp: Date.now()
     };
     localStorage.setItem(SESSION_KEY, JSON.stringify(session));
@@ -4824,10 +4835,11 @@ async function deleteComplaint(origIndex) {
         mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify({ 
-          action: 'delete_complaint', 
-          caseId: c.caseId, 
-          submittedAt: c.submittedAt, 
-          dise: c.dise 
+          action: 'delete_complaint',
+          caseId: c.caseId,
+          submittedAt: c.submittedAt,
+          dise: c.dise,
+          authToken: adminAuthToken()
         }),
       });
       showToast('🗑️ Complaint deleted from Google Sheet!', 'success');
