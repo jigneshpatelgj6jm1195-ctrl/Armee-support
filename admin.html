@@ -14,20 +14,23 @@
 /* ═══════════════ CSS RESET & VARIABLE SYSTEM ═══════════════ */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
-  --primary:       #1a56db;
-  --primary-dark:  #1240ab;
-  --primary-light: #dbeafe;
-  --accent:        #06b6d4;
+  --primary:       #0E7C45;
+  --primary-dark:  #0A5C33;
+  --primary-light: #E5F2EA;
+  --accent:        #F2790F;
   --success:       #10b981;
   --warning:       #f59e0b;
   --danger:        #ef4444;
-  --bg:            #f8fafc;
+  --bg:            #F4F6F3;
   --card:          #ffffff;
   --border:        #e2e8f0;
   --text:          #1e293b;
   --muted:         #64748b;
   --label:         #374151;
-  --grad:          linear-gradient(135deg, #1a56db, #06b6d4);
+  --grad:          linear-gradient(135deg, #0E7C45, #0A5C33);
+  --side:          #10231A;
+  --side-ink:      #B7C8BC;
+  --side-active:   #1B3A29;
 }
 
 body {
@@ -35,9 +38,11 @@ body {
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr);
+  grid-template-rows: auto auto 1fr auto;
 }
+#localFileWarning, .header, .footer { grid-column: 1 / -1; }
 
 /* ═══════════════ BRAND HEADER ═══════════════ */
 .header {
@@ -71,51 +76,70 @@ body {
 }
 .header-link:hover { background: rgba(255,255,255,0.28); }
 
-/* ═══════════════ TABS SYSTEM ═══════════════ */
+/* ═══════════════ SIDEBAR NAVIGATION (was horizontal tabs) ═══════════════ */
 .tabs-bar {
-  background: white;
-  border-bottom: 1px solid var(--border);
-  padding: 0 32px;
+  grid-row: 3;
+  grid-column: 1;
+  background: var(--side);
+  padding: 8px 10px 20px;
   display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  white-space: nowrap;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
+  position: sticky;
+  top: 74px;
+  height: calc(100vh - 74px);
+  align-self: start;
 }
 .tabs-bar::-webkit-scrollbar {
-  height: 4px;
+  width: 4px;
 }
 .tabs-bar::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: rgba(255,255,255,0.15);
   border-radius: 2px;
+}
+.nav-group {
+  font-size: 0.62rem; font-weight: 800; letter-spacing: 0.14em;
+  text-transform: uppercase; color: #5F7566; padding: 14px 12px 5px;
+  flex-shrink: 0;
 }
 .tab-btn {
   flex-shrink: 0;
+  width: 100%;
+  text-align: left;
   background: none;
   border: none;
-  padding: 16px 20px;
+  border-radius: 9px;
+  padding: 9px 12px;
   font-family: inherit;
-  font-size: 0.88rem;
+  font-size: 0.84rem;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--side-ink);
   cursor: pointer;
   position: relative;
-  transition: color 0.2s;
+  transition: color 0.15s, background 0.15s;
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.tab-btn:hover { color: var(--primary); }
-.tab-btn.active { color: var(--primary); font-weight: 800; }
-.tab-btn.active::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: var(--grad);
-  border-radius: 3px 3px 0 0;
+.tab-btn:hover { color: #fff; background: rgba(255,255,255,0.07); }
+.tab-btn.active { color: #fff; font-weight: 800; background: var(--side-active); box-shadow: inset 3px 0 0 #3FBB7E; }
+.tab-btn.active::after { display: none; }
+.container {
+  grid-row: 3;
+  grid-column: 2;
+}
+@media (max-width: 900px) {
+  body { display: flex; flex-direction: column; }
+  .tabs-bar {
+    position: static; height: auto; flex-direction: row;
+    overflow-x: auto; overflow-y: hidden; padding: 6px 10px;
+    gap: 4px; white-space: nowrap; min-width: 0; max-width: 100vw;
+  }
+  .tab-btn { width: auto; }
+  .nav-group { display: none; }
 }
 .tab-content { display: none; }
 .tab-content.active { display: block; }
@@ -193,6 +217,26 @@ body {
 .stat-info { display: flex; flex-direction: column; }
 .stat-label { font-size: 0.72rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
 .stat-value { font-size: 1.6rem; font-weight: 800; color: var(--text); margin-top: 2px; }
+
+/* ═══════════════ SCHOOL DASH (native) ═══════════════ */
+.sd-label { display:block; font-size:0.62rem; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted); margin-bottom:4px; }
+.sd-select { border:1.5px solid var(--border); border-radius:9px; background:white; padding:8px 10px; font-size:0.8rem; font-family:inherit; color:var(--text); min-width:150px; }
+.sd-kpi { cursor:pointer; transition: box-shadow .15s ease, transform .15s ease, border-color .15s ease; }
+.sd-kpi:hover { border-color: var(--primary); box-shadow: 0 6px 18px rgba(14,124,69,0.14); transform: translateY(-1px); }
+.sd-trend { font-size:0.68rem; font-weight:600; color:var(--muted); margin-top:2px; }
+.sd-layout { display:grid; grid-template-columns: 1.6fr 1fr; gap:16px; }
+@media (max-width: 1100px) { .sd-layout { grid-template-columns: 1fr; } }
+.sd-table { width:100%; border-collapse:collapse; font-size:0.82rem; min-width:560px; }
+.sd-table th { text-align:left; font-size:0.64rem; font-weight:800; letter-spacing:0.06em; text-transform:uppercase; color:var(--muted); background:var(--bg); padding:9px 12px; border-bottom:1.5px solid var(--border); white-space:nowrap; }
+.sd-table td { padding:10px 12px; border-bottom:1px solid var(--border); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.sd-table tbody tr:hover td { background:#FAFBF9; }
+.sd-table tr.sd-grand td { background:var(--primary-light); font-weight:800; border-top:2px solid var(--primary); border-bottom:none; }
+.sd-link { color:var(--primary); font-weight:800; text-decoration:underline; cursor:pointer; }
+.sd-zero { color:#C4CCC4; text-align:center; }
+.sd-chip { display:inline-flex; align-items:center; border-radius:999px; padding:2px 10px; font-size:0.66rem; font-weight:800; letter-spacing:0.02em; }
+.sd-chip.open { background:#EAF0FA; color:#1D4ED8; }
+.sd-chip.partrequest { background:#F1EBFC; color:#6D28D9; }
+.sd-chip.closed { background:var(--primary-light); color:var(--primary); }
 
 /* ═══════════════ FORM FIELDS & INPUTS ═══════════════ */
 .field { margin-bottom: 14px; }
@@ -357,20 +401,24 @@ tr:hover td { background: #f8fafc; }
 
 <!-- TABS BAR -->
 <div class="tabs-bar">
+  <div class="nav-group">Overview</div>
   <button class="tab-btn active" id="btn-tab-dash" onclick="switchTab('dash')">📊 Dashboard</button>
+  <button class="tab-btn" id="btn-tab-schooldash" onclick="switchTab('schooldash')">📈 School Dash</button>
+  <div class="nav-group">Operations</div>
+  <button class="tab-btn" id="btn-tab-complaints" onclick="switchTab('complaints')">📋 Complaints &amp; Reports</button>
+  <button class="tab-btn" id="btn-tab-dept" onclick="switchTab('dept')">🏛️ Dept Complaints</button>
+  <button class="tab-btn" id="btn-tab-schoolupload" onclick="switchTab('schoolupload')">📤 School Upload</button>
+  <button class="tab-btn" id="btn-tab-archive" onclick="switchTab('archive')">📦 Archive Manager</button>
+  <div class="nav-group">Masters</div>
   <button class="tab-btn" id="btn-tab-schools" onclick="switchTab('schools')">🏫 School Master</button>
   <button class="tab-btn" id="btn-tab-projects" onclick="switchTab('projects')">🏗️ Project Master</button>
   <button class="tab-btn" id="btn-tab-equip" onclick="switchTab('equip')">🖥️ Equipment Master</button>
   <button class="tab-btn" id="btn-tab-parts" onclick="switchTab('parts')">🔧 Parts Master</button>
   <button class="tab-btn" id="btn-tab-users" onclick="switchTab('users')">👤 User Master</button>
+  <div class="nav-group">Administration</div>
   <button class="tab-btn" id="btn-tab-access" onclick="switchTab('access')">🔒 Access Control</button>
-  <button class="tab-btn" id="btn-tab-complaints" onclick="switchTab('complaints')">📋 Complaints &amp; Reports</button>
-  <button class="tab-btn" id="btn-tab-dept" onclick="switchTab('dept')">🏛️ Dept Complaints</button>
-  <button class="tab-btn" id="btn-tab-schoolupload" onclick="switchTab('schoolupload')">📤 School Upload</button>
-  <button class="tab-btn" id="btn-tab-schooldash" onclick="switchTab('schooldash')">📊 School Dash</button>
   <button class="tab-btn" id="btn-tab-branch" onclick="switchTab('branch')">🏢 Branch Management</button>
   <button class="tab-btn" id="btn-tab-branchemails" onclick="switchTab('branchemails')">📧 Branch Emails</button>
-  <button class="tab-btn" id="btn-tab-archive" onclick="switchTab('archive')">📦 Archive Manager</button>
 </div>
 
 <!-- CONTAINER -->
@@ -1102,8 +1150,107 @@ tr:hover td { background: #f8fafc; }
   </div>
 
   <!-- ================= TAB: SCHOOL DASHBOARD ================= -->
-  <div class="tab-content" id="tab-schooldash" style="padding:0;">
-    <iframe id="schoolDashIframe" src="demo_school_system.html?embed=true&v=1.1" style="width:100%; height:900px; border:none; border-radius:14px; box-shadow:0 4px 12px rgba(0,0,0,0.08);"></iframe>
+  <div class="tab-content" id="tab-schooldash">
+
+    <!-- Filters -->
+    <div class="card" style="margin-bottom:16px; padding:14px 16px; display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;">
+      <div>
+        <label class="sd-label">Branch</label>
+        <select id="sdFiltBranch" class="sd-select" onchange="renderSchoolDash()"><option value="ALL">All Branches</option></select>
+      </div>
+      <div>
+        <label class="sd-label">Status</label>
+        <select id="sdFiltStatus" class="sd-select" onchange="renderSchoolDash()">
+          <option value="ALL">All Statuses</option>
+          <option value="Open">Open</option>
+          <option value="Part Request">Part Request</option>
+          <option value="Closed">Closed</option>
+        </select>
+      </div>
+      <div>
+        <label class="sd-label">District</label>
+        <select id="sdFiltDistrict" class="sd-select" onchange="renderSchoolDash()"><option value="ALL">All Districts</option></select>
+      </div>
+      <div style="flex:1;"></div>
+      <button class="btn btn-ghost btn-sm" id="sdDrillClear" style="display:none;" onclick="sdClearDrill()">✖ Clear drill-down filter</button>
+      <div id="sdScopeNote" style="display:none; flex-basis:100%; font-size:0.72rem; font-weight:700; color:var(--primary-dark); background:var(--primary-light); border-radius:8px; padding:6px 10px;"></div>
+    </div>
+
+    <!-- KPI cards -->
+    <div class="stat-grid" style="grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); margin-bottom:16px;">
+      <div class="stat-card sd-kpi" onclick="sdClearDrill()" title="Show all records">
+        <div class="stat-info"><span class="stat-label">Total School Complaints</span><span class="stat-value" id="sdKpiTotal">0</span><span class="sd-trend">Overall tickets</span></div>
+      </div>
+      <div class="stat-card sd-kpi" onclick="sdDrill('status','Open')" title="Drill down: Open">
+        <div class="stat-info"><span class="stat-label">Open</span><span class="stat-value" id="sdKpiOpen" style="color:#1D4ED8;">0</span><span class="sd-trend">Needs attention</span></div>
+      </div>
+      <div class="stat-card sd-kpi" onclick="sdDrill('status','Part Request')" title="Drill down: Part Request">
+        <div class="stat-info"><span class="stat-label">Part Requests</span><span class="stat-value" id="sdKpiPart" style="color:#6D28D9;">0</span><span class="sd-trend" id="sdKpiPartPct">0% of total</span></div>
+      </div>
+      <div class="stat-card sd-kpi" onclick="sdDrill('status','Closed')" title="Drill down: Closed">
+        <div class="stat-info"><span class="stat-label">Closed</span><span class="stat-value" id="sdKpiClosed" style="color:var(--primary);">0</span><span class="sd-trend" id="sdKpiClosurePct">0% closure</span></div>
+      </div>
+      <div class="stat-card sd-kpi" onclick="sdDrill('aging30','true')" title="Drill down: pending over 30 days">
+        <div class="stat-info"><span class="stat-label">Pending &gt; 30 Days</span><span class="stat-value" id="sdKpiAging" style="color:var(--danger);">0</span><span class="sd-trend">Escalate</span></div>
+      </div>
+    </div>
+
+    <!-- Branch summary + donut -->
+    <div class="sd-layout">
+      <div class="card" style="margin-bottom:0;">
+        <div class="card-title" style="margin-bottom:12px;">🏢 Branch-wise Complaint Status Summary</div>
+        <div style="overflow-x:auto;">
+          <table class="sd-table">
+            <thead>
+              <tr>
+                <th>Branch</th>
+                <th style="text-align:center;">Open</th>
+                <th style="text-align:center;">Part Request</th>
+                <th style="text-align:center;">Closed</th>
+                <th style="text-align:center;">Total</th>
+              </tr>
+            </thead>
+            <tbody id="sdBranchTable"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:0; display:flex; flex-direction:column;">
+        <div class="card-title" style="margin-bottom:12px;">Ticket Status Distribution</div>
+        <div style="flex:1; display:flex; justify-content:center; align-items:center; min-height:200px;">
+          <svg width="180" height="180" viewBox="0 0 160 160" id="sdDonut" role="img" aria-label="Ticket status distribution"></svg>
+        </div>
+        <div id="sdDonutLegend" style="display:flex; justify-content:space-around; font-size:0.78rem; font-weight:700; margin-top:10px;"></div>
+      </div>
+    </div>
+
+    <!-- Drill-down records -->
+    <div class="card" style="margin-top:16px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+        <div class="card-title" style="margin-bottom:0;">📋 Complaint Records <span id="sdDrillLabel" style="font-size:0.78rem; color:var(--primary); font-weight:700;"></span></div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button class="btn btn-primary" onclick="exportSchoolComplaintsCSV()" style="padding:4px 10px; font-size:0.75rem; border-radius:6px; cursor:pointer; font-weight:700; background-color:var(--primary); color:white; border:none;">📥 Export CSV</button>
+          <span id="sdDrillCount" style="font-size:0.75rem; color:var(--muted); font-weight:700;"></span>
+        </div>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="sd-table">
+          <thead>
+            <tr>
+              <th style="text-align:center; width:40px;"><input type="checkbox" id="selectAllSchool" onchange="toggleSelectAllSchool(this)" style="transform: scale(1.2); cursor: pointer;" /></th>
+              <th>DISE Code</th>
+              <th>School Name</th>
+              <th>Serial Number</th>
+              <th id="schoolStatusHeaderCol" style="text-align:center;">Status</th>
+              <th>Branch</th>
+              <th>District</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody id="sdDrillTable"></tbody>
+        </table>
+      </div>
+    </div>
+
   </div>
 
   <!-- ================= TAB: BRANCH MANAGEMENT ================= -->
@@ -1432,12 +1579,12 @@ tr:hover td { background: #f8fafc; }
   <div class="modal">
     <h3>🔐 Admin Authorization Required</h3>
     <div class="field">
-      <label for="adminUsername">Username</label>
-      <input type="text" id="adminUsername" placeholder="Enter admin username" />
+      <label for="adminUsername">Super Admin Email</label>
+      <input type="text" id="adminUsername" placeholder="Enter super admin email" autocomplete="username" />
     </div>
     <div class="field">
       <label for="adminPassword">Password</label>
-      <input type="password" id="adminPassword" placeholder="Enter admin password" />
+      <input type="password" id="adminPassword" placeholder="Enter password" autocomplete="current-password" />
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('adminDeleteLoginModal')">Cancel</button>
@@ -1760,7 +1907,7 @@ tr:hover td { background: #f8fafc; }
       <input type="password" id="loginPassword" placeholder="Enter password" onkeydown="if(event.key==='Enter') submitAdminLogin()" />
     </div>
     <div style="height:12px;"></div>
-    <button class="btn btn-primary" style="width: 100%; justify-content: center;" onclick="submitAdminLogin()">Login</button>
+    <button class="btn btn-primary" id="btnSubmitLogin" style="width: 100%; justify-content: center;" onclick="submitAdminLogin()">Login</button>
   </div>
 </div>
 
@@ -1815,6 +1962,15 @@ function isInvalidSerialNumber(serial) {
   if (invalidList.includes(s)) return true;
   if (!/[A-Z0-9]/i.test(s)) return true;
   return false;
+}
+
+// Signed session token issued by the backend at login; sent with admin mutations.
+function adminAuthToken() {
+  if (window.__adminAuthToken) return window.__adminAuthToken;
+  try {
+    const s = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}');
+    return s.authToken || '';
+  } catch (e) { return ''; }
 }
 
 function isLocal() {
@@ -2071,14 +2227,8 @@ async function loadComplaints() {
   renderDashboard();
   renderComplaintsTable();
 
-  // Refresh school dashboard iframe
-  const iframe = document.getElementById('schoolDashIframe');
-  if (iframe && iframe.contentWindow && typeof iframe.contentWindow.renderDashboard === 'function') {
-    iframe.contentWindow.renderDashboard();
-    if (typeof iframe.contentWindow.renderDbTable === 'function') {
-      iframe.contentWindow.renderDbTable();
-    }
-  }
+  // Refresh the native School Dash view
+  if (typeof renderSchoolDash === 'function') renderSchoolDash();
 }
 
 async function loadSchoolList() {
@@ -2148,7 +2298,7 @@ async function saveAll() {
       method: 'POST',
       mode: 'no-cors',
       headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ action: 'update_master', masterData: masterData }),
+      body: JSON.stringify({ action: 'update_master', masterData: masterData, authToken: adminAuthToken() }),
     }).catch(() => {}); // fire and forget
   }
 
@@ -2176,7 +2326,7 @@ async function saveAll() {
       method: 'POST',
       mode: 'no-cors',
       headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ action: 'update_complaints', complaints: complaintsList }),
+      body: JSON.stringify({ action: 'update_complaints', complaints: complaintsList, authToken: adminAuthToken() }),
     }).catch(() => {});
   }
 
@@ -2254,6 +2404,253 @@ function applyUrlModule() {
   switchTab('dash');
 }
 
+/* ─────────────── NATIVE SCHOOL DASH ─────────────── */
+let sdDrillFilter = null;
+let sdFiltersLoaded = false;
+
+function sdEsc(s) {
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function sdResolveBranch(c) {
+  const distUpper = String(c.district || '').toUpperCase().trim();
+  if (!distUpper) return 'Unmapped';
+  if (Array.isArray(window.parentBmAliases)) {
+    const a = window.parentBmAliases.find(x => String(x.aliasText || '').toUpperCase().trim() === distUpper);
+    if (a && a.branchName) return a.branchName;
+  }
+  if (Array.isArray(window.parentBmBranches)) {
+    const b = window.parentBmBranches.find(x => String(x.name || '').toUpperCase().trim() === distUpper);
+    if (b) return b.name;
+  }
+  return 'Unmapped';
+}
+
+function sdTicketAge(dateStr) {
+  if (!dateStr) return 99;
+  const t = new Date(dateStr);
+  if (isNaN(t.getTime())) return 99;
+  const diff = Math.floor((Date.now() - t.getTime()) / 86400000);
+  return diff < 0 ? 0 : diff;
+}
+
+// Districts the logged-in user may see; null = unrestricted (super admin / ALL)
+function sdUserDistricts() {
+  if (!currentUser || currentUser.role === 'super_admin') return null;
+  const d = currentUser.assignedDistricts || [];
+  if (d.includes('ALL')) return null;
+  return d.map(x => String(x).toUpperCase().trim());
+}
+
+function sdGetList() {
+  const src = Array.isArray(window.parentSchoolComplaintsList) ? window.parentSchoolComplaintsList : [];
+  let list = src.map(c => {
+    let statusVal = String(c.status || '').trim();
+    if (!statusVal) statusVal = 'Open';
+    return {
+      date: c.importDate || c.complaintDate || '',
+      name: c.school || c.principal || '',
+      diseCode: c.dise || '',
+      district: String(c.district || '').trim().toUpperCase(),
+      branch: sdResolveBranch(c),
+      serial: c.serialNumber || '',
+      status: statusVal
+    };
+  });
+  // Hierarchy: district admins / viewers only see their assigned districts
+  const allowed = sdUserDistricts();
+  if (allowed) list = list.filter(r => allowed.includes(r.district));
+  return list;
+}
+
+function sdDrill(type, val) {
+  sdDrillFilter = { type: type, val: val };
+  renderSchoolDash();
+  const tbl = document.getElementById('sdDrillTable');
+  if (tbl) setTimeout(() => tbl.closest('.card').scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+}
+function sdDrillCell(branch, status) { sdDrill('cell', { branch: branch, status: status }); }
+function sdClearDrill() {
+  sdDrillFilter = null;
+  renderSchoolDash();
+}
+
+function sdDonut(closed, part, open, total) {
+  const svg = document.getElementById('sdDonut');
+  const legend = document.getElementById('sdDonutLegend');
+  if (!svg) return;
+  if (total === 0) {
+    svg.innerHTML = '<circle cx="80" cy="80" r="60" fill="none" stroke="#EEF1EE" stroke-width="24"/><text x="80" y="85" text-anchor="middle" font-size="12" fill="#66756B" font-weight="700">No Data</text>';
+    if (legend) legend.innerHTML = '';
+    return;
+  }
+  const r = 50, circ = 2 * Math.PI * r;
+  const segs = [
+    { v: closed, color: '#0E7C45', label: 'Closed' },
+    { v: part,   color: '#6D28D9', label: 'Part Req' },
+    { v: open,   color: '#1D4ED8', label: 'Open' }
+  ];
+  let html = '<circle cx="80" cy="80" r="60" fill="none" stroke="#EEF1EE" stroke-width="26"/>';
+  let offset = 0;
+  segs.forEach(s => {
+    if (s.v <= 0) return;
+    const len = circ * (s.v / total);
+    html += `<circle cx="80" cy="80" r="${r}" fill="none" stroke="${s.color}" stroke-width="24" stroke-dasharray="${len} ${circ - len}" stroke-dashoffset="${offset}" transform="rotate(-90 80 80)"/>`;
+    offset -= len;
+  });
+  html += `<text x="80" y="78" text-anchor="middle" font-size="22" font-weight="800" fill="#1B2A21">${total}</text>`;
+  html += '<text x="80" y="96" text-anchor="middle" font-size="9" font-weight="700" fill="#66756B">TOTAL TICKETS</text>';
+  svg.innerHTML = html;
+  if (legend) legend.innerHTML = segs.map(s =>
+    `<span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border-radius:3px;background:${s.color};display:inline-block;"></span>${s.label}: ${s.v}</span>`
+  ).join('');
+}
+
+function renderSchoolDash() {
+  const branchSel = document.getElementById('sdFiltBranch');
+  if (!branchSel) return;
+  let list = sdGetList();
+  const allowedDistricts = sdUserDistricts();
+
+  // (Re)build filter dropdowns scoped to what this user may see, keeping selections
+  {
+    const distSel = document.getElementById('sdFiltDistrict');
+    const keepB = branchSel.value, keepD = distSel.value;
+    let branchOpts;
+    if (allowedDistricts) {
+      branchOpts = [...new Set(list.map(r => r.branch).filter(Boolean))].sort();
+    } else {
+      branchOpts = (window.parentBmBranches || []).filter(b => b.status === 'Active').map(b => b.name);
+    }
+    if (branchOpts.length) {
+      branchSel.innerHTML = '<option value="ALL">All Branches</option>' +
+        branchOpts.map(b => `<option value="${sdEsc(b)}">${sdEsc(b)}</option>`).join('');
+      branchSel.value = branchOpts.includes(keepB) ? keepB : 'ALL';
+    }
+    const dists = allowedDistricts
+      ? allowedDistricts.slice().sort()
+      : [...new Set(list.map(r => r.district).filter(Boolean))].sort();
+    if (dists.length) {
+      distSel.innerHTML = '<option value="ALL">All Districts</option>' +
+        dists.map(d => `<option value="${sdEsc(d)}">${sdEsc(d)}</option>`).join('');
+      distSel.value = dists.includes(keepD) ? keepD : 'ALL';
+    }
+    // Hierarchy note so restricted users know what scope they are looking at
+    const note = document.getElementById('sdScopeNote');
+    if (note) {
+      note.textContent = allowedDistricts
+        ? '🔒 Showing your assigned district(s): ' + allowedDistricts.join(', ')
+        : '';
+      note.style.display = allowedDistricts ? 'block' : 'none';
+    }
+  }
+
+  const fB = branchSel.value;
+  const fS = document.getElementById('sdFiltStatus').value;
+  const fD = document.getElementById('sdFiltDistrict').value;
+  if (fB !== 'ALL') list = list.filter(r => r.branch === fB);
+  if (fS !== 'ALL') list = list.filter(r => r.status === fS);
+  if (fD !== 'ALL') list = list.filter(r => r.district === fD);
+
+  // KPIs
+  const total = list.length;
+  const open = list.filter(r => r.status === 'Open').length;
+  const part = list.filter(r => r.status === 'Part Request').length;
+  const closed = list.filter(r => r.status === 'Closed').length;
+  const aging = list.filter(r => r.status !== 'Closed' && sdTicketAge(r.date) > 30).length;
+  document.getElementById('sdKpiTotal').textContent = total;
+  document.getElementById('sdKpiOpen').textContent = open;
+  document.getElementById('sdKpiPart').textContent = part;
+  document.getElementById('sdKpiClosed').textContent = closed;
+  document.getElementById('sdKpiAging').textContent = aging;
+  document.getElementById('sdKpiClosurePct').textContent = (total ? Math.round(closed / total * 100) : 0) + '% closure';
+  document.getElementById('sdKpiPartPct').textContent = (total ? Math.round(part / total * 100) : 0) + '% of total';
+
+  // Branch summary table with Grand Total
+  let branchNames = (window.parentBmBranches || []).filter(b => b.status === 'Active').map(b => b.name);
+  if (!branchNames.length) branchNames = [...new Set(list.map(r => r.branch))];
+  if (list.some(r => r.branch === 'Unmapped') && !branchNames.includes('Unmapped')) branchNames.push('Unmapped');
+  // Restricted users only see branches that actually hold their districts' data
+  if (allowedDistricts) branchNames = branchNames.filter(bn => list.some(r => r.branch === bn));
+
+  const cell = (v, handler) => v > 0
+    ? `<td style="text-align:center;"><span class="sd-link" onclick="${handler}">${v}</span></td>`
+    : '<td class="sd-zero">0</td>';
+
+  const totals = { open: 0, part: 0, closed: 0, total: 0 };
+  let rows = '';
+  branchNames.forEach(bn => {
+    const bl = list.filter(r => r.branch === bn);
+    const bo = bl.filter(r => r.status === 'Open').length;
+    const bp = bl.filter(r => r.status === 'Part Request').length;
+    const bc = bl.filter(r => r.status === 'Closed').length;
+    if (!bl.length && fB !== 'ALL') return;
+    totals.open += bo; totals.part += bp; totals.closed += bc; totals.total += bl.length;
+    const bnEsc = sdEsc(bn).replace(/&#39;/g, "\\'");
+    rows += `<tr>
+      <td><span class="sd-link" onclick="sdDrill('branch','${bnEsc}')">${sdEsc(bn)}</span></td>
+      ${cell(bo, `sdDrillCell('${bnEsc}','Open')`)}
+      ${cell(bp, `sdDrillCell('${bnEsc}','Part Request')`)}
+      ${cell(bc, `sdDrillCell('${bnEsc}','Closed')`)}
+      <td style="text-align:center;"><span class="sd-link" onclick="sdDrill('branch','${bnEsc}')">${bl.length}</span></td>
+    </tr>`;
+  });
+  rows += `<tr class="sd-grand">
+    <td style="text-transform:uppercase; letter-spacing:0.05em; font-size:0.74rem; color:var(--primary-dark);">Grand Total</td>
+    ${cell(totals.open, `sdDrill('status','Open')`)}
+    ${cell(totals.part, `sdDrill('status','Part Request')`)}
+    ${cell(totals.closed, `sdDrill('status','Closed')`)}
+    <td style="text-align:center;"><span class="sd-link" onclick="sdClearDrill()">${totals.total}</span></td>
+  </tr>`;
+  document.getElementById('sdBranchTable').innerHTML = rows;
+
+  // Donut
+  sdDonut(closed, part, open, total);
+
+  // Drill-down records
+  let drillList = list.slice();
+  const lbl = document.getElementById('sdDrillLabel');
+  const clearBtn = document.getElementById('sdDrillClear');
+  if (sdDrillFilter) {
+    const t = sdDrillFilter.type, v = sdDrillFilter.val;
+    if (t === 'status') { drillList = drillList.filter(r => r.status === v); lbl.textContent = `— Status: ${v}`; }
+    else if (t === 'branch') { drillList = drillList.filter(r => r.branch === v); lbl.textContent = `— Branch: ${v}`; }
+    else if (t === 'aging30') { drillList = drillList.filter(r => r.status !== 'Closed' && sdTicketAge(r.date) > 30); lbl.textContent = '— Pending > 30 days'; }
+    else if (t === 'cell') { drillList = drillList.filter(r => r.branch === v.branch && r.status === v.status); lbl.textContent = `— ${v.branch} · ${v.status}`; }
+    if (clearBtn) clearBtn.style.display = 'inline-flex';
+  } else {
+    lbl.textContent = '';
+    if (clearBtn) clearBtn.style.display = 'none';
+  }
+  document.getElementById('sdDrillCount').textContent = drillList.length + ' record(s)';
+  
+  // Save globally for CSV export
+  window.lastSchoolDrillList = drillList;
+
+  // Reset Select All check
+  const selectAll = document.getElementById('selectAllSchool');
+  if (selectAll) selectAll.checked = false;
+  const headerCol = document.getElementById('schoolStatusHeaderCol');
+  if (headerCol) headerCol.textContent = 'Status';
+
+  const chipClass = s => 'sd-chip ' + s.toLowerCase().replace(/\s+/g, '');
+  let dHtml = '';
+  drillList.forEach(r => {
+    dHtml += `<tr>
+      <td style="text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" class="school-select-chk" data-sr-no="${r.srNo}" onchange="updateSchoolSelectionUI()" style="transform: scale(1.2); cursor: pointer;" /></td>
+      <td>${sdEsc(r.diseCode)}</td>
+      <td style="font-weight:700; white-space:normal;">${sdEsc(r.name)}</td>
+      <td style="font-family:monospace; font-size:0.76rem;">${sdEsc(r.serial)}</td>
+      <td><span class="${chipClass(r.status)}">${sdEsc(r.status)}</span></td>
+      <td>${sdEsc(r.branch)}</td>
+      <td>${sdEsc(r.district)}</td>
+      <td>${sdEsc(String(r.date).slice(0, 10))}</td>
+    </tr>`;
+  });
+  if (!drillList.length) dHtml = '<tr><td colspan="8" style="text-align:center; color:var(--muted); padding:20px;">No records match the current filters.</td></tr>';
+  document.getElementById('sdDrillTable').innerHTML = dHtml;
+}
+
 function switchTab(tabId) {
   if (!checkTabAccess(tabId)) {
     showToast('❌ Access Denied: You do not have permission to view this module.', 'danger');
@@ -2273,6 +2670,8 @@ function switchTab(tabId) {
   if (btn) btn.classList.add('active');
   if (content) content.classList.add('active');
   currentTab = tabId;
+
+  if (tabId === 'schooldash') renderSchoolDash();
   
   // Update URL parameter without reloading to match current module
   const moduleMapInv = {
@@ -2306,12 +2705,133 @@ function switchTab(tabId) {
     loadDeptDashboard();
   } else if (tabId === 'branchemails') {
     loadBranchEmails();
-  } else if (tabId === 'schooldash') {
-    const iframe = document.getElementById('schoolDashIframe');
-    if (iframe && iframe.contentWindow && typeof iframe.contentWindow.renderDashboard === 'function') {
-      iframe.contentWindow.renderDashboard();
+  }
+}
+
+function toggleSelectAllSchool(master) {
+  const checked = master ? !!master.checked : false;
+  const allChks = document.querySelectorAll('.school-select-chk');
+  allChks.forEach(chk => chk.checked = checked);
+  updateSchoolSelectionUI();
+}
+
+function updateSchoolSelectionUI() {
+  const chks = document.querySelectorAll('.school-select-chk:checked');
+  const selectAll = document.getElementById('selectAllSchool');
+  const headerCol = document.getElementById('schoolStatusHeaderCol');
+  
+  if (headerCol) {
+    if (chks.length > 0) {
+      headerCol.innerHTML = `
+        <select onchange="bulkUpdateSchoolStatus(this.value); this.value='';" style="padding:4px; font-size:0.72rem; border-radius:4px; border:1px solid var(--border); font-weight:700; width:100%; cursor:pointer; background:#eff6ff; color:#1e40af;">
+          <option value="">- Update (${chks.length}) -</option>
+          <option value="Open">🔵 Open</option>
+          <option value="Part Request">🔧 Part Request</option>
+          <option value="Closed">✅ Closed</option>
+        </select>
+      `;
+    } else {
+      headerCol.textContent = 'Status';
     }
   }
+  
+  const allChks = document.querySelectorAll('.school-select-chk');
+  if (allChks.length > 0 && selectAll) {
+    selectAll.checked = (chks.length === allChks.length);
+  }
+}
+
+async function bulkUpdateSchoolStatus(status) {
+  if (!status) return;
+  const chks = document.querySelectorAll('.school-select-chk:checked');
+  if (chks.length === 0) return;
+  
+  const srNos = Array.from(chks).map(chk => chk.getAttribute('data-sr-no'));
+  const confirmMsg = `Are you sure you want to update the status of ${srNos.length} selected school complaint(s) to "${status.toUpperCase()}"?`;
+  if (!confirm(confirmMsg)) return;
+  
+  const headerCol = document.getElementById('schoolStatusHeaderCol');
+  if (headerCol) {
+    headerCol.innerHTML = `<span style="font-size:0.7rem; color:var(--primary); font-weight:bold;">⏳ Updating...</span>`;
+  }
+  
+  const token = typeof adminAuthToken === 'function' ? adminAuthToken() : '';
+  
+  try {
+    const res = await fetch(GOOGLE_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'update_school_complaint_status',
+        srNos: srNos,
+        status: status,
+        authToken: token
+      })
+    });
+    const out = await res.json();
+    if (out.status === 'ok') {
+      showToast(`✅ Successfully updated ${out.updatedCount} school complaint(s)!`, 'success');
+    } else {
+      showToast(`❌ Error: ${out.message || 'Update failed'}`, 'danger');
+    }
+  } catch (e) {
+    showToast('❌ Network error during update. Please try again.', 'danger');
+  }
+  
+  const selectAll = document.getElementById('selectAllSchool');
+  if (selectAll) selectAll.checked = false;
+  
+  await loadComplaints();
+}
+
+function exportSchoolComplaintsCSV() {
+  const list = window.lastSchoolDrillList;
+  if (!list || list.length === 0) {
+    showToast('⚠️ No records to export.', 'warn');
+    return;
+  }
+  
+  const csvHeaders = ['Sr No', 'Project', 'DISE Code', 'School Name', 'Serial Number', 'Status', 'Branch', 'District', 'Complaint Date'];
+  
+  const csvRows = list.map(r => [
+    r.srNo || '',
+    r.project || 'ICT',
+    r.diseCode || '',
+    r.name || '',
+    r.serial || '',
+    r.status || 'Open',
+    r.branch || '',
+    r.district || '',
+    r.date ? String(r.date).slice(0, 10) : ''
+  ]);
+  
+  const escapeCSV = val => {
+    let str = String(val === null || val === undefined ? '' : val);
+    str = str.replace(/"/g, '""');
+    if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+      str = `"${str}"`;
+    }
+    return str;
+  };
+  
+  const headerRow = csvHeaders.map(escapeCSV).join(',');
+  const dataRows = csvRows.map(row => row.map(escapeCSV).join(',')).join('\n');
+  const csvContent = '\uFEFF' + headerRow + '\n' + dataRows;
+  
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const filename = `school_complaints_export_${dateStr}.csv`;
+  
+  link.setAttribute('href', url);
+  link.setAttribute('download', filename);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  showToast('📥 School complaints CSV exported successfully!', 'success');
 }
 
 /* ─────────────── DASHBOARD ─────────────── */
@@ -2344,13 +2864,7 @@ async function ensureBranchDataLoaded() {
       window.parentBmAliases = bmAliases;
       logToDebug(`Loaded ${bmBranches.length} branches and ${bmAliases.length} alias mappings for dashboard summary.`, 'success');
       
-      const iframe = document.getElementById('schoolDashIframe');
-      if (iframe && iframe.contentWindow && typeof iframe.contentWindow.renderDashboard === 'function') {
-        iframe.contentWindow.renderDashboard();
-        if (typeof iframe.contentWindow.renderDbTable === 'function') {
-          iframe.contentWindow.renderDbTable();
-        }
-      }
+      if (typeof renderSchoolDash === 'function') renderSchoolDash();
     } catch (e) {
       console.error('Failed to load branch mapping data:', e);
     } finally {
@@ -2595,8 +3109,8 @@ function drawTrendChart(data) {
       datasets: [{
         label: 'Tickets Logged',
         data: values,
-        borderColor: '#1a56db',
-        backgroundColor: 'rgba(26, 86, 219, 0.1)',
+        borderColor: '#0E7C45',
+        backgroundColor: 'rgba(14, 124, 69, 0.1)',
         borderWidth: 2,
         fill: true,
         tension: 0.3
@@ -2633,7 +3147,7 @@ function drawDistrictChart(data) {
       datasets: [{
         label: 'Complaints',
         data: values,
-        backgroundColor: '#06b6d4',
+        backgroundColor: '#0E7C45',
         borderRadius: 4
       }]
     },
@@ -2870,7 +3384,7 @@ function drawProjectChart(data) {
       labels: labels,
       datasets: [{
         data: values,
-        backgroundColor: ['#10b981', '#1a56db', '#f59e0b', '#8b5cf6', '#ec4899']
+        backgroundColor: ['#0E7C45', '#F2790F', '#1D4ED8', '#8b5cf6', '#ec4899']
       }]
     },
     options: {
@@ -2935,7 +3449,7 @@ function drawPartChart(data) {
       labels: labels,
       datasets: [{
         data: values,
-        backgroundColor: ['#ec4899', '#f59e0b', '#8b5cf6', '#06b6d4', '#10b981']
+        backgroundColor: ['#ec4899', '#f59e0b', '#8b5cf6', '#1D4ED8', '#10b981']
       }]
     },
     options: {
@@ -3671,7 +4185,7 @@ async function archiveDataRange() {
     const res = await fetch(GOOGLE_SCRIPT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ action: 'archive_complaints', fromDate, toDate }),
+      body: JSON.stringify({ action: 'archive_complaints', fromDate, toDate, authToken: adminAuthToken() }),
     });
     const result = await res.json();
     if (result.status === 'ok') {
@@ -3703,7 +4217,7 @@ async function restoreArchiveRecord(caseId) {
     const res = await fetch(GOOGLE_SCRIPT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ action: 'restore_complaints', caseIds: [caseId] }),
+      body: JSON.stringify({ action: 'restore_complaints', caseIds: [caseId], authToken: adminAuthToken() }),
     });
     const result = await res.json();
     if (result.status === 'ok') {
@@ -4058,7 +4572,14 @@ function showLoginModal() {
   document.getElementById('adminLoginModal').classList.add('show');
 }
 
-function submitAdminLogin() {
+async function submitAdminLogin() {
+  // Rate-limit: lock out after 5 consecutive failures for 60 seconds
+  if (Date.now() < loginLockedUntil) {
+    const secsLeft = Math.ceil((loginLockedUntil - Date.now()) / 1000);
+    showToast(`🔒 Too many failed attempts. Try again in ${secsLeft}s.`, 'danger');
+    return;
+  }
+
   const email = document.getElementById('loginEmail').value.trim();
   const pass = document.getElementById('loginPassword').value;
 
@@ -4067,27 +4588,53 @@ function submitAdminLogin() {
     return;
   }
 
-  const accessUsers = masterData.accessUsers || [];
+  // SECURITY (QA finding C1): credentials are verified server-side. The client
+  // never receives or compares passwords. Falls back to the local check only when
+  // offline or on the local mock server (where passwords are still present).
   let user = null;
+  const btnLogin = document.getElementById('btnSubmitLogin');
+  if (btnLogin) { btnLogin.disabled = true; }
 
-  // Always check fallback super admin first
-  if (email.toLowerCase() === 'admin@armee.in' && pass === 'armee@2026') {
-    user = {
-      id: 'USR100',
-      name: 'Super Admin',
-      email: 'admin@armee.in',
-      role: 'super_admin',
-      assignedDistricts: ['ALL'],
-      status: 'active'
-    };
+  if (!isLocal() && GOOGLE_SCRIPT_URL && navigator.onLine) {
+    try {
+      const res = await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ action: 'login', email: email, password: pass }),
+      });
+      const out = await res.json();
+      if (out.status === 'ok' && out.user) {
+        user = out.user;
+        window.__adminAuthToken = out.authToken || '';
+      } else {
+        if (btnLogin) { btnLogin.disabled = false; }
+        showToast('❌ ' + (out.message || 'Invalid email, password, or account inactive'), 'danger');
+        return;
+      }
+    } catch (e) {
+      if (btnLogin) { btnLogin.disabled = false; }
+      showToast('❌ Login failed (network). Please try again.', 'danger');
+      return;
+    }
+  } else if (isLocal()) {
+    // Local development fallback only — the public site never accepts a
+    // client-side credential check (passwords are no longer shipped to browsers).
+    const accessUsers = masterData.accessUsers || [];
+    if (email.toLowerCase() === 'admin@armee.in' && pass === 'armee@2026') {
+      user = { id: 'USR100', name: 'Super Admin', email: 'admin@armee.in', role: 'super_admin', assignedDistricts: ['ALL'], status: 'active' };
+    } else {
+      user = accessUsers.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === pass && u.status === 'active');
+    }
   } else {
-    user = accessUsers.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === pass && u.status === 'active');
+    showToast('❌ You appear to be offline. Admin login needs a connection.', 'danger');
   }
+  if (btnLogin) { btnLogin.disabled = false; }
 
   if (user) {
     currentUser = user;
     const session = {
       user: user,
+      authToken: window.__adminAuthToken || '',
       timestamp: Date.now()
     };
     localStorage.setItem(SESSION_KEY, JSON.stringify(session));
@@ -4309,17 +4856,40 @@ function triggerAdminDeleteLogin() {
   document.getElementById('adminDeleteLoginModal').classList.add('show');
 }
 
-function submitAdminDeleteLogin() {
+async function submitAdminDeleteLogin() {
   const user = document.getElementById('adminUsername').value.trim();
   const pass = document.getElementById('adminPassword').value;
 
-  if (user === 'admin' && pass === 'armee@2026') {
+  const unlock = () => {
     deleteModeUnlocked = true;
     closeModal('adminDeleteLoginModal');
     renderComplaintsTable();
     showToast('🔓 Admin delete actions unlocked successfully!', 'success');
-  } else {
-    showToast('❌ Invalid admin credentials!', 'danger');
+  };
+
+  // Local development fallback keeps the legacy fixed credentials
+  if (isLocal()) {
+    if (user === 'admin' && pass === 'armee@2026') { unlock(); }
+    else { showToast('❌ Invalid admin credentials!', 'danger'); }
+    return;
+  }
+
+  // Live site: verify against the backend — only a super_admin account unlocks deletes
+  try {
+    const res = await fetch(GOOGLE_SCRIPT_URL, {
+      method: 'POST',
+      mode: 'cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ action: 'login', email: user, password: pass })
+    });
+    const out = await res.json();
+    if (out && out.status === 'ok' && out.user && out.user.role === 'super_admin') {
+      unlock();
+    } else {
+      showToast('❌ Invalid credentials or not a super admin!', 'danger');
+    }
+  } catch (e) {
+    showToast('❌ Verification failed (network). Please try again.', 'danger');
   }
 }
 
@@ -4406,10 +4976,11 @@ async function deleteComplaint(origIndex) {
         mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify({ 
-          action: 'delete_complaint', 
-          caseId: c.caseId, 
-          submittedAt: c.submittedAt, 
-          dise: c.dise 
+          action: 'delete_complaint',
+          caseId: c.caseId,
+          submittedAt: c.submittedAt,
+          dise: c.dise,
+          authToken: adminAuthToken()
         }),
       });
       showToast('🗑️ Complaint deleted from Google Sheet!', 'success');
@@ -5633,13 +6204,7 @@ async function loadBranchMgmt() {
     window.parentBmAliases = bmAliases;
     renderDoTable(); renderBrTable(); renderUnmappedTable(); renderAliasTable();
     
-    const iframe = document.getElementById('schoolDashIframe');
-    if (iframe && iframe.contentWindow && typeof iframe.contentWindow.renderDashboard === 'function') {
-      iframe.contentWindow.renderDashboard();
-      if (typeof iframe.contentWindow.renderDbTable === 'function') {
-        iframe.contentWindow.renderDbTable();
-      }
-    }
+    if (typeof renderSchoolDash === 'function') renderSchoolDash();
   } catch (e) {
     showToast('❌ Could not load branch data: ' + e.message, 'danger');
   }
