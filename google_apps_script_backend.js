@@ -390,6 +390,13 @@ function doPost(e) {
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
+    if (data.action === 'fix_school_project_by_equipment') {
+      // No auth required – admin dashboard calls this
+      var fixed = fixSchoolProjectByEquipment(ss);
+      return ContentService.createTextOutput(JSON.stringify({ status: 'ok', updatedCount: fixed }))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
     if (data.action === 'delete_complaint') {
       var authErrD = requireAdminAuth_(data, true); // super admin only
       if (authErrD) return ContentService.createTextOutput(JSON.stringify(authErrD))
@@ -3968,8 +3975,22 @@ function syncSchoolComplaintMasterStatus(ss) {
           changed = true;
         }
       }
-      
-      // 2. Sync status/suspectedPart from Complaints
+
+      // 2. Auto-correct Project column based on Equipment
+      //    IFP / Laptop -> GK    |    CPU / TFT -> ICT
+      var equipVal = String(masterRows[j][11] || '').trim().toUpperCase();
+      var expectedProject = '';
+      if (equipVal === 'IFP' || equipVal === 'LAPTOP') {
+        expectedProject = 'GK';
+      } else if (equipVal === 'CPU' || equipVal === 'TFT') {
+        expectedProject = 'ICT';
+      }
+      if (expectedProject && String(masterRows[j][1] || '').trim() !== expectedProject) {
+        masterRows[j][1] = expectedProject;
+        changed = true;
+      }
+
+      // 3. Sync status/suspectedPart from Complaints
       var serial = String(masterRows[j][13] || '').trim().toUpperCase();
       if (serial && complaintsMap[serial]) {
         var match = complaintsMap[serial];
@@ -4234,3 +4255,43 @@ function healSchoolDiseByNameMap(ss, nameMap) {
   return updatedCount;
 }
 
+/**
+ * Fixes the Project column (col B, index 1) in SchoolComplaintMaster
+ * based on the Equipment column (col L, index 11):
+ *   IFP    -> GK
+ *   Laptop -> GK
+ *   CPU    -> ICT
+ *   TFT    -> ICT
+ * All other equipment types are left unchanged.
+ */
+function fixSchoolProjectByEquipment(ss) {
+  var sheet = ss.getSheetByName('SchoolComplaintMaster');
+  if (!sheet) return 0;
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return 0;
+
+  var range = sheet.getRange(2, 1, lastRow - 1, 19);
+  var values = range.getValues();
+  var updatedCount = 0;
+  var changed = false;
+
+  for (var i = 0; i < values.length; i++) {
+    var equip = String(values[i][11] || '').trim().toUpperCase();
+    var expectedProject = '';
+    if (equip === 'IFP' || equip === 'LAPTOP') {
+      expectedProject = 'GK';
+    } else if (equip === 'CPU' || equip === 'TFT') {
+      expectedProject = 'ICT';
+    }
+    if (expectedProject && String(values[i][1] || '').trim() !== expectedProject) {
+      values[i][1] = expectedProject;
+      changed = true;
+      updatedCount++;
+    }
+  }
+
+  if (changed) {
+    range.setValues(values);
+  }
+  return updatedCount;
+}

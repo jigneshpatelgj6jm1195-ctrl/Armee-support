@@ -1229,6 +1229,7 @@ tr:hover td { background: #f8fafc; }
         <div class="card-title" style="margin-bottom:0;">📋 Complaint Records <span id="sdDrillLabel" style="font-size:0.78rem; color:var(--primary); font-weight:700;"></span></div>
         <div style="display:flex; gap:8px; align-items:center;">
           <button class="btn btn-primary" onclick="exportSchoolComplaintsCSV()" style="padding:4px 10px; font-size:0.75rem; border-radius:6px; cursor:pointer; font-weight:700; background-color:var(--primary); color:white; border:none;">📥 Export CSV</button>
+          <button onclick="runFixProjectCodes()" style="padding:4px 10px; font-size:0.75rem; border-radius:6px; cursor:pointer; font-weight:700; background-color:#f59e0b; color:white; border:none;" title="Fix Project column: IFP/Laptop=GK, CPU/TFT=ICT">🔧 Fix Project Codes</button>
           <span id="sdDrillCount" style="font-size:0.75rem; color:var(--muted); font-weight:700;"></span>
         </div>
       </div>
@@ -2926,6 +2927,29 @@ async function autoHealSchoolDiseCodes() {
   }
 }
 
+
+async function runFixProjectCodes() {
+  if (!confirm('This will update the Project column for ALL rows in SchoolComplaintMaster:\n\n  IFP / Laptop  →  GK\n  CPU / TFT     →  ICT\n\nProceed?')) return;
+  showToast('⏳ Fixing Project codes on Google Sheet...', 'info');
+  try {
+    const res = await fetch(GOOGLE_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ action: 'fix_school_project_by_equipment' })
+    });
+    const out = await res.json();
+    if (out.status === 'ok') {
+      showToast(`✅ Fixed ${out.updatedCount} Project values in Google Sheet!`, 'success');
+      logToDebug(`[FIX PROJECT] Updated ${out.updatedCount} rows.`, 'success');
+      await loadComplaints();
+    } else {
+      showToast('❌ Error: ' + (out.message || 'Unknown error'), 'danger');
+    }
+  } catch (e) {
+    showToast('❌ Network error. Please try again.', 'danger');
+    console.error('[FIX PROJECT] Error:', e);
+  }
+}
 
 function exportSchoolComplaintsCSV() {
   const list = window.lastSchoolDrillList;
