@@ -218,6 +218,26 @@ body {
 .stat-label { font-size: 0.72rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
 .stat-value { font-size: 1.6rem; font-weight: 800; color: var(--text); margin-top: 2px; }
 
+/* ═══════════════ SCHOOL DASH (native) ═══════════════ */
+.sd-label { display:block; font-size:0.62rem; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted); margin-bottom:4px; }
+.sd-select { border:1.5px solid var(--border); border-radius:9px; background:white; padding:8px 10px; font-size:0.8rem; font-family:inherit; color:var(--text); min-width:150px; }
+.sd-kpi { cursor:pointer; transition: box-shadow .15s ease, transform .15s ease, border-color .15s ease; }
+.sd-kpi:hover { border-color: var(--primary); box-shadow: 0 6px 18px rgba(14,124,69,0.14); transform: translateY(-1px); }
+.sd-trend { font-size:0.68rem; font-weight:600; color:var(--muted); margin-top:2px; }
+.sd-layout { display:grid; grid-template-columns: 1.6fr 1fr; gap:16px; }
+@media (max-width: 1100px) { .sd-layout { grid-template-columns: 1fr; } }
+.sd-table { width:100%; border-collapse:collapse; font-size:0.82rem; min-width:560px; }
+.sd-table th { text-align:left; font-size:0.64rem; font-weight:800; letter-spacing:0.06em; text-transform:uppercase; color:var(--muted); background:var(--bg); padding:9px 12px; border-bottom:1.5px solid var(--border); white-space:nowrap; }
+.sd-table td { padding:10px 12px; border-bottom:1px solid var(--border); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.sd-table tbody tr:hover td { background:#FAFBF9; }
+.sd-table tr.sd-grand td { background:var(--primary-light); font-weight:800; border-top:2px solid var(--primary); border-bottom:none; }
+.sd-link { color:var(--primary); font-weight:800; text-decoration:underline; cursor:pointer; }
+.sd-zero { color:#C4CCC4; text-align:center; }
+.sd-chip { display:inline-flex; align-items:center; border-radius:999px; padding:2px 10px; font-size:0.66rem; font-weight:800; letter-spacing:0.02em; }
+.sd-chip.open { background:#EAF0FA; color:#1D4ED8; }
+.sd-chip.partrequest { background:#F1EBFC; color:#6D28D9; }
+.sd-chip.closed { background:var(--primary-light); color:var(--primary); }
+
 /* ═══════════════ FORM FIELDS & INPUTS ═══════════════ */
 .field { margin-bottom: 14px; }
 label { display: block; font-size: 0.78rem; font-weight: 600; color: var(--label); margin-bottom: 6px; }
@@ -1130,18 +1150,102 @@ tr:hover td { background: #f8fafc; }
   </div>
 
   <!-- ================= TAB: SCHOOL DASHBOARD ================= -->
-  <div class="tab-content" id="tab-schooldash" style="padding:0;">
-    <iframe id="schoolDashIframe" src="demo_school_system.html?embed=true" style="width:100%; height:900px; border:none; border-radius:14px; box-shadow:0 4px 12px rgba(0,0,0,0.08);"></iframe>
-    <script>
-      // Auto-size the School Dash iframe to its content so the Grand Total
-      // row and drilldown table are never clipped.
-      window.addEventListener('message', function(e) {
-        if (e.data && typeof e.data.schoolDashHeight === 'number') {
-          var f = document.getElementById('schoolDashIframe');
-          if (f) f.style.height = Math.max(600, e.data.schoolDashHeight + 24) + 'px';
-        }
-      });
-    </script>
+  <div class="tab-content" id="tab-schooldash">
+
+    <!-- Filters -->
+    <div class="card" style="margin-bottom:16px; padding:14px 16px; display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;">
+      <div>
+        <label class="sd-label">Branch</label>
+        <select id="sdFiltBranch" class="sd-select" onchange="renderSchoolDash()"><option value="ALL">All Branches</option></select>
+      </div>
+      <div>
+        <label class="sd-label">Status</label>
+        <select id="sdFiltStatus" class="sd-select" onchange="renderSchoolDash()">
+          <option value="ALL">All Statuses</option>
+          <option value="Open">Open</option>
+          <option value="Part Request">Part Request</option>
+          <option value="Closed">Closed</option>
+        </select>
+      </div>
+      <div>
+        <label class="sd-label">District</label>
+        <select id="sdFiltDistrict" class="sd-select" onchange="renderSchoolDash()"><option value="ALL">All Districts</option></select>
+      </div>
+      <div style="flex:1;"></div>
+      <button class="btn btn-ghost btn-sm" id="sdDrillClear" style="display:none;" onclick="sdClearDrill()">✖ Clear drill-down filter</button>
+    </div>
+
+    <!-- KPI cards -->
+    <div class="stat-grid" style="grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); margin-bottom:16px;">
+      <div class="stat-card sd-kpi" onclick="sdClearDrill()" title="Show all records">
+        <div class="stat-info"><span class="stat-label">Total School Complaints</span><span class="stat-value" id="sdKpiTotal">0</span><span class="sd-trend">Overall tickets</span></div>
+      </div>
+      <div class="stat-card sd-kpi" onclick="sdDrill('status','Open')" title="Drill down: Open">
+        <div class="stat-info"><span class="stat-label">Open</span><span class="stat-value" id="sdKpiOpen" style="color:#1D4ED8;">0</span><span class="sd-trend">Needs attention</span></div>
+      </div>
+      <div class="stat-card sd-kpi" onclick="sdDrill('status','Part Request')" title="Drill down: Part Request">
+        <div class="stat-info"><span class="stat-label">Part Requests</span><span class="stat-value" id="sdKpiPart" style="color:#6D28D9;">0</span><span class="sd-trend" id="sdKpiPartPct">0% of total</span></div>
+      </div>
+      <div class="stat-card sd-kpi" onclick="sdDrill('status','Closed')" title="Drill down: Closed">
+        <div class="stat-info"><span class="stat-label">Closed</span><span class="stat-value" id="sdKpiClosed" style="color:var(--primary);">0</span><span class="sd-trend" id="sdKpiClosurePct">0% closure</span></div>
+      </div>
+      <div class="stat-card sd-kpi" onclick="sdDrill('aging30','true')" title="Drill down: pending over 30 days">
+        <div class="stat-info"><span class="stat-label">Pending &gt; 30 Days</span><span class="stat-value" id="sdKpiAging" style="color:var(--danger);">0</span><span class="sd-trend">Escalate</span></div>
+      </div>
+    </div>
+
+    <!-- Branch summary + donut -->
+    <div class="sd-layout">
+      <div class="card" style="margin-bottom:0;">
+        <div class="card-title" style="margin-bottom:12px;">🏢 Branch-wise Complaint Status Summary</div>
+        <div style="overflow-x:auto;">
+          <table class="sd-table">
+            <thead>
+              <tr>
+                <th>Branch</th>
+                <th style="text-align:center;">Open</th>
+                <th style="text-align:center;">Part Request</th>
+                <th style="text-align:center;">Closed</th>
+                <th style="text-align:center;">Total</th>
+              </tr>
+            </thead>
+            <tbody id="sdBranchTable"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:0; display:flex; flex-direction:column;">
+        <div class="card-title" style="margin-bottom:12px;">Ticket Status Distribution</div>
+        <div style="flex:1; display:flex; justify-content:center; align-items:center; min-height:200px;">
+          <svg width="180" height="180" viewBox="0 0 160 160" id="sdDonut" role="img" aria-label="Ticket status distribution"></svg>
+        </div>
+        <div id="sdDonutLegend" style="display:flex; justify-content:space-around; font-size:0.78rem; font-weight:700; margin-top:10px;"></div>
+      </div>
+    </div>
+
+    <!-- Drill-down records -->
+    <div class="card" style="margin-top:16px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+        <div class="card-title" style="margin-bottom:0;">📋 Complaint Records <span id="sdDrillLabel" style="font-size:0.78rem; color:var(--primary); font-weight:700;"></span></div>
+        <span id="sdDrillCount" style="font-size:0.75rem; color:var(--muted); font-weight:700;"></span>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="sd-table">
+          <thead>
+            <tr>
+              <th>DISE Code</th>
+              <th>School Name</th>
+              <th>Serial Number</th>
+              <th>Status</th>
+              <th>Branch</th>
+              <th>District</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody id="sdDrillTable"></tbody>
+        </table>
+      </div>
+    </div>
+
   </div>
 
   <!-- ================= TAB: BRANCH MANAGEMENT ================= -->
@@ -2109,14 +2213,8 @@ async function loadComplaints() {
   renderDashboard();
   renderComplaintsTable();
 
-  // Refresh school dashboard iframe
-  const iframe = document.getElementById('schoolDashIframe');
-  if (iframe && iframe.contentWindow && typeof iframe.contentWindow.renderDashboard === 'function') {
-    iframe.contentWindow.renderDashboard();
-    if (typeof iframe.contentWindow.renderDbTable === 'function') {
-      iframe.contentWindow.renderDbTable();
-    }
-  }
+  // Refresh the native School Dash view
+  if (typeof renderSchoolDash === 'function') renderSchoolDash();
 }
 
 async function loadSchoolList() {
@@ -2292,6 +2390,209 @@ function applyUrlModule() {
   switchTab('dash');
 }
 
+/* ─────────────── NATIVE SCHOOL DASH ─────────────── */
+let sdDrillFilter = null;
+let sdFiltersLoaded = false;
+
+function sdEsc(s) {
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function sdResolveBranch(c) {
+  const distUpper = String(c.district || '').toUpperCase().trim();
+  if (!distUpper) return 'Unmapped';
+  if (Array.isArray(window.parentBmAliases)) {
+    const a = window.parentBmAliases.find(x => String(x.aliasText || '').toUpperCase().trim() === distUpper);
+    if (a && a.branchName) return a.branchName;
+  }
+  if (Array.isArray(window.parentBmBranches)) {
+    const b = window.parentBmBranches.find(x => String(x.name || '').toUpperCase().trim() === distUpper);
+    if (b) return b.name;
+  }
+  return 'Unmapped';
+}
+
+function sdTicketAge(dateStr) {
+  if (!dateStr) return 99;
+  const t = new Date(dateStr);
+  if (isNaN(t.getTime())) return 99;
+  const diff = Math.floor((Date.now() - t.getTime()) / 86400000);
+  return diff < 0 ? 0 : diff;
+}
+
+function sdGetList() {
+  const src = Array.isArray(window.parentSchoolComplaintsList) ? window.parentSchoolComplaintsList : [];
+  return src.map(c => {
+    let statusVal = String(c.status || '').trim();
+    if (!statusVal) statusVal = 'Open';
+    return {
+      date: c.importDate || c.complaintDate || '',
+      name: c.school || c.principal || '',
+      diseCode: c.dise || '',
+      district: String(c.district || '').trim().toUpperCase(),
+      branch: sdResolveBranch(c),
+      serial: c.serialNumber || '',
+      status: statusVal
+    };
+  });
+}
+
+function sdDrill(type, val) {
+  sdDrillFilter = { type: type, val: val };
+  renderSchoolDash();
+  const tbl = document.getElementById('sdDrillTable');
+  if (tbl) setTimeout(() => tbl.closest('.card').scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+}
+function sdDrillCell(branch, status) { sdDrill('cell', { branch: branch, status: status }); }
+function sdClearDrill() {
+  sdDrillFilter = null;
+  renderSchoolDash();
+}
+
+function sdDonut(closed, part, open, total) {
+  const svg = document.getElementById('sdDonut');
+  const legend = document.getElementById('sdDonutLegend');
+  if (!svg) return;
+  if (total === 0) {
+    svg.innerHTML = '<circle cx="80" cy="80" r="60" fill="none" stroke="#EEF1EE" stroke-width="24"/><text x="80" y="85" text-anchor="middle" font-size="12" fill="#66756B" font-weight="700">No Data</text>';
+    if (legend) legend.innerHTML = '';
+    return;
+  }
+  const r = 50, circ = 2 * Math.PI * r;
+  const segs = [
+    { v: closed, color: '#0E7C45', label: 'Closed' },
+    { v: part,   color: '#6D28D9', label: 'Part Req' },
+    { v: open,   color: '#1D4ED8', label: 'Open' }
+  ];
+  let html = '<circle cx="80" cy="80" r="60" fill="none" stroke="#EEF1EE" stroke-width="26"/>';
+  let offset = 0;
+  segs.forEach(s => {
+    if (s.v <= 0) return;
+    const len = circ * (s.v / total);
+    html += `<circle cx="80" cy="80" r="${r}" fill="none" stroke="${s.color}" stroke-width="24" stroke-dasharray="${len} ${circ - len}" stroke-dashoffset="${offset}" transform="rotate(-90 80 80)"/>`;
+    offset -= len;
+  });
+  html += `<text x="80" y="78" text-anchor="middle" font-size="22" font-weight="800" fill="#1B2A21">${total}</text>`;
+  html += '<text x="80" y="96" text-anchor="middle" font-size="9" font-weight="700" fill="#66756B">TOTAL TICKETS</text>';
+  svg.innerHTML = html;
+  if (legend) legend.innerHTML = segs.map(s =>
+    `<span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border-radius:3px;background:${s.color};display:inline-block;"></span>${s.label}: ${s.v}</span>`
+  ).join('');
+}
+
+function renderSchoolDash() {
+  const branchSel = document.getElementById('sdFiltBranch');
+  if (!branchSel) return;
+  let list = sdGetList();
+
+  // Populate filter dropdowns once data is available
+  if (!sdFiltersLoaded) {
+    const activeBranches = (window.parentBmBranches || []).filter(b => b.status === 'Active');
+    if (activeBranches.length) {
+      branchSel.innerHTML = '<option value="ALL">All Branches</option>' +
+        activeBranches.map(b => `<option value="${sdEsc(b.name)}">${sdEsc(b.name)}</option>`).join('');
+    }
+    const dists = [...new Set(list.map(r => r.district).filter(Boolean))].sort();
+    if (dists.length) {
+      document.getElementById('sdFiltDistrict').innerHTML = '<option value="ALL">All Districts</option>' +
+        dists.map(d => `<option value="${sdEsc(d)}">${sdEsc(d)}</option>`).join('');
+    }
+    if (list.length || activeBranches.length) sdFiltersLoaded = true;
+  }
+
+  const fB = branchSel.value;
+  const fS = document.getElementById('sdFiltStatus').value;
+  const fD = document.getElementById('sdFiltDistrict').value;
+  if (fB !== 'ALL') list = list.filter(r => r.branch === fB);
+  if (fS !== 'ALL') list = list.filter(r => r.status === fS);
+  if (fD !== 'ALL') list = list.filter(r => r.district === fD);
+
+  // KPIs
+  const total = list.length;
+  const open = list.filter(r => r.status === 'Open').length;
+  const part = list.filter(r => r.status === 'Part Request').length;
+  const closed = list.filter(r => r.status === 'Closed').length;
+  const aging = list.filter(r => r.status !== 'Closed' && sdTicketAge(r.date) > 30).length;
+  document.getElementById('sdKpiTotal').textContent = total;
+  document.getElementById('sdKpiOpen').textContent = open;
+  document.getElementById('sdKpiPart').textContent = part;
+  document.getElementById('sdKpiClosed').textContent = closed;
+  document.getElementById('sdKpiAging').textContent = aging;
+  document.getElementById('sdKpiClosurePct').textContent = (total ? Math.round(closed / total * 100) : 0) + '% closure';
+  document.getElementById('sdKpiPartPct').textContent = (total ? Math.round(part / total * 100) : 0) + '% of total';
+
+  // Branch summary table with Grand Total
+  let branchNames = (window.parentBmBranches || []).filter(b => b.status === 'Active').map(b => b.name);
+  if (!branchNames.length) branchNames = [...new Set(list.map(r => r.branch))];
+  if (list.some(r => r.branch === 'Unmapped') && !branchNames.includes('Unmapped')) branchNames.push('Unmapped');
+
+  const cell = (v, handler) => v > 0
+    ? `<td style="text-align:center;"><span class="sd-link" onclick="${handler}">${v}</span></td>`
+    : '<td class="sd-zero">0</td>';
+
+  const totals = { open: 0, part: 0, closed: 0, total: 0 };
+  let rows = '';
+  branchNames.forEach(bn => {
+    const bl = list.filter(r => r.branch === bn);
+    const bo = bl.filter(r => r.status === 'Open').length;
+    const bp = bl.filter(r => r.status === 'Part Request').length;
+    const bc = bl.filter(r => r.status === 'Closed').length;
+    if (!bl.length && fB !== 'ALL') return;
+    totals.open += bo; totals.part += bp; totals.closed += bc; totals.total += bl.length;
+    const bnEsc = sdEsc(bn).replace(/&#39;/g, "\\'");
+    rows += `<tr>
+      <td><span class="sd-link" onclick="sdDrill('branch','${bnEsc}')">${sdEsc(bn)}</span></td>
+      ${cell(bo, `sdDrillCell('${bnEsc}','Open')`)}
+      ${cell(bp, `sdDrillCell('${bnEsc}','Part Request')`)}
+      ${cell(bc, `sdDrillCell('${bnEsc}','Closed')`)}
+      <td style="text-align:center;"><span class="sd-link" onclick="sdDrill('branch','${bnEsc}')">${bl.length}</span></td>
+    </tr>`;
+  });
+  rows += `<tr class="sd-grand">
+    <td style="text-transform:uppercase; letter-spacing:0.05em; font-size:0.74rem; color:var(--primary-dark);">Grand Total</td>
+    ${cell(totals.open, `sdDrill('status','Open')`)}
+    ${cell(totals.part, `sdDrill('status','Part Request')`)}
+    ${cell(totals.closed, `sdDrill('status','Closed')`)}
+    <td style="text-align:center;"><span class="sd-link" onclick="sdClearDrill()">${totals.total}</span></td>
+  </tr>`;
+  document.getElementById('sdBranchTable').innerHTML = rows;
+
+  // Donut
+  sdDonut(closed, part, open, total);
+
+  // Drill-down records
+  let drillList = list.slice();
+  const lbl = document.getElementById('sdDrillLabel');
+  const clearBtn = document.getElementById('sdDrillClear');
+  if (sdDrillFilter) {
+    const t = sdDrillFilter.type, v = sdDrillFilter.val;
+    if (t === 'status') { drillList = drillList.filter(r => r.status === v); lbl.textContent = `— Status: ${v}`; }
+    else if (t === 'branch') { drillList = drillList.filter(r => r.branch === v); lbl.textContent = `— Branch: ${v}`; }
+    else if (t === 'aging30') { drillList = drillList.filter(r => r.status !== 'Closed' && sdTicketAge(r.date) > 30); lbl.textContent = '— Pending > 30 days'; }
+    else if (t === 'cell') { drillList = drillList.filter(r => r.branch === v.branch && r.status === v.status); lbl.textContent = `— ${v.branch} · ${v.status}`; }
+    if (clearBtn) clearBtn.style.display = 'inline-flex';
+  } else {
+    lbl.textContent = '';
+    if (clearBtn) clearBtn.style.display = 'none';
+  }
+  document.getElementById('sdDrillCount').textContent = drillList.length + ' record(s)';
+  const chipClass = s => 'sd-chip ' + s.toLowerCase().replace(/\s+/g, '');
+  let dHtml = '';
+  drillList.forEach(r => {
+    dHtml += `<tr>
+      <td>${sdEsc(r.diseCode)}</td>
+      <td style="font-weight:700; white-space:normal;">${sdEsc(r.name)}</td>
+      <td style="font-family:monospace; font-size:0.76rem;">${sdEsc(r.serial)}</td>
+      <td><span class="${chipClass(r.status)}">${sdEsc(r.status)}</span></td>
+      <td>${sdEsc(r.branch)}</td>
+      <td>${sdEsc(r.district)}</td>
+      <td>${sdEsc(String(r.date).slice(0, 10))}</td>
+    </tr>`;
+  });
+  if (!drillList.length) dHtml = '<tr><td colspan="7" style="text-align:center; color:var(--muted); padding:20px;">No records match the current filters.</td></tr>';
+  document.getElementById('sdDrillTable').innerHTML = dHtml;
+}
+
 function switchTab(tabId) {
   if (!checkTabAccess(tabId)) {
     showToast('❌ Access Denied: You do not have permission to view this module.', 'danger');
@@ -2311,6 +2612,8 @@ function switchTab(tabId) {
   if (btn) btn.classList.add('active');
   if (content) content.classList.add('active');
   currentTab = tabId;
+
+  if (tabId === 'schooldash') renderSchoolDash();
   
   // Update URL parameter without reloading to match current module
   const moduleMapInv = {
@@ -2377,13 +2680,7 @@ async function ensureBranchDataLoaded() {
       window.parentBmAliases = bmAliases;
       logToDebug(`Loaded ${bmBranches.length} branches and ${bmAliases.length} alias mappings for dashboard summary.`, 'success');
       
-      const iframe = document.getElementById('schoolDashIframe');
-      if (iframe && iframe.contentWindow && typeof iframe.contentWindow.renderDashboard === 'function') {
-        iframe.contentWindow.renderDashboard();
-        if (typeof iframe.contentWindow.renderDbTable === 'function') {
-          iframe.contentWindow.renderDbTable();
-        }
-      }
+      if (typeof renderSchoolDash === 'function') renderSchoolDash();
     } catch (e) {
       console.error('Failed to load branch mapping data:', e);
     } finally {
@@ -5694,13 +5991,7 @@ async function loadBranchMgmt() {
     window.parentBmAliases = bmAliases;
     renderDoTable(); renderBrTable(); renderUnmappedTable(); renderAliasTable();
     
-    const iframe = document.getElementById('schoolDashIframe');
-    if (iframe && iframe.contentWindow && typeof iframe.contentWindow.renderDashboard === 'function') {
-      iframe.contentWindow.renderDashboard();
-      if (typeof iframe.contentWindow.renderDbTable === 'function') {
-        iframe.contentWindow.renderDbTable();
-      }
-    }
+    if (typeof renderSchoolDash === 'function') renderSchoolDash();
   } catch (e) {
     showToast('❌ Could not load branch data: ' + e.message, 'danger');
   }
