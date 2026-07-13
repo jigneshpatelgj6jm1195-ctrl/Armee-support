@@ -1173,6 +1173,7 @@ tr:hover td { background: #f8fafc; }
       </div>
       <div style="flex:1;"></div>
       <button class="btn btn-ghost btn-sm" id="sdDrillClear" style="display:none;" onclick="sdClearDrill()">✖ Clear drill-down filter</button>
+      <div id="sdScopeNote" style="display:none; flex-basis:100%; font-size:0.72rem; font-weight:700; color:var(--primary-dark); background:var(--primary-light); border-radius:8px; padding:6px 10px;"></div>
     </div>
 
     <!-- KPI cards -->
@@ -1574,12 +1575,12 @@ tr:hover td { background: #f8fafc; }
   <div class="modal">
     <h3>🔐 Admin Authorization Required</h3>
     <div class="field">
-      <label for="adminUsername">Username</label>
-      <input type="text" id="adminUsername" placeholder="Enter admin username" />
+      <label for="adminUsername">Super Admin Email</label>
+      <input type="text" id="adminUsername" placeholder="Enter super admin email" autocomplete="username" />
     </div>
     <div class="field">
       <label for="adminPassword">Password</label>
-      <input type="password" id="adminPassword" placeholder="Enter admin password" />
+      <input type="password" id="adminPassword" placeholder="Enter password" autocomplete="current-password" />
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('adminDeleteLoginModal')">Cancel</button>
@@ -2420,9 +2421,17 @@ function sdTicketAge(dateStr) {
   return diff < 0 ? 0 : diff;
 }
 
+// Districts the logged-in user may see; null = unrestricted (super admin / ALL)
+function sdUserDistricts() {
+  if (!currentUser || currentUser.role === 'super_admin') return null;
+  const d = currentUser.assignedDistricts || [];
+  if (d.includes('ALL')) return null;
+  return d.map(x => String(x).toUpperCase().trim());
+}
+
 function sdGetList() {
   const src = Array.isArray(window.parentSchoolComplaintsList) ? window.parentSchoolComplaintsList : [];
-  return src.map(c => {
+  let list = src.map(c => {
     let statusVal = String(c.status || '').trim();
     if (!statusVal) statusVal = 'Open';
     return {
@@ -2435,6 +2444,10 @@ function sdGetList() {
       status: statusVal
     };
   });
+  // Hierarchy: district admins / viewers only see their assigned districts
+  const allowed = sdUserDistricts();
+  if (allowed) list = list.filter(r => allowed.includes(r.district));
+  return list;
 }
 
 function sdDrill(type, val) {
@@ -2484,20 +2497,39 @@ function renderSchoolDash() {
   const branchSel = document.getElementById('sdFiltBranch');
   if (!branchSel) return;
   let list = sdGetList();
+  const allowedDistricts = sdUserDistricts();
 
-  // Populate filter dropdowns once data is available
-  if (!sdFiltersLoaded) {
-    const activeBranches = (window.parentBmBranches || []).filter(b => b.status === 'Active');
-    if (activeBranches.length) {
+  // (Re)build filter dropdowns scoped to what this user may see, keeping selections
+  {
+    const distSel = document.getElementById('sdFiltDistrict');
+    const keepB = branchSel.value, keepD = distSel.value;
+    let branchOpts;
+    if (allowedDistricts) {
+      branchOpts = [...new Set(list.map(r => r.branch).filter(Boolean))].sort();
+    } else {
+      branchOpts = (window.parentBmBranches || []).filter(b => b.status === 'Active').map(b => b.name);
+    }
+    if (branchOpts.length) {
       branchSel.innerHTML = '<option value="ALL">All Branches</option>' +
-        activeBranches.map(b => `<option value="${sdEsc(b.name)}">${sdEsc(b.name)}</option>`).join('');
+        branchOpts.map(b => `<option value="${sdEsc(b)}">${sdEsc(b)}</option>`).join('');
+      branchSel.value = branchOpts.includes(keepB) ? keepB : 'ALL';
     }
-    const dists = [...new Set(list.map(r => r.district).filter(Boolean))].sort();
+    const dists = allowedDistricts
+      ? allowedDistricts.slice().sort()
+      : [...new Set(list.map(r => r.district).filter(Boolean))].sort();
     if (dists.length) {
-      document.getElementById('sdFiltDistrict').innerHTML = '<option value="ALL">All Districts</option>' +
+      distSel.innerHTML = '<option value="ALL">All Districts</option>' +
         dists.map(d => `<option value="${sdEsc(d)}">${sdEsc(d)}</option>`).join('');
+      distSel.value = dists.includes(keepD) ? keepD : 'ALL';
     }
-    if (list.length || activeBranches.length) sdFiltersLoaded = true;
+    // Hierarchy note so restricted users know what scope they are looking at
+    const note = document.getElementById('sdScopeNote');
+    if (note) {
+      note.textContent = allowedDistricts
+        ? '🔒 Showing your assigned district(s): ' + allowedDistricts.join(', ')
+        : '';
+      note.style.display = allowedDistricts ? 'block' : 'none';
+    }
   }
 
   const fB = branchSel.value;
@@ -2525,6 +2557,8 @@ function renderSchoolDash() {
   let branchNames = (window.parentBmBranches || []).filter(b => b.status === 'Active').map(b => b.name);
   if (!branchNames.length) branchNames = [...new Set(list.map(r => r.branch))];
   if (list.some(r => r.branch === 'Unmapped') && !branchNames.includes('Unmapped')) branchNames.push('Unmapped');
+  // Restricted users only see branches that actually hold their districts' data
+  if (allowedDistricts) branchNames = branchNames.filter(bn => list.some(r => r.branch === bn));
 
   const cell = (v, handler) => v > 0
     ? `<td style="text-align:center;"><span class="sd-link" onclick="${handler}">${v}</span></td>`
@@ -4431,14 +4465,17 @@ async function submitAdminLogin() {
       showToast('❌ Login failed (network). Please try again.', 'danger');
       return;
     }
-  } else {
-    // Offline / local-server fallback: legacy client-side check.
+  } else if (isLocal()) {
+    // Local development fallback only — the public site never accepts a
+    // client-side credential check (passwords are no longer shipped to browsers).
     const accessUsers = masterData.accessUsers || [];
     if (email.toLowerCase() === 'admin@armee.in' && pass === 'armee@2026') {
       user = { id: 'USR100', name: 'Super Admin', email: 'admin@armee.in', role: 'super_admin', assignedDistricts: ['ALL'], status: 'active' };
     } else {
       user = accessUsers.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === pass && u.status === 'active');
     }
+  } else {
+    showToast('❌ You appear to be offline. Admin login needs a connection.', 'danger');
   }
   if (btnLogin) { btnLogin.disabled = false; }
 
@@ -4667,17 +4704,40 @@ function triggerAdminDeleteLogin() {
   document.getElementById('adminDeleteLoginModal').classList.add('show');
 }
 
-function submitAdminDeleteLogin() {
+async function submitAdminDeleteLogin() {
   const user = document.getElementById('adminUsername').value.trim();
   const pass = document.getElementById('adminPassword').value;
 
-  if (user === 'admin' && pass === 'armee@2026') {
+  const unlock = () => {
     deleteModeUnlocked = true;
     closeModal('adminDeleteLoginModal');
     renderComplaintsTable();
     showToast('🔓 Admin delete actions unlocked successfully!', 'success');
-  } else {
-    showToast('❌ Invalid admin credentials!', 'danger');
+  };
+
+  // Local development fallback keeps the legacy fixed credentials
+  if (isLocal()) {
+    if (user === 'admin' && pass === 'armee@2026') { unlock(); }
+    else { showToast('❌ Invalid admin credentials!', 'danger'); }
+    return;
+  }
+
+  // Live site: verify against the backend — only a super_admin account unlocks deletes
+  try {
+    const res = await fetch(GOOGLE_SCRIPT_URL, {
+      method: 'POST',
+      mode: 'cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ action: 'login', email: user, password: pass })
+    });
+    const out = await res.json();
+    if (out && out.status === 'ok' && out.user && out.user.role === 'super_admin') {
+      unlock();
+    } else {
+      showToast('❌ Invalid credentials or not a super admin!', 'danger');
+    }
+  } catch (e) {
+    showToast('❌ Verification failed (network). Please try again.', 'danger');
   }
 }
 

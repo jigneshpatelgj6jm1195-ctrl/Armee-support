@@ -9,6 +9,11 @@ __pycache__/
 .vercel
 .env*
 
+# Secrets — never commit private keys or credentials (QA finding P3)
+*.key
+ssh-key-*
+*.pem
+
 # Local mock database files
 dash.json
 dash2.json

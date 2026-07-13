@@ -1035,7 +1035,7 @@ function handleSubmitComplaint(ss, data) {
 }
 
 // Fallback super admin. Verified server-side ONLY — never sent to any client.
-var SUPER_ADMIN = { email: 'admin@armee.in', password: 'armee@2026' };
+var SUPER_ADMIN = { email: 'admin@armee.in', password: 'fdJr-nJq5-QJJX' };
 
 /**
  * Server-side login (QA finding C1). Verifies credentials against MasterData and
@@ -1074,15 +1074,15 @@ function handleLogin(ss, data) {
  */
 function sanitizeMasterForClient(md) {
   if (!md) return { equipment: [], users: [], accessUsers: [] };
+  var stripPw = function(u) {
+    var c = {};
+    for (var kk in u) { if (kk !== 'password') c[kk] = u[kk]; }
+    return c;
+  };
   var clone = {};
   for (var k in md) clone[k] = md[k];
-  if (Array.isArray(md.accessUsers)) {
-    clone.accessUsers = md.accessUsers.map(function(u) {
-      var c = {};
-      for (var kk in u) { if (kk !== 'password') c[kk] = u[kk]; }
-      return c;
-    });
-  }
+  if (Array.isArray(md.accessUsers)) clone.accessUsers = md.accessUsers.map(stripPw);
+  if (Array.isArray(md.users)) clone.users = md.users.map(stripPw);
   return clone;
 }
 

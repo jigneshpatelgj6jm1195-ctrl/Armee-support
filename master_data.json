@@ -523,7 +523,6 @@
       "name": "Samir Patel",
       "email": "samir@armee.in",
       "phone": "7567505664",
-      "password": "armee123",
       "role": "district_admin",
       "assignedDistricts": [
         "ANAND",
@@ -548,7 +547,6 @@
       "name": "Samir Patel",
       "email": "samir@armee.in",
       "phone": "7567505664",
-      "password": "armee123",
       "role": "district_admin",
       "assignedDistricts": [
         "ANAND",
@@ -570,7 +568,6 @@
       "name": "Ajij Ranchadiya",
       "email": "ajij@armee.in",
       "phone": "9537200787",
-      "password": "armee123",
       "role": "district_admin",
       "assignedDistricts": [
         "ARAVALLI",
@@ -586,7 +583,6 @@
       "name": "Rajesh Karangyiya",
       "email": "junagadh@armee.in",
       "phone": "9974418028",
-      "password": "armee123",
       "role": "district_admin",
       "assignedDistricts": [
         "GIR SOMNATH",
@@ -600,7 +596,6 @@
       "name": "Dharmendra Varia",
       "email": "panchmahal@armee.in",
       "phone": "9979694330",
-      "password": "armee123",
       "role": "district_admin",
       "assignedDistricts": [
         "DAHOD",
@@ -614,7 +609,6 @@
       "name": "Vimal Rana",
       "email": "surat.coor@armeeinfotech.com",
       "phone": "9510977177",
-      "password": "armee123",
       "role": "district_admin",
       "assignedDistricts": [
         "NAVSARI",
@@ -631,7 +625,6 @@
       "name": "Puja Dharu",
       "email": "ahmedabad@armee.in",
       "phone": "9510977101",
-      "password": "armee123",
       "role": "district_admin",
       "assignedDistricts": [
         "AHMEDABAD",
@@ -645,7 +638,6 @@
       "name": "Sagar Parmar",
       "email": "bhavnagar@armeeinfotech.com",
       "phone": "8511301453",
-      "password": "armee123",
       "role": "district_admin",
       "assignedDistricts": [
         "AMRELI",
@@ -659,7 +651,6 @@
       "name": "Dharmendra Sanklecha",
       "email": "rajkot@armee.in",
       "phone": "",
-      "password": "armee123",
       "role": "district_admin",
       "assignedDistricts": [
         "DEVBHOOMI DWARKA",
@@ -677,7 +668,6 @@
       "name": "Anita Patel",
       "email": "support@armee.in",
       "phone": "9510977129",
-      "password": "armee123",
       "role": "district_admin",
       "assignedDistricts": [
         "BHARUCH",
@@ -693,7 +683,6 @@
       "name": "Javed Vohra",
       "email": "anand@armee.in",
       "phone": "9510977127",
-      "password": "armee123",
       "role": "viewer",
       "assignedDistricts": [
         "ANAND",
