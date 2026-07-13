@@ -380,6 +380,12 @@ function doPost(e) {
       return ContentService.createTextOutput(JSON.stringify({ status: 'ok', updatedCount: count }))
                            .setMimeType(ContentService.MimeType.JSON);
     }
+ 
+    if (data.action === 'resolve_school_complaint_from_portal') {
+      var count = resolveSchoolComplaintFromPortal(ss, data);
+      return ContentService.createTextOutput(JSON.stringify({ status: 'ok', updatedCount: count }))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
 
     if (data.action === 'heal_school_dise_by_name') {
       // Accepts { nameMap: { "school name": "dise_code", ... } }
@@ -4295,3 +4301,66 @@ function fixSchoolProjectByEquipment(ss) {
   }
   return updatedCount;
 }
+
+/**
+ * Resolves a school complaint from the portal (index.html) by directly
+ * updating its status and suspected part in the SchoolComplaintMaster sheet.
+ * Does NOT append to the Complaints sheet.
+ */
+function resolveSchoolComplaintFromPortal(ss, data) {
+  var sheet = ss.getSheetByName('SchoolComplaintMaster');
+  if (!sheet) return 0;
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return 0;
+
+  var srNo = parseInt(data.srNo);
+  if (isNaN(srNo) || srNo <= 0) return 0;
+
+  var range = sheet.getRange(2, 1, lastRow - 1, 19);
+  var values = range.getValues();
+  var updatedCount = 0;
+  var changed = false;
+
+  for (var i = 0; i < values.length; i++) {
+    var sheetSrNo = parseInt(values[i][0]);
+    if (sheetSrNo === srNo) {
+      var rowNum = i + 2;
+      var newStatus = data.status || 'Closed';
+      var suspectedPart = data.suspectedPart || '';
+      
+      // Update Column Q (index 16) -> Status
+      sheet.getRange(rowNum, 17).setValue(newStatus);
+      
+      // Update Column R (index 17) -> Suspected Part (or clear it if Closed)
+      if (newStatus === 'Closed') {
+        sheet.getRange(rowNum, 18).setValue('');
+      } else {
+        sheet.getRange(rowNum, 18).setValue(suspectedPart);
+      }
+      
+      // If they provided photos, upload them to Google Drive (if present)
+      // just so the files are captured. We can store the folder name or log it.
+      if (data.photos && data.photos.length > 0) {
+        try {
+          var folder = getPhotoFolder(data.project || 'ICT', new Date().toISOString());
+          var timestamp = new Date().getTime();
+          var dise = data.dise || 'UNKNOWN';
+          var serial = String(data.serialNumber || 'NA').replace(/[^a-zA-Z0-9]/g, '');
+          
+          for (var k = 0; k < data.photos.length; k++) {
+            var fname = 'RESOLVED_' + dise + '_' + serial + '_' + timestamp + (data.photos.length > 1 ? '_' + (k+1) : '') + '.jpg';
+            uploadPhotoToDrive(data.photos[k], fname, folder);
+          }
+        } catch (e) {
+          Logger.log("Error saving photo: " + e.toString());
+        }
+      }
+      
+      updatedCount++;
+      break;
+    }
+  }
+  
+  return updatedCount;
+}
+

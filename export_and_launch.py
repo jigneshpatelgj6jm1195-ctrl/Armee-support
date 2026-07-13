@@ -164,7 +164,13 @@ class FormHandler(http.server.SimpleHTTPRequestHandler):
             self._respond(404, {'error': 'Unknown endpoint'})
 
     def _handle_submit_complaint(self, data):
-        """Append complaint payload to complaints.json file"""
+        """Append complaint payload to complaints.json file or handle school resolution"""
+        action = data.get('action')
+        if action == 'resolve_school_complaint_from_portal':
+            print(f"  [RESOLVE SCHOOL] srNo: {data.get('srNo')} | DISE: {data.get('dise')} | Status: {data.get('status')} | Suspected: {data.get('suspectedPart')}")
+            self._respond(200, {'ok': True})
+            return
+
         complaints_file = SCRIPT_DIR / "complaints.json"
         try:
             if complaints_file.exists():

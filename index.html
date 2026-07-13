@@ -3019,7 +3019,10 @@ async function proceedWithSubmission() {
   let closureType = '';
   let otpVal = '';
 
+  const isSchool = (appFlow === 'school');
   const complaint = {
+    action:            isSchool ? 'resolve_school_complaint_from_portal' : 'submit_complaint',
+    srNo:              isSchool ? r?.srNo : undefined,
     submittedAt:       new Date().toISOString(),
     complainantName:   user.name  || '',
     complainantPhone:  user.phone || '',
@@ -3052,7 +3055,7 @@ async function proceedWithSubmission() {
     latitude:          gpsLocation.latitude,
     longitude:         gpsLocation.longitude,
     duplicateStatus:   pendingDuplicateStatus,
-    source:            appFlow === 'school' ? 'School Complaint' : 'Advance Complaint'
+    source:            isSchool ? 'School Complaint' : 'Advance Complaint'
   };
 
   lastComplaint = complaint;
