@@ -2884,63 +2884,48 @@ async function promptUpdateDiseCode(srNo, currentDise, schoolName) {
 }
 
 async function autoHealSchoolDiseCodes() {
-  if (!window.parentSchoolComplaintsList || !window.parentSchoolComplaintsList.length) return;
   if (!schoolDataRaw || Object.keys(schoolDataRaw).length === 0) return;
-  
-  const updates = [];
-  const schoolNameToDiseMap = {};
+
+  // Build schoolName -> dise map from school_data.json
+  const nameMap = {};
   for (const [dise, entries] of Object.entries(schoolDataRaw)) {
     const arr = Array.isArray(entries) ? entries : [entries];
     arr.forEach(entry => {
-      const name = String(entry.school || '').trim().toLowerCase();
-      if (name) schoolNameToDiseMap[name] = dise;
+      const name = String(entry.school || '').trim();
+      if (name) nameMap[name] = dise;
     });
   }
-  
-  window.parentSchoolComplaintsList.forEach(c => {
-    const currentDise = String(c.dise || c.diseCode || '').trim();
-    if (!currentDise && c.srNo) {
-      const schoolName = String(c.school || c.name || '').trim().toLowerCase();
-      const matchedDise = schoolNameToDiseMap[schoolName];
-      if (matchedDise) {
-        updates.push({ srNo: c.srNo, dise: matchedDise });
+
+  if (Object.keys(nameMap).length === 0) return;
+
+  console.log(`[AUTO-HEAL] Sending ${Object.keys(nameMap).length} school name→DISE mappings to backend for bulk heal...`);
+  try {
+    const res = await fetch(GOOGLE_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'heal_school_dise_by_name',
+        nameMap: nameMap
+      })
+    });
+    const out = await res.json();
+    if (out.status === 'ok') {
+      if (out.updatedCount > 0) {
+        logToDebug(`[AUTO-HEAL] Healed ${out.updatedCount} blank DISE codes in Google Sheet!`, 'success');
+        showToast(`✅ Auto-healed ${out.updatedCount} blank DISE codes in Google Sheet`, 'success');
+        // Reload so the dashboard reflects updated DISE codes
+        await loadComplaints();
+      } else {
+        logToDebug(`[AUTO-HEAL] No blank DISE codes found to heal.`, 'info');
       }
+    } else {
+      logToDebug(`[AUTO-HEAL] Backend returned: ${JSON.stringify(out)}`, 'warn');
     }
-  });
-  
-  if (updates.length > 0) {
-    console.log(`[AUTO-HEAL] Found ${updates.length} school complaints with blank DISE codes matching school database.`);
-    const token = typeof adminAuthToken === 'function' ? adminAuthToken() : '';
-    try {
-      const res = await fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({
-          action: 'update_school_complaint_dise_bulk',
-          updates: updates,
-          authToken: token
-        })
-      });
-      const out = await res.json();
-      if (out.status === 'ok') {
-        logToDebug(`[AUTO-HEAL] Successfully populated ${out.updatedCount} blank school DISE codes in Google Sheet!`, 'success');
-        showToast(`📡 Auto-healed ${out.updatedCount} blank school DISE codes`, 'success');
-        
-        // Update local memory list directly so we don't have to trigger a network reload immediately
-        window.parentSchoolComplaintsList.forEach(c => {
-          const match = updates.find(u => u.srNo === c.srNo);
-          if (match) {
-            c.dise = match.dise;
-            c.diseCode = match.dise;
-          }
-        });
-        renderSchoolDash();
-      }
-    } catch (e) {
-      console.warn('Failed to auto-heal blank school DISE codes:', e);
-    }
+  } catch (e) {
+    console.warn('[AUTO-HEAL] Failed to heal blank school DISE codes:', e);
   }
 }
+
 
 function exportSchoolComplaintsCSV() {
   const list = window.lastSchoolDrillList;

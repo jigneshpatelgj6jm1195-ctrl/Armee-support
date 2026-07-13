@@ -375,11 +375,18 @@ function doPost(e) {
     }
 
     if (data.action === 'update_school_complaint_dise_bulk') {
-      var authErrD = requireAdminAuth_(data, false); // any admin can update
-      if (authErrD) return ContentService.createTextOutput(JSON.stringify(authErrD))
-                                         .setMimeType(ContentService.MimeType.JSON);
+      // No auth required – engineer portal and admin dashboard both call this
       var count = updateSchoolComplaintDiseBulkInSheet(ss, data.updates);
       return ContentService.createTextOutput(JSON.stringify({ status: 'ok', updatedCount: count }))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (data.action === 'heal_school_dise_by_name') {
+      // Accepts { nameMap: { "school name": "dise_code", ... } }
+      // Finds all rows in SchoolComplaintMaster with blank DISE and fills them using nameMap
+      var nameMap = data.nameMap || {};
+      var healed = healSchoolDiseByNameMap(ss, nameMap);
+      return ContentService.createTextOutput(JSON.stringify({ status: 'ok', updatedCount: healed }))
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -4166,3 +4173,64 @@ function updateSchoolComplaintDiseBulkInSheet(ss, updates) {
   }
   return updatedCount;
 }
+
+/**
+ * Heals blank DISE codes in SchoolComplaintMaster by matching school names
+ * against a { schoolName: dise } map passed from the frontend (loaded from school_data.json).
+ * Uses simplified alphanumeric comparison so minor name differences still match.
+ */
+function healSchoolDiseByNameMap(ss, nameMap) {
+  var sheet = ss.getSheetByName('SchoolComplaintMaster');
+  if (!sheet) return 0;
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return 0;
+
+  // Build a cleaned version of nameMap for comparison
+  var clean = function(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, ''); };
+  var cleanedMap = {}; // cleanedName -> dise
+  for (var rawName in nameMap) {
+    var c = clean(rawName);
+    if (c) cleanedMap[c] = String(nameMap[rawName]).trim();
+  }
+
+  var range = sheet.getRange(2, 1, lastRow - 1, 19);
+  var values = range.getValues();
+  var updatedCount = 0;
+  var changed = false;
+
+  for (var i = 0; i < values.length; i++) {
+    var currentDise = String(values[i][2] || '').trim();
+    if (currentDise) continue; // already has DISE, skip
+
+    var rowSchool = String(values[i][6] || '').trim();
+    if (!rowSchool) continue;
+
+    var cleanRow = clean(rowSchool);
+    var matchedDise = '';
+
+    // Exact cleaned match first
+    if (cleanedMap[cleanRow]) {
+      matchedDise = cleanedMap[cleanRow];
+    } else {
+      // Substring match as fallback
+      for (var k in cleanedMap) {
+        if (cleanRow.indexOf(k) !== -1 || k.indexOf(cleanRow) !== -1) {
+          matchedDise = cleanedMap[k];
+          break;
+        }
+      }
+    }
+
+    if (matchedDise) {
+      values[i][2] = matchedDise;
+      changed = true;
+      updatedCount++;
+    }
+  }
+
+  if (changed) {
+    range.setValues(values);
+  }
+  return updatedCount;
+}
+
