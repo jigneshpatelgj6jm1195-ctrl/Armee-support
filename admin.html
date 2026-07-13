@@ -1068,7 +1068,44 @@ tr:hover td { background: #f8fafc; }
       </div>
     </div>
 
-    <!-- Drill-down ticket list -->
+    <!-- Today's Inflow vs Outflow -->
+    <div class="card" style="margin-bottom:20px;" id="todayFlowCard">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
+        <div>
+          <div class="card-title" style="margin-bottom:2px;">📅 Today's Inflow vs Outflow — Branch-wise</div>
+          <div style="font-size:0.75rem; color:var(--muted);" id="todayFlowDate">Loading date…</div>
+        </div>
+        <div style="display:flex; gap:16px; font-size:0.78rem; font-weight:700;">
+          <span style="color:#0e7490;">🔵 Inflow = Tickets logged today</span>
+          <span style="color:#15803d;">🟢 Outflow = Tickets attended today</span>
+        </div>
+      </div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%; border-collapse:collapse; font-size:0.78rem;">
+          <thead>
+            <tr style="background:#f0f9ff; font-weight:700; font-size:0.72rem; text-transform:uppercase; color:var(--muted);">
+              <th style="padding:8px 12px; text-align:left; border-bottom:2px solid var(--border);">Branch</th>
+              <th style="padding:8px 12px; text-align:center; border-bottom:2px solid var(--border); border-left:1px solid var(--border); background:#ecfeff; color:#0e7490;">🔵 Inflow</th>
+              <th colspan="5" style="padding:8px 12px; text-align:center; border-bottom:2px solid var(--border); border-left:2px solid #bbf7d0; background:#f0fdf4; color:#15803d;">🟢 Outflow (Attended Today)</th>
+            </tr>
+            <tr style="background:#fafafa; font-size:0.7rem; color:var(--muted); font-weight:700;">
+              <th style="padding:6px 12px; border-bottom:1px solid var(--border);"></th>
+              <th style="padding:6px 12px; text-align:center; border-bottom:1px solid var(--border); border-left:1px solid var(--border); background:#ecfeff;">Logged</th>
+              <th style="padding:6px 12px; text-align:center; border-bottom:1px solid var(--border); border-left:2px solid #bbf7d0;">In Progress</th>
+              <th style="padding:6px 12px; text-align:center; border-bottom:1px solid var(--border);">Part Request</th>
+              <th style="padding:6px 12px; text-align:center; border-bottom:1px solid var(--border);">Pending OTP</th>
+              <th style="padding:6px 12px; text-align:center; border-bottom:1px solid var(--border);">Closed</th>
+              <th style="padding:6px 12px; text-align:center; border-bottom:1px solid var(--border); font-weight:800;">Total Out</th>
+            </tr>
+          </thead>
+          <tbody id="todayFlowBody">
+            <tr><td colspan="7" style="text-align:center; color:var(--muted); padding:16px;">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+
     <div class="card" style="margin-bottom:20px;">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
         <div class="card-title" style="margin-bottom:0;">🎫 Department Tickets <span id="deptDrillLabel" style="font-size:0.75rem;color:var(--primary);font-weight:600;"></span></div>
@@ -5693,7 +5730,7 @@ async function loadDeptDashboard() {
     const list = await fetch(GOOGLE_SCRIPT_URL + '?action=get_department_complaints_list&t=' + Date.now()).then(r => r.json());
     deptList = Array.isArray(list) ? filterByUserDistricts(list) : [];
     deptDash = computeClientDeptDashboard(deptList);
-    renderDeptPendency(); renderBranchAging(); renderDeptList(); drawDeptTrendChart(deptList);
+    renderDeptPendency(); renderBranchAging(); renderTodayFlow(); renderDeptList(); drawDeptTrendChart(deptList);
   } catch (e) {
     showToast('❌ Could not load department dashboard: ' + e.message, 'danger');
   }
@@ -5771,6 +5808,102 @@ function computeClientDeptDashboard(list) {
     unmapped: unmapped,
     districtOffices: districtOffices
   };
+}
+
+function renderTodayFlow() {
+  const body = document.getElementById('todayFlowBody');
+  const dateLabel = document.getElementById('todayFlowDate');
+  if (!body) return;
+
+  // Today's date string YYYY-MM-DD in local time
+  const now = new Date();
+  const todayStr = now.getFullYear() + '-' +
+    String(now.getMonth() + 1).padStart(2, '0') + '-' +
+    String(now.getDate()).padStart(2, '0');
+
+  if (dateLabel) {
+    dateLabel.textContent = 'As of: ' + now.toLocaleDateString('en-IN', { weekday:'long', day:'2-digit', month:'long', year:'numeric' });
+  }
+
+  // Helper: extract YYYY-MM-DD from a date value
+  function toDateStr(val) {
+    if (!val) return '';
+    const d = typeof val === 'string' ? parseDateString(val) : new Date(val);
+    if (!d || isNaN(d)) return '';
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  // Build branch-wise stats
+  const branchStats = {}; // branchName -> { inflow, InProgress, PartRequest, PendingOTP, Closed }
+
+  deptList.forEach(function(r) {
+    const bname = r.branchName || 'Unmapped';
+
+    if (!branchStats[bname]) {
+      branchStats[bname] = { inflow: 0, InProgress: 0, PartRequest: 0, PendingOTP: 0, Closed: 0 };
+    }
+
+    // INFLOW: logged today
+    if (toDateStr(r.createdDate) === todayStr) {
+      branchStats[bname].inflow++;
+    }
+
+    // OUTFLOW: status changed today (use resolvedAt for Closed/PendingOTP, or updatedDate otherwise)
+    const outDate = toDateStr(r.resolvedAt) || toDateStr(r.updatedDate);
+    if (outDate === todayStr && r.internalStatus !== 'Pending') {
+      const key = r.internalStatus; // InProgress, PartRequest, PendingOTP, Closed
+      if (branchStats[bname][key] !== undefined) {
+        branchStats[bname][key]++;
+      }
+    }
+  });
+
+  // Sort branches by total outflow desc, then inflow desc
+  const sortedBranches = Object.keys(branchStats).sort((a, b) => {
+    const s = x => branchStats[x].inflow + branchStats[x].InProgress + branchStats[x].PartRequest + branchStats[x].PendingOTP + branchStats[x].Closed;
+    return s(b) - s(a);
+  });
+
+  if (sortedBranches.length === 0) {
+    body.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--muted); padding:16px;">No activity found for today.</td></tr>';
+    return;
+  }
+
+  const cellStyle = 'padding:8px 12px; text-align:center; border-bottom:1px solid var(--border);';
+  const inflowBg = 'background:#f0faff;';
+  const outBg = '';
+
+  let totalInflow = 0, totalIP = 0, totalPR = 0, totalPOTP = 0, totalClosed = 0;
+
+  body.innerHTML = sortedBranches.map(bname => {
+    const s = branchStats[bname];
+    const totalOut = s.InProgress + s.PartRequest + s.PendingOTP + s.Closed;
+    totalInflow += s.inflow; totalIP += s.InProgress; totalPR += s.PartRequest; totalPOTP += s.PendingOTP; totalClosed += s.Closed;
+
+    const inflowCell = s.inflow > 0
+      ? `<td style="${cellStyle}${inflowBg} border-left:1px solid var(--border); font-weight:800; color:#0e7490;">${s.inflow}</td>`
+      : `<td style="${cellStyle}${inflowBg} border-left:1px solid var(--border); color:#cbd5e1;">0</td>`;
+
+    const ipCell = s.InProgress > 0 ? `<td style="${cellStyle} border-left:2px solid #bbf7d0; font-weight:700; color:#a16207;">${s.InProgress}</td>` : `<td style="${cellStyle} border-left:2px solid #bbf7d0; color:#cbd5e1;">0</td>`;
+    const prCell = s.PartRequest > 0 ? `<td style="${cellStyle} font-weight:700; color:#6d28d9;">${s.PartRequest}</td>` : `<td style="${cellStyle} color:#cbd5e1;">0</td>`;
+    const potpCell = s.PendingOTP > 0 ? `<td style="${cellStyle} font-weight:700; color:#c2410c;">${s.PendingOTP}</td>` : `<td style="${cellStyle} color:#cbd5e1;">0</td>`;
+    const closedCell = s.Closed > 0 ? `<td style="${cellStyle} font-weight:700; color:#15803d;">${s.Closed}</td>` : `<td style="${cellStyle} color:#cbd5e1;">0</td>`;
+    const totalOutCell = totalOut > 0 ? `<td style="${cellStyle} font-weight:800; color:#1e293b;">${totalOut}</td>` : `<td style="${cellStyle} color:#cbd5e1;">0</td>`;
+
+    return `<tr>
+      <td style="padding:8px 12px; border-bottom:1px solid var(--border); font-weight:700;">${esc(bname)}</td>
+      ${inflowCell}${ipCell}${prCell}${potpCell}${closedCell}${totalOutCell}
+    </tr>`;
+  }).join('') +
+  `<tr style="background:#f8faff; font-weight:800; border-top:2px solid var(--border);">
+    <td style="padding:8px 12px; font-size:0.78rem;">Grand Total</td>
+    <td style="${cellStyle}${inflowBg} border-left:1px solid var(--border); color:#0e7490;">${totalInflow}</td>
+    <td style="${cellStyle} border-left:2px solid #bbf7d0; color:#a16207;">${totalIP}</td>
+    <td style="${cellStyle} color:#6d28d9;">${totalPR}</td>
+    <td style="${cellStyle} color:#c2410c;">${totalPOTP}</td>
+    <td style="${cellStyle} color:#15803d;">${totalClosed}</td>
+    <td style="${cellStyle} color:#1e293b;">${totalIP + totalPR + totalPOTP + totalClosed}</td>
+  </tr>`;
 }
 
 function deptStatBox(label, value, color, bg, filterKey) {
