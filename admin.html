@@ -1080,22 +1080,22 @@ tr:hover td { background: #f8fafc; }
           <span style="color:#15803d;">🟢 Outflow = Tickets attended today</span>
         </div>
       </div>
-      <div style="overflow-x:auto;">
-        <table style="width:100%; border-collapse:collapse; font-size:0.78rem;">
+      <div class="table-responsive">
+        <table class="table-compact" style="width:100%; table-layout:auto; border-collapse:collapse; font-size:0.78rem; word-break:break-word; white-space:normal;">
           <thead>
             <tr style="background:#f0f9ff; font-weight:700; font-size:0.72rem; text-transform:uppercase; color:var(--muted);">
-              <th style="padding:8px 12px; text-align:left; border-bottom:2px solid var(--border);">Branch</th>
-              <th style="padding:8px 12px; text-align:center; border-bottom:2px solid var(--border); border-left:1px solid var(--border); background:#ecfeff; color:#0e7490;">🔵 Inflow</th>
-              <th colspan="5" style="padding:8px 12px; text-align:center; border-bottom:2px solid var(--border); border-left:2px solid #bbf7d0; background:#f0fdf4; color:#15803d;">🟢 Outflow (Attended Today)</th>
+              <th style="padding:8px 12px; text-align:left; border-bottom:2px solid var(--border); white-space:normal; word-break:break-word;">Branch</th>
+              <th style="padding:8px 12px; text-align:center; border-bottom:2px solid var(--border); border-left:1px solid var(--border); background:#ecfeff; color:#0e7490; white-space:normal; word-break:break-word;">🔵 Inflow</th>
+              <th colspan="5" style="padding:8px 12px; text-align:center; border-bottom:2px solid var(--border); border-left:2px solid #bbf7d0; background:#f0fdf4; color:#15803d; white-space:normal; word-break:break-word;">🟢 Outflow (Attended Today)</th>
             </tr>
             <tr style="background:#fafafa; font-size:0.7rem; color:var(--muted); font-weight:700;">
-              <th style="padding:6px 12px; border-bottom:1px solid var(--border);"></th>
-              <th style="padding:6px 12px; text-align:center; border-bottom:1px solid var(--border); border-left:1px solid var(--border); background:#ecfeff;">Logged</th>
-              <th style="padding:6px 12px; text-align:center; border-bottom:1px solid var(--border); border-left:2px solid #bbf7d0;">In Progress</th>
-              <th style="padding:6px 12px; text-align:center; border-bottom:1px solid var(--border);">Part Request</th>
-              <th style="padding:6px 12px; text-align:center; border-bottom:1px solid var(--border);">Pending OTP</th>
-              <th style="padding:6px 12px; text-align:center; border-bottom:1px solid var(--border);">Closed</th>
-              <th style="padding:6px 12px; text-align:center; border-bottom:1px solid var(--border); font-weight:800;">Total Out</th>
+              <th style="padding:6px 12px; border-bottom:1px solid var(--border); white-space:normal; word-break:break-word;"></th>
+              <th style="padding:6px 12px; text-align:center; border-bottom:1px solid var(--border); border-left:1px solid var(--border); background:#ecfeff; white-space:normal; word-break:break-word;">Logged</th>
+              <th style="padding:6px 12px; text-align:center; border-bottom:1px solid var(--border); border-left:2px solid #bbf7d0; white-space:normal; word-break:break-word;">In Progress</th>
+              <th style="padding:6px 12px; text-align:center; border-bottom:1px solid var(--border); white-space:normal; word-break:break-word;">Part Request</th>
+              <th style="padding:6px 12px; text-align:center; border-bottom:1px solid var(--border); white-space:normal; word-break:break-word;">Pending OTP</th>
+              <th style="padding:6px 12px; text-align:center; border-bottom:1px solid var(--border); white-space:normal; word-break:break-word;">Closed</th>
+              <th style="padding:6px 12px; text-align:center; border-bottom:1px solid var(--border); font-weight:800; white-space:normal; word-break:break-word;">Total Out</th>
             </tr>
           </thead>
           <tbody id="todayFlowBody">
@@ -5810,6 +5810,19 @@ function computeClientDeptDashboard(list) {
   };
 }
 
+function deptDrillToday(flowType, branchName, status) {
+  deptDrillFilter = {
+    type: flowType === 'inflow' ? 'today_inflow' : 'today_outflow',
+    branchName: branchName,
+    status: status || 'ALL'
+  };
+  renderDeptList();
+  const listCard = document.getElementById('deptListBody').closest('.card');
+  if (listCard) {
+    listCard.scrollIntoView({ behavior: 'smooth' });
+  }
+}
+
 function renderTodayFlow() {
   const body = document.getElementById('todayFlowBody');
   const dateLabel = document.getElementById('todayFlowDate');
@@ -5869,9 +5882,8 @@ function renderTodayFlow() {
     return;
   }
 
-  const cellStyle = 'padding:8px 12px; text-align:center; border-bottom:1px solid var(--border);';
+  const cellStyle = 'padding:8px 12px; text-align:center; border-bottom:1px solid var(--border); white-space:normal; word-break:break-word;';
   const inflowBg = 'background:#f0faff;';
-  const outBg = '';
 
   let totalInflow = 0, totalIP = 0, totalPR = 0, totalPOTP = 0, totalClosed = 0;
 
@@ -5880,30 +5892,59 @@ function renderTodayFlow() {
     const totalOut = s.InProgress + s.PartRequest + s.PendingOTP + s.Closed;
     totalInflow += s.inflow; totalIP += s.InProgress; totalPR += s.PartRequest; totalPOTP += s.PendingOTP; totalClosed += s.Closed;
 
-    const inflowCell = s.inflow > 0
-      ? `<td style="${cellStyle}${inflowBg} border-left:1px solid var(--border); font-weight:800; color:#0e7490;">${s.inflow}</td>`
-      : `<td style="${cellStyle}${inflowBg} border-left:1px solid var(--border); color:#cbd5e1;">0</td>`;
+    const bnameEscaped = bname.replace(/'/g, "\\'");
 
-    const ipCell = s.InProgress > 0 ? `<td style="${cellStyle} border-left:2px solid #bbf7d0; font-weight:700; color:#a16207;">${s.InProgress}</td>` : `<td style="${cellStyle} border-left:2px solid #bbf7d0; color:#cbd5e1;">0</td>`;
-    const prCell = s.PartRequest > 0 ? `<td style="${cellStyle} font-weight:700; color:#6d28d9;">${s.PartRequest}</td>` : `<td style="${cellStyle} color:#cbd5e1;">0</td>`;
-    const potpCell = s.PendingOTP > 0 ? `<td style="${cellStyle} font-weight:700; color:#c2410c;">${s.PendingOTP}</td>` : `<td style="${cellStyle} color:#cbd5e1;">0</td>`;
-    const closedCell = s.Closed > 0 ? `<td style="${cellStyle} font-weight:700; color:#15803d;">${s.Closed}</td>` : `<td style="${cellStyle} color:#cbd5e1;">0</td>`;
-    const totalOutCell = totalOut > 0 ? `<td style="${cellStyle} font-weight:800; color:#1e293b;">${totalOut}</td>` : `<td style="${cellStyle} color:#cbd5e1;">0</td>`;
+    // Cells helper to format link or static 0
+    const formatCell = (val, type, status, customStyle = '', color = 'inherit') => {
+      if (val > 0) {
+        return `<td style="${cellStyle}${customStyle}">
+          <a href="javascript:void(0)" onclick="deptDrillToday('${type}', '${bnameEscaped}', '${status}')" style="cursor:pointer; text-decoration:underline; font-weight:700; color:${color};">${val}</a>
+        </td>`;
+      } else {
+        return `<td style="${cellStyle}${customStyle} color:#cbd5e1;">0</td>`;
+      }
+    };
+
+    const inflowCell = formatCell(s.inflow, 'inflow', '', 'border-left:1px solid var(--border);' + inflowBg, '#0e7490');
+    const ipCell = formatCell(s.InProgress, 'outflow', 'InProgress', 'border-left:2px solid #bbf7d0;', '#a16207');
+    const prCell = formatCell(s.PartRequest, 'outflow', 'PartRequest', '', '#6d28d9');
+    const potpCell = formatCell(s.PendingOTP, 'outflow', 'PendingOTP', '', '#c2410c');
+    const closedCell = formatCell(s.Closed, 'outflow', 'Closed', '', '#15803d');
+    const totalOutCell = formatCell(totalOut, 'outflow', 'ALL', '', '#1e293b');
 
     return `<tr>
-      <td style="padding:8px 12px; border-bottom:1px solid var(--border); font-weight:700;">${esc(bname)}</td>
+      <td style="padding:8px 12px; border-bottom:1px solid var(--border); font-weight:700; white-space:normal; word-break:break-word;">
+        <a href="javascript:void(0)" onclick="deptDrillToday('inflow', '${bnameEscaped}', 'ALL')" style="cursor:pointer; text-decoration:none; color:inherit;">${esc(bname)}</a>
+      </td>
       ${inflowCell}${ipCell}${prCell}${potpCell}${closedCell}${totalOutCell}
     </tr>`;
   }).join('') +
-  `<tr style="background:#f8faff; font-weight:800; border-top:2px solid var(--border);">
-    <td style="padding:8px 12px; font-size:0.78rem;">Grand Total</td>
-    <td style="${cellStyle}${inflowBg} border-left:1px solid var(--border); color:#0e7490;">${totalInflow}</td>
-    <td style="${cellStyle} border-left:2px solid #bbf7d0; color:#a16207;">${totalIP}</td>
-    <td style="${cellStyle} color:#6d28d9;">${totalPR}</td>
-    <td style="${cellStyle} color:#c2410c;">${totalPOTP}</td>
-    <td style="${cellStyle} color:#15803d;">${totalClosed}</td>
-    <td style="${cellStyle} color:#1e293b;">${totalIP + totalPR + totalPOTP + totalClosed}</td>
-  </tr>`;
+  (function() {
+    const totalOutSum = totalIP + totalPR + totalPOTP + totalClosed;
+    const formatTotalCell = (val, type, status, customStyle = '', color = 'inherit') => {
+      if (val > 0) {
+        return `<td style="${cellStyle}${customStyle}">
+          <a href="javascript:void(0)" onclick="deptDrillToday('${type}', 'ALL', '${status}')" style="cursor:pointer; text-decoration:underline; font-weight:800; color:${color};">${val}</a>
+        </td>`;
+      } else {
+        return `<td style="${cellStyle}${customStyle} color:#cbd5e1;">0</td>`;
+      }
+    };
+
+    const inflowT = formatTotalCell(totalInflow, 'inflow', '', 'border-left:1px solid var(--border);' + inflowBg, '#0e7490');
+    const ipT = formatTotalCell(totalIP, 'outflow', 'InProgress', 'border-left:2px solid #bbf7d0;', '#a16207');
+    const prT = formatTotalCell(totalPR, 'outflow', 'PartRequest', '', '#6d28d9');
+    const potpT = formatTotalCell(totalPOTP, 'outflow', 'PendingOTP', '', '#c2410c');
+    const closedT = formatTotalCell(totalClosed, 'outflow', 'Closed', '', '#15803d');
+    const totalOutT = formatTotalCell(totalOutSum, 'outflow', 'ALL', '', '#1e293b');
+
+    return `<tr style="background:#f8faff; font-weight:800; border-top:2px solid var(--border);">
+      <td style="padding:8px 12px; font-size:0.78rem; white-space:normal; word-break:break-word;">
+        <a href="javascript:void(0)" onclick="deptDrillToday('inflow', 'ALL', 'ALL')" style="cursor:pointer; text-decoration:none; color:inherit;">Grand Total</a>
+      </td>
+      ${inflowT}${ipT}${prT}${potpT}${closedT}${totalOutT}
+    </tr>`;
+  })();
 }
 
 function deptStatBox(label, value, color, bg, filterKey) {
@@ -6137,6 +6178,54 @@ function renderDeptList() {
         const b = (deptDash.branches || []).find(x => x.branchId === f.val);
         labelText = '— ' + (b ? b.branchName : f.val) + ' branch (open, oldest first)';
         rows = rows.filter(r => r.internalStatus !== 'Closed' && r.internalStatus !== 'PendingOTP');
+      }
+    } else if (f.type === 'today_inflow') {
+      const now = new Date();
+      const todayStr = now.getFullYear() + '-' +
+        String(now.getMonth() + 1).padStart(2, '0') + '-' +
+        String(now.getDate()).padStart(2, '0');
+      
+      const helperToDateStr = function(val) {
+        if (!val) return '';
+        const d = typeof val === 'string' ? parseDateString(val) : new Date(val);
+        if (!d || isNaN(d)) return '';
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      };
+
+      rows = rows.filter(r => helperToDateStr(r.createdDate) === todayStr);
+      if (f.branchName && f.branchName !== 'ALL') {
+        rows = rows.filter(r => (r.branchName || 'Unmapped') === f.branchName);
+        labelText = `— Today's Inflow for ${f.branchName}`;
+      } else {
+        labelText = `— Today's Inflow (All Branches)`;
+      }
+    } else if (f.type === 'today_outflow') {
+      const now = new Date();
+      const todayStr = now.getFullYear() + '-' +
+        String(now.getMonth() + 1).padStart(2, '0') + '-' +
+        String(now.getDate()).padStart(2, '0');
+      
+      const helperToDateStr = function(val) {
+        if (!val) return '';
+        const d = typeof val === 'string' ? parseDateString(val) : new Date(val);
+        if (!d || isNaN(d)) return '';
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      };
+
+      rows = rows.filter(r => {
+        const outDate = helperToDateStr(r.resolvedAt) || helperToDateStr(r.updatedDate);
+        return outDate === todayStr && r.internalStatus !== 'Pending';
+      });
+
+      if (f.status && f.status !== 'ALL') {
+        rows = rows.filter(r => r.internalStatus === f.status);
+      }
+
+      if (f.branchName && f.branchName !== 'ALL') {
+        rows = rows.filter(r => (r.branchName || 'Unmapped') === f.branchName);
+        labelText = `— Today's Outflow (${f.status === 'ALL' ? 'Total' : f.status}) for ${f.branchName}`;
+      } else {
+        labelText = `— Today's Outflow (${f.status === 'ALL' ? 'Total' : f.status}) (All Branches)`;
       }
     }
   }
