@@ -2189,8 +2189,9 @@ function normalizeComplaintStatuses(list) {
     const s = String(c.status || '').trim().toLowerCase();
     if (s === 'part request' || s === 'partrequest') c.status = 'Part Request';
     else if (s === 'resolved' || s === 'closed')     c.status = 'Closed';
-    else if (s === 'in progress')                     c.status = 'In Progress';
-    // else: keep original value (e.g. 'Open')
+    else if (s === 'in progress' || s === 'inprogress') c.status = 'In Progress';
+    else if (s === 'pendingotp' || s === 'pending otp') c.status = 'Pending OTP';
+    else if (s === 'pending' || s === 'open')           c.status = 'Open';
     return c;
   });
 }
@@ -4746,15 +4747,34 @@ function renderComplaintsTable() {
           <span style="font-size:0.72rem; color:var(--muted);">${esc(c.complainantPhone)}</span>
         </td>
         <td>
-          <select onchange="updateComplaintStatus(${origIndex}, this.value)" 
-                  style="padding:4px 8px; font-size:0.75rem; border-radius:6px; font-weight:700; 
-                         background-color: ${c.status === 'Closed' ? '#dcfce7' : c.status === 'Part Request' ? '#fef9c3' : '#fee2e2'}; 
-                         color: ${c.status === 'Closed' ? '#15803d' : c.status === 'Part Request' ? '#a16207' : '#b91c1c'}; 
-                         border: 1px solid ${c.status === 'Closed' ? '#bbf7d0' : c.status === 'Part Request' ? '#fef08a' : '#fecaca'};">
-            <option value="Open" ${c.status === 'Open' || !c.status ? 'selected' : ''}>Open</option>
-            <option value="Part Request" ${c.status === 'Part Request' ? 'selected' : ''}>Part Request</option>
-            <option value="Closed" ${c.status === 'Closed' ? 'selected' : ''}>Closed</option>
-          </select>
+          ${(() => {
+            const statusBg = c.status === 'Closed' ? '#dcfce7' 
+                           : c.status === 'Part Request' ? '#f3e8ff' 
+                           : c.status === 'Pending OTP' ? '#ffedd5' 
+                           : c.status === 'In Progress' ? '#fefce8' 
+                           : '#fee2e2';
+            const statusColor = c.status === 'Closed' ? '#15803d' 
+                              : c.status === 'Part Request' ? '#6b21a8' 
+                              : c.status === 'Pending OTP' ? '#c2410c' 
+                              : c.status === 'In Progress' ? '#a16207' 
+                              : '#b91c1c';
+            const statusBorder = c.status === 'Closed' ? '#bbf7d0' 
+                               : c.status === 'Part Request' ? '#e9d5ff' 
+                               : c.status === 'Pending OTP' ? '#fed7aa' 
+                               : c.status === 'In Progress' ? '#fef08a' 
+                               : '#fecaca';
+            return `
+              <select onchange="updateComplaintStatus(${origIndex}, this.value)" 
+                      style="padding:4px 8px; font-size:0.75rem; border-radius:6px; font-weight:700; 
+                             background-color: ${statusBg}; color: ${statusColor}; border: 1px solid ${statusBorder};">
+                <option value="Open" ${c.status === 'Open' ? 'selected' : ''}>Open</option>
+                <option value="In Progress" ${c.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
+                <option value="Part Request" ${c.status === 'Part Request' ? 'selected' : ''}>Part Request</option>
+                <option value="Pending OTP" ${c.status === 'Pending OTP' ? 'selected' : ''}>Pending OTP</option>
+                <option value="Closed" ${c.status === 'Closed' ? 'selected' : ''}>Closed</option>
+              </select>
+            `;
+          })()}
         </td>
         <td>
           <div style="display: flex; gap: 6px; align-items: center;">
