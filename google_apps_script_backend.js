@@ -1222,6 +1222,25 @@ function getMasterData(ss) {
     // Fallback to default districts if missing in MasterData sheet as well
     masterData.districts = getDefaultDistricts();
   }
+
+  // Self-healing check for "DOHAD" in loaded districts
+  if (masterData.districts && masterData.districts.length > 0) {
+    var hasDohad = masterData.districts.some(function(d) {
+      return d.name.toUpperCase().trim() === "DOHAD";
+    });
+    if (!hasDohad) {
+      var maxIdNum = 0;
+      masterData.districts.forEach(function(d) {
+        var num = parseInt(d.id.replace(/[^\d]/g, ''));
+        if (!isNaN(num) && num > maxIdNum) maxIdNum = num;
+      });
+      masterData.districts.push({
+        id: "D" + (maxIdNum + 1),
+        name: "DOHAD",
+        status: "active"
+      });
+    }
+  }
   
   return masterData;
 }

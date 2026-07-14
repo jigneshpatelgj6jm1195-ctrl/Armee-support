@@ -2138,6 +2138,21 @@ async function loadData() {
     if (!masterData.accessUsers) masterData.accessUsers = [];
     if (!masterData.districts || masterData.districts.length === 0) {
       masterData.districts = getDefaultDistricts();
+    } else {
+      // Self-healing check for "DOHAD" in loaded districts
+      const hasDohad = masterData.districts.some(d => d.name.toUpperCase().trim() === "DOHAD");
+      if (!hasDohad) {
+        let maxIdNum = 0;
+        masterData.districts.forEach(d => {
+          const num = parseInt(d.id.replace(/[^\d]/g, ''));
+          if (!isNaN(num) && num > maxIdNum) maxIdNum = num;
+        });
+        masterData.districts.push({
+          id: "D" + (maxIdNum + 1),
+          name: "DOHAD",
+          status: "active"
+        });
+      }
     }
   }
 
