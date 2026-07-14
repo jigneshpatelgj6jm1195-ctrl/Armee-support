@@ -1070,14 +1070,17 @@ tr:hover td { background: #f8fafc; }
 
     <!-- Today's Inflow vs Outflow -->
     <div class="card" style="margin-bottom:20px;" id="todayFlowCard">
-      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
-        <div>
-          <div class="card-title" style="margin-bottom:2px;">📅 Today's Inflow vs Outflow — Branch-wise</div>
-          <div style="font-size:0.75rem; color:var(--muted);" id="todayFlowDate">Loading date…</div>
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:14px;">
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+          <div class="card-title" style="margin-bottom:0;">📅 Inflow vs Outflow — Branch-wise</div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span style="font-size:0.75rem; color:var(--muted); font-weight:bold;">Date:</span>
+            <input type="date" id="todayFlowDatePicker" onchange="renderTodayFlow()" style="padding:4px 8px; font-size:0.75rem; border:1px solid var(--border); border-radius:6px; cursor:pointer;" />
+          </div>
         </div>
-        <div style="display:flex; gap:16px; font-size:0.78rem; font-weight:700;">
-          <span style="color:#0e7490;">🔵 Inflow = Tickets logged today</span>
-          <span style="color:#15803d;">🟢 Outflow = Tickets attended today</span>
+        <div style="display:flex; gap:16px; font-size:0.78rem; font-weight:700; flex-wrap:wrap;">
+          <span style="color:#0e7490;">🔵 Inflow = Logged on selected day</span>
+          <span style="color:#15803d;">🟢 Outflow = Attended on selected day</span>
         </div>
       </div>
       <div class="table-responsive">
@@ -5826,10 +5829,14 @@ function computeClientDeptDashboard(list) {
 }
 
 function deptDrillToday(flowType, branchName, status) {
+  const datePicker = document.getElementById('todayFlowDatePicker');
+  const targetDate = datePicker ? datePicker.value : '';
+
   deptDrillFilter = {
     type: flowType === 'inflow' ? 'today_inflow' : 'today_outflow',
     branchName: branchName,
-    status: status || 'ALL'
+    status: status || 'ALL',
+    targetDate: targetDate
   };
   renderDeptList();
   const listCard = document.getElementById('deptListBody').closest('.card');
@@ -5840,18 +5847,17 @@ function deptDrillToday(flowType, branchName, status) {
 
 function renderTodayFlow() {
   const body = document.getElementById('todayFlowBody');
-  const dateLabel = document.getElementById('todayFlowDate');
   if (!body) return;
 
-  // Today's date string YYYY-MM-DD in local time
-  const now = new Date();
-  const todayStr = now.getFullYear() + '-' +
-    String(now.getMonth() + 1).padStart(2, '0') + '-' +
-    String(now.getDate()).padStart(2, '0');
-
-  if (dateLabel) {
-    dateLabel.textContent = 'As of: ' + now.toLocaleDateString('en-IN', { weekday:'long', day:'2-digit', month:'long', year:'numeric' });
+  const datePicker = document.getElementById('todayFlowDatePicker');
+  if (datePicker && !datePicker.value) {
+    const now = new Date();
+    datePicker.value = now.getFullYear() + '-' +
+      String(now.getMonth() + 1).padStart(2, '0') + '-' +
+      String(now.getDate()).padStart(2, '0');
   }
+
+  const targetDateStr = datePicker ? datePicker.value : '';
 
   // Helper: extract YYYY-MM-DD from a date value
   function toDateStr(val) {
@@ -5871,14 +5877,14 @@ function renderTodayFlow() {
       branchStats[bname] = { inflow: 0, InProgress: 0, PartRequest: 0, PendingOTP: 0, Closed: 0 };
     }
 
-    // INFLOW: logged today
-    if (toDateStr(r.createdDate) === todayStr) {
+    // INFLOW: logged on target date
+    if (toDateStr(r.createdDate) === targetDateStr) {
       branchStats[bname].inflow++;
     }
 
-    // OUTFLOW: status changed today (use resolvedAt for Closed/PendingOTP, or updatedDate otherwise)
-    const outDate = toDateStr(r.resolvedAt) || toDateStr(r.updatedDate);
-    if (outDate === todayStr && r.internalStatus !== 'Pending') {
+    // OUTFLOW: status changed on target date (use resolutionDate, or fallback to resolvedAt)
+    const outDate = toDateStr(r.resolutionDate) || toDateStr(r.resolvedAt);
+    if (outDate === targetDateStr && r.internalStatus !== 'Pending') {
       const key = r.internalStatus; // InProgress, PartRequest, PendingOTP, Closed
       if (branchStats[bname][key] !== undefined) {
         branchStats[bname][key]++;
@@ -6195,11 +6201,7 @@ function renderDeptList() {
         rows = rows.filter(r => r.internalStatus !== 'Closed' && r.internalStatus !== 'PendingOTP');
       }
     } else if (f.type === 'today_inflow') {
-      const now = new Date();
-      const todayStr = now.getFullYear() + '-' +
-        String(now.getMonth() + 1).padStart(2, '0') + '-' +
-        String(now.getDate()).padStart(2, '0');
-      
+      const targetDate = f.targetDate;
       const helperToDateStr = function(val) {
         if (!val) return '';
         const d = typeof val === 'string' ? parseDateString(val) : new Date(val);
@@ -6207,19 +6209,26 @@ function renderDeptList() {
         return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
       };
 
-      rows = rows.filter(r => helperToDateStr(r.createdDate) === todayStr);
+      rows = rows.filter(r => helperToDateStr(r.createdDate) === targetDate);
+      
+      // format date for label
+      let dateLabel = targetDate;
+      try {
+        const parts = targetDate.split('-');
+        if (parts.length === 3) {
+          const dObj = new Date(parts[0], parts[1] - 1, parts[2]);
+          dateLabel = dObj.toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
+        }
+      } catch(e){}
+
       if (f.branchName && f.branchName !== 'ALL') {
         rows = rows.filter(r => (r.branchName || 'Unmapped') === f.branchName);
-        labelText = `— Today's Inflow for ${f.branchName}`;
+        labelText = `— Inflow on ${dateLabel} for ${f.branchName}`;
       } else {
-        labelText = `— Today's Inflow (All Branches)`;
+        labelText = `— Inflow on ${dateLabel} (All Branches)`;
       }
     } else if (f.type === 'today_outflow') {
-      const now = new Date();
-      const todayStr = now.getFullYear() + '-' +
-        String(now.getMonth() + 1).padStart(2, '0') + '-' +
-        String(now.getDate()).padStart(2, '0');
-      
+      const targetDate = f.targetDate;
       const helperToDateStr = function(val) {
         if (!val) return '';
         const d = typeof val === 'string' ? parseDateString(val) : new Date(val);
@@ -6228,19 +6237,31 @@ function renderDeptList() {
       };
 
       rows = rows.filter(r => {
-        const outDate = helperToDateStr(r.resolvedAt) || helperToDateStr(r.updatedDate);
-        return outDate === todayStr && r.internalStatus !== 'Pending';
+        const outDate = helperToDateStr(r.resolutionDate) || helperToDateStr(r.resolvedAt);
+        return outDate === targetDate && r.internalStatus !== 'Pending';
       });
 
       if (f.status && f.status !== 'ALL') {
         rows = rows.filter(r => r.internalStatus === f.status);
       }
 
+      // format date for label
+      let dateLabel = targetDate;
+      try {
+        const parts = targetDate.split('-');
+        if (parts.length === 3) {
+          const dObj = new Date(parts[0], parts[1] - 1, parts[2]);
+          dateLabel = dObj.toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
+        }
+      } catch(e){}
+
+      const statusText = f.status === 'ALL' ? 'Total' : (f.status === 'InProgress' ? 'In Progress' : (f.status === 'PartRequest' ? 'Part Request' : (f.status === 'PendingOTP' ? 'Pending OTP' : f.status)));
+
       if (f.branchName && f.branchName !== 'ALL') {
         rows = rows.filter(r => (r.branchName || 'Unmapped') === f.branchName);
-        labelText = `— Today's Outflow (${f.status === 'ALL' ? 'Total' : f.status}) for ${f.branchName}`;
+        labelText = `— Outflow (${statusText}) on ${dateLabel} for ${f.branchName}`;
       } else {
-        labelText = `— Today's Outflow (${f.status === 'ALL' ? 'Total' : f.status}) (All Branches)`;
+        labelText = `— Outflow (${statusText}) on ${dateLabel} (All Branches)`;
       }
     }
   }

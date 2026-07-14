@@ -2371,6 +2371,7 @@ function resolveDepartmentComplaint(ss, data) {
     resSheet.getRange(existing.rowNumber, 4).setValue(data.otp || '');
     resSheet.getRange(existing.rowNumber, 5).setValue(data.resolvedBy || existing.resolvedBy);
     resSheet.getRange(existing.rowNumber, 8).setValue(now);
+    resSheet.getRange(existing.rowNumber, 13).setValue(now); // Column M: ResolutionDate
     syncDepartmentToComplaints(ss, ticketId);
     return { status: 'ok', internalStatus: 'Closed' };
   }
@@ -2435,7 +2436,7 @@ function resolveDepartmentComplaint(ss, data) {
     data.equipment || (existing ? (existing.equipment || '') : ''),
     data.natureOfComplaint || (existing ? (existing.natureOfComplaint || '') : ''),
     data.quantity || (existing ? (existing.quantity || 1) : 1),
-    data.resolutionDate || (existing ? (existing.resolutionDate || '') : ''),
+    data.resolutionDate || now,
     data.serialNumber || (existing ? (existing.serialNumber || '') : ''),
     serialPhotoUrl,
     data.suspectedPart || (existing ? (existing.suspectedPart || '') : ''),
