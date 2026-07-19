@@ -379,7 +379,9 @@ function doPost(e) {
     }
 
     if (data.action === 'update_school_complaint_dise_bulk') {
-      // No auth required – engineer portal and admin dashboard both call this
+      // Intentionally unauthenticated: the engineer portal (not logged in) calls
+      // this to auto-heal blank DISE codes from a validated lookup. Scoped, benign
+      // write (only fills blank DISE by srNo); no credential or bulk-delete surface.
       var count = updateSchoolComplaintDiseBulkInSheet(ss, data.updates);
       return ContentService.createTextOutput(JSON.stringify({ status: 'ok', updatedCount: count }))
                            .setMimeType(ContentService.MimeType.JSON);
@@ -392,6 +394,9 @@ function doPost(e) {
     }
 
     if (data.action === 'heal_school_dise_by_name') {
+      var authErrH = requireAdminAuth_(data, false); // any logged-in admin
+      if (authErrH) return ContentService.createTextOutput(JSON.stringify(authErrH))
+                                         .setMimeType(ContentService.MimeType.JSON);
       // Accepts { nameMap: { "school name": "dise_code", ... } }
       // Finds all rows in SchoolComplaintMaster with blank DISE and fills them using nameMap
       var nameMap = data.nameMap || {};
@@ -401,7 +406,9 @@ function doPost(e) {
     }
 
     if (data.action === 'fix_school_project_by_equipment') {
-      // No auth required – admin dashboard calls this
+      var authErrF = requireAdminAuth_(data, false); // any logged-in admin
+      if (authErrF) return ContentService.createTextOutput(JSON.stringify(authErrF))
+                                         .setMimeType(ContentService.MimeType.JSON);
       var fixed = fixSchoolProjectByEquipment(ss);
       return ContentService.createTextOutput(JSON.stringify({ status: 'ok', updatedCount: fixed }))
                            .setMimeType(ContentService.MimeType.JSON);
@@ -4485,35 +4492,78 @@ function bulkAcerMapping(ss, importKey, mappings) {
   // Read all data rows (up to numCols wide)
   var dataRows = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
 
-  // Build mapping lookup by serial number (uppercase)
+  // Build mapping lookup by serial number (uppercase, capped at 22 chars to match
+  // how the app stores serials). Detect duplicate serials / Acer IDs in the upload.
   var mappingMap = {};
+  var dupSerials = [];
+  var seenAcerIds = {}, dupAcerIds = [];
   for (var m = 0; m < mappings.length; m++) {
-    var sn = String(mappings[m].serialNumber || '').trim().toUpperCase();
-    if (sn) mappingMap[sn] = mappings[m];
-  }
-
-  var nowStr = new Date().toISOString().split('T')[0];
-  var updatedCount = 0;
-
-  // Collect cells to update and do batch writes
-  // We'll write per-row only for matched rows to avoid writing back unchanged data
-  for (var i = 0; i < dataRows.length; i++) {
-    var rowSn = String(dataRows[i][snColIdx] || '').trim().toUpperCase();
-    if (rowSn && mappingMap[rowSn]) {
-      var match = mappingMap[rowSn];
-      var rowNum = i + 2; // 1-based row number (skip header)
-
-      // Write Acer Case ID
-      sheet.getRange(rowNum, acerIdColIdx + 1).setValue(String(match.acerCaseId || '').trim());
-      // Write Acer Case Status
-      sheet.getRange(rowNum, acerStColIdx + 1).setValue(String(match.acerCaseStatus || '').trim());
-      // Write Last Updated Date
-      sheet.getRange(rowNum, lastUpdColIdx + 1).setValue(nowStr);
-
-      updatedCount++;
+    var sn = String(mappings[m].serialNumber || '').trim().toUpperCase().slice(0, 22);
+    if (!sn) continue;
+    if (mappingMap[sn]) dupSerials.push(sn);
+    mappingMap[sn] = mappings[m];
+    var aid = String(mappings[m].acerCaseId || '').trim();
+    if (aid) {
+      if (seenAcerIds[aid]) { if (dupAcerIds.indexOf(aid) === -1) dupAcerIds.push(aid); }
+      else seenAcerIds[aid] = true;
     }
   }
 
-  return { status: 'ok', updatedCount: updatedCount };
+  var nowStr = new Date().toISOString().split('T')[0];
+  var updatedCount = 0, statusUpdated = 0, newAcerIds = 0;
+  var matchedSerials = {};
+
+  // Build full-column value arrays, then write each column in ONE batch call
+  // (previous per-cell setValue in a loop meant 3 sheet round-trips per matched
+  // row — far too slow for large uploads and prone to the 6-min timeout).
+  var acerIdCol = [], acerStCol = [], lastUpdCol = [];
+  for (var i = 0; i < dataRows.length; i++) {
+    var existingAcerId = String(dataRows[i][acerIdColIdx] || '').trim();
+    var existingAcerSt = String(dataRows[i][acerStColIdx] || '').trim();
+    var existingLastUpd = dataRows[i][lastUpdColIdx];
+
+    var rowSn = String(dataRows[i][snColIdx] || '').trim().toUpperCase().slice(0, 22);
+    if (rowSn && mappingMap[rowSn]) {
+      var match = mappingMap[rowSn];
+      matchedSerials[rowSn] = true;
+      var newAcerId = String(match.acerCaseId || '').trim();
+      var newAcerSt = String(match.acerCaseStatus || '').trim();
+      if (newAcerId && !existingAcerId) newAcerIds++;
+      if (newAcerSt && newAcerSt !== existingAcerSt) statusUpdated++;
+      acerIdCol.push([newAcerId || existingAcerId]);
+      acerStCol.push([newAcerSt || existingAcerSt]);
+      lastUpdCol.push([nowStr]);
+      updatedCount++;
+    } else {
+      // Unmatched row keeps its existing values untouched
+      acerIdCol.push([existingAcerId]);
+      acerStCol.push([existingAcerSt]);
+      lastUpdCol.push([existingLastUpd]);
+    }
+  }
+
+  var n = dataRows.length;
+  sheet.getRange(2, acerIdColIdx + 1, n, 1).setValues(acerIdCol);
+  sheet.getRange(2, acerStColIdx + 1, n, 1).setValues(acerStCol);
+  sheet.getRange(2, lastUpdColIdx + 1, n, 1).setValues(lastUpdCol);
+
+  // Serials in the upload that matched no row in the portal
+  var unmatchedSerials = [];
+  for (var sKey in mappingMap) {
+    if (!matchedSerials[sKey]) unmatchedSerials.push(sKey);
+  }
+
+  return {
+    status: 'ok',
+    updatedCount: updatedCount,        // rows matched & written (back-compat)
+    totalUploaded: mappings.length,
+    matchedCount: updatedCount,
+    newAcerIds: newAcerIds,
+    statusUpdated: statusUpdated,
+    unmatchedCount: unmatchedSerials.length,
+    unmatchedSerials: unmatchedSerials.slice(0, 500),
+    duplicateSerials: dupSerials.slice(0, 500),
+    duplicateAcerIds: dupAcerIds.slice(0, 500)
+  };
 }
 

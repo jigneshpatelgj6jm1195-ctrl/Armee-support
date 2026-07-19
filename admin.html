@@ -3275,7 +3275,8 @@ async function autoHealSchoolDiseCodes() {
       headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
         action: 'heal_school_dise_by_name',
-        nameMap: nameMap
+        nameMap: nameMap,
+        authToken: adminAuthToken()
       })
     });
     const out = await res.json();
@@ -3304,7 +3305,7 @@ async function runFixProjectCodes() {
     const res = await fetch(GOOGLE_SCRIPT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ action: 'fix_school_project_by_equipment' })
+      body: JSON.stringify({ action: 'fix_school_project_by_equipment', authToken: adminAuthToken() })
     });
     const out = await res.json();
     if (out.status === 'ok') {

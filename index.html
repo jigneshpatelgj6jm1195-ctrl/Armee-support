@@ -1137,6 +1137,13 @@ let SCHOOL_COMPLAINT_DB = {};
 let appFlow = 'advance';
 let MASTER_DB  = { equipment: [] };
 
+// Standardize a serial number for storage/matching: trim, uppercase, and cap at
+// 22 chars. Barcode scanners often append model/manufacturing data past the real
+// S/N, and the whole app matches on S/N, so we always keep only the first 22.
+function normalizeSerial(serial) {
+  return String(serial || '').trim().toUpperCase().slice(0, 22);
+}
+
 function isInvalidSerialNumber(serial) {
   if (!serial) return true;
   const s = String(serial).trim().toUpperCase();
@@ -2088,7 +2095,7 @@ async function submitDeptResolution(i, action) {
   const nature = document.getElementById('deptNature_' + i).value;
   const qty = document.getElementById('deptQty_' + i).value.trim();
   const date = document.getElementById('deptDate_' + i).value;
-  const serial = document.getElementById('deptSerial_' + i).value.trim();
+  const serial = normalizeSerial(document.getElementById('deptSerial_' + i).value);
   const serialPhoto = deptSerialPhotos[i];
   
   let suspectedPart = '';
@@ -3074,7 +3081,7 @@ async function proceedWithSubmission() {
     pincode:           r?.pincode    || '',
     equipment:         document.getElementById('fEquipment').value,
     natureOfComplaint: document.getElementById('fNature').value,
-    serialNumber:      document.getElementById('fSerial').value,
+    serialNumber:      normalizeSerial(document.getElementById('fSerial').value),
     quantity:          totalItems,
     itemNumber:        itemNum,
     groupId:           complaintGroup?.groupId || '',
@@ -3463,8 +3470,12 @@ async function runScanner(cameraConfig) {
       cameraConfig,
       config,
       (decodedText) => {
-        document.getElementById('fSerial').value = decodedText.trim();
-        showToast('✓ Scanned: ' + decodedText, 'success');
+        const raw = String(decodedText || '').trim();
+        const clean = normalizeSerial(raw);
+        document.getElementById('fSerial').value = clean;
+        showToast(raw.length > 22
+          ? '✓ Scanned (trimmed to 22 chars): ' + clean
+          : '✓ Scanned: ' + clean, 'success');
         stopScanner();
       },
       () => {
