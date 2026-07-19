@@ -6420,15 +6420,35 @@ function handleAcerFileSelect() {
       if (!statusCol) statusCol = headers.find(h => h.toLowerCase().includes('status')) || headers[2];
 
       // Parse records
-      let matchedCount = 0;
+      let matchedSchool = 0;
+      let matchedDept = 0;
+      let matchedPortal = 0;
       let mismatchedCount = 0;
 
-      // Get active serial numbers from parentSchoolComplaintsList
-      const activeSerials = new Set(
-        (window.parentSchoolComplaintsList || [])
-          .map(c => String(c.serialNumber || '').trim().toUpperCase())
-          .filter(Boolean)
-      );
+      const schoolStatusCounts = {};
+      const deptStatusCounts = {};
+      const portalStatusCounts = {};
+
+      // Get serials from parentSchoolComplaintsList
+      const schoolSerials = {};
+      (window.parentSchoolComplaintsList || []).forEach(c => {
+        const sn = String(c.serialNumber || '').trim().toUpperCase();
+        if (sn) schoolSerials[sn] = c.status || 'Open';
+      });
+
+      // Get serials from deptList
+      const deptSerials = {};
+      (deptList || []).forEach(c => {
+        const sn = String(c.serialNumber || '').trim().toUpperCase();
+        if (sn) deptSerials[sn] = c.internalStatus || c.ticketStatus || 'Pending';
+      });
+
+      // Get serials from parentComplaintsList
+      const portalSerials = {};
+      (window.parentComplaintsList || []).forEach(c => {
+        const sn = String(c.serialNumber || '').trim().toUpperCase();
+        if (sn) portalSerials[sn] = c.status || 'Open';
+      });
 
       rows.forEach(r => {
         const rawSn = String(r[snCol] || '').trim();
@@ -6437,9 +6457,30 @@ function handleAcerFileSelect() {
 
         if (rawSn) {
           const snUpper = rawSn.toUpperCase();
-          const match = activeSerials.has(snUpper);
-          if (match) matchedCount++;
-          else mismatchedCount++;
+          let matchedAny = false;
+
+          if (schoolSerials[snUpper]) {
+            matchedSchool++;
+            const status = schoolSerials[snUpper];
+            schoolStatusCounts[status] = (schoolStatusCounts[status] || 0) + 1;
+            matchedAny = true;
+          }
+          if (deptSerials[snUpper]) {
+            matchedDept++;
+            const status = deptSerials[snUpper];
+            deptStatusCounts[status] = (deptStatusCounts[status] || 0) + 1;
+            matchedAny = true;
+          }
+          if (portalSerials[snUpper]) {
+            matchedPortal++;
+            const status = portalSerials[snUpper];
+            portalStatusCounts[status] = (portalStatusCounts[status] || 0) + 1;
+            matchedAny = true;
+          }
+
+          if (!matchedAny) {
+            mismatchedCount++;
+          }
 
           acerParsedRows.push({
             serialNumber: rawSn,
@@ -6453,6 +6494,11 @@ function handleAcerFileSelect() {
         throw new Error('No valid rows found containing a Serial Number.');
       }
 
+      function formatStatusCounts(counts) {
+        const parts = Object.entries(counts).map(([k, v]) => `${v} ${k}`);
+        return parts.length ? `<span style="font-weight:normal;color:#4b5563;">(${parts.join(', ')})</span>` : '';
+      }
+
       preview.style.display = 'block';
       preview.style.background = '#f0fdf4';
       preview.style.border = '1px solid #bbf7d0';
@@ -6460,7 +6506,9 @@ function handleAcerFileSelect() {
       preview.innerHTML = `
         <strong>📊 Excel Preview Summary:</strong><br>
         • Total Rows parsed: <strong>${acerParsedRows.length}</strong><br>
-        • Matched with active complaints: <strong style="color:#15803d;">${matchedCount}</strong><br>
+        • School Complaints matched: <strong style="color:#15803d;">${matchedSchool}</strong> ${formatStatusCounts(schoolStatusCounts)}<br>
+        • Department Complaints matched: <strong style="color:#15803d;">${matchedDept}</strong> ${formatStatusCounts(deptStatusCounts)}<br>
+        • Portal/Advance Complaints matched: <strong style="color:#15803d;">${matchedPortal}</strong> ${formatStatusCounts(portalStatusCounts)}<br>
         • Mismatched/Unrecognized serials: <strong style="color:#b91c1c;">${mismatchedCount}</strong>
       `;
 
@@ -6500,7 +6548,7 @@ async function runAcerMapping() {
   result.style.background = '#eff6ff';
   result.style.color = '#1e40af';
   result.style.border = '1.5px solid #bfdbfe';
-  result.textContent = `⏳ Mapping Acer cases in sheet…`;
+  result.textContent = `⏳ Mapping Acer cases in sheets…`;
 
   try {
     const res = await fetch(GOOGLE_SCRIPT_URL, {
@@ -6519,7 +6567,13 @@ async function runAcerMapping() {
     result.style.background = '#f0fdf4';
     result.style.color = '#166534';
     result.style.border = '1.5px solid #bbf7d0';
-    result.textContent = `✅ Success! Matched and mapped: ${out.updatedCount || 0} rows in SchoolComplaintMaster.`;
+    result.innerHTML = `
+      <strong>✅ Success! Matched and mapped:</strong><br>
+      • School Complaints (SchoolComplaintMaster): <strong>${out.matchedSchoolCount || 0}</strong> rows updated<br>
+      • Portal/Advance Complaints (Complaints): <strong>${out.matchedComplaintsCount || 0}</strong> rows updated<br>
+      • Department Complaints (DepartmentResolutions): <strong>${out.matchedDeptCount || 0}</strong> rows updated<br>
+      • Total unique serials matched: <strong>${out.matchedCount || 0}</strong> of ${out.totalUploaded || 0} uploaded.
+    `;
     showToast('✅ Acer case mapping processed successfully!', 'success');
 
     // Reload complaints data to reflect updates in the School Dashboard!

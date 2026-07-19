@@ -4442,58 +4442,7 @@ function bulkAcerMapping(ss, importKey, mappings) {
     return { status: 'error', message: 'No mapping rows provided' };
   }
 
-  var sheet = ss.getSheetByName('SchoolComplaintMaster');
-  if (!sheet) {
-    getOrCreateSchoolComplaintSheets(ss);
-    sheet = ss.getSheetByName('SchoolComplaintMaster');
-  }
-  if (!sheet) return { status: 'error', message: 'SchoolComplaintMaster sheet not found' };
-
-  var lastRow = sheet.getLastRow();
-  if (lastRow <= 1) return { status: 'ok', updatedCount: 0 };
-
-  // Read header row to dynamically find column indices
-  var numCols = sheet.getLastColumn();
-  var headerRow = sheet.getRange(1, 1, 1, numCols).getValues()[0];
-  var colIdx = {};
-  for (var h = 0; h < headerRow.length; h++) {
-    colIdx[String(headerRow[h]).trim()] = h; // 0-based index
-  }
-
-  // Required columns
-  var snColIdx       = colIdx['Serial Number'];
-  var acerIdColIdx   = colIdx['Acer Case ID'];
-  var acerStColIdx   = colIdx['Acer Case Status'];
-  var lastUpdColIdx  = colIdx['Last Updated Date'];
-
-  if (snColIdx === undefined || acerIdColIdx === undefined || acerStColIdx === undefined) {
-    // Fallback to hardcoded indices if headers not found (col 14=SN, 22=AcerID, 23=AcerStatus, 20=LastUpdated)
-    snColIdx      = 13; // col 14, 0-based
-    acerIdColIdx  = 21; // col 22, 0-based
-    acerStColIdx  = 22; // col 23, 0-based
-    lastUpdColIdx = 19; // col 20, 0-based
-  }
-
-  // Ensure Acer columns exist in header (add if missing)
-  if (acerIdColIdx === undefined || acerIdColIdx >= numCols) {
-    acerIdColIdx = numCols;
-    sheet.getRange(1, acerIdColIdx + 1).setValue('Acer Case ID');
-    numCols++;
-  }
-  if (acerStColIdx === undefined || acerStColIdx >= numCols) {
-    acerStColIdx = numCols;
-    sheet.getRange(1, acerStColIdx + 1).setValue('Acer Case Status');
-    numCols++;
-  }
-  if (lastUpdColIdx === undefined) {
-    lastUpdColIdx = 19; // col 20 default
-  }
-
-  // Read all data rows (up to numCols wide)
-  var dataRows = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
-
-  // Build mapping lookup by serial number (uppercase, capped at 22 chars to match
-  // how the app stores serials). Detect duplicate serials / Acer IDs in the upload.
+  // Build mapping lookup by serial number (uppercase, capped at 22 chars)
   var mappingMap = {};
   var dupSerials = [];
   var seenAcerIds = {}, dupAcerIds = [];
@@ -4510,42 +4459,187 @@ function bulkAcerMapping(ss, importKey, mappings) {
   }
 
   var nowStr = new Date().toISOString().split('T')[0];
-  var updatedCount = 0, statusUpdated = 0, newAcerIds = 0;
   var matchedSerials = {};
 
-  // Build full-column value arrays, then write each column in ONE batch call
-  // (previous per-cell setValue in a loop meant 3 sheet round-trips per matched
-  // row — far too slow for large uploads and prone to the 6-min timeout).
-  var acerIdCol = [], acerStCol = [], lastUpdCol = [];
-  for (var i = 0; i < dataRows.length; i++) {
-    var existingAcerId = String(dataRows[i][acerIdColIdx] || '').trim();
-    var existingAcerSt = String(dataRows[i][acerStColIdx] || '').trim();
-    var existingLastUpd = dataRows[i][lastUpdColIdx];
+  // 1. Process SchoolComplaintMaster sheet
+  var matchedSchoolCount = 0;
+  var schoolSheet = ss.getSheetByName('SchoolComplaintMaster');
+  if (schoolSheet) {
+    var lastRow = schoolSheet.getLastRow();
+    if (lastRow > 1) {
+      var numCols = schoolSheet.getLastColumn();
+      var headerRow = schoolSheet.getRange(1, 1, 1, numCols).getValues()[0];
+      var colIdx = {};
+      for (var h = 0; h < headerRow.length; h++) {
+        colIdx[String(headerRow[h]).trim()] = h;
+      }
+      var snColIdx       = colIdx['Serial Number'] !== undefined ? colIdx['Serial Number'] : 13;
+      var acerIdColIdx   = colIdx['Acer Case ID'] !== undefined ? colIdx['Acer Case ID'] : 21;
+      var acerStColIdx   = colIdx['Acer Case Status'] !== undefined ? colIdx['Acer Case Status'] : 22;
+      var lastUpdColIdx  = colIdx['Last Updated Date'] !== undefined ? colIdx['Last Updated Date'] : 19;
 
-    var rowSn = String(dataRows[i][snColIdx] || '').trim().toUpperCase().slice(0, 22);
-    if (rowSn && mappingMap[rowSn]) {
-      var match = mappingMap[rowSn];
-      matchedSerials[rowSn] = true;
-      var newAcerId = String(match.acerCaseId || '').trim();
-      var newAcerSt = String(match.acerCaseStatus || '').trim();
-      if (newAcerId && !existingAcerId) newAcerIds++;
-      if (newAcerSt && newAcerSt !== existingAcerSt) statusUpdated++;
-      acerIdCol.push([newAcerId || existingAcerId]);
-      acerStCol.push([newAcerSt || existingAcerSt]);
-      lastUpdCol.push([nowStr]);
-      updatedCount++;
-    } else {
-      // Unmatched row keeps its existing values untouched
-      acerIdCol.push([existingAcerId]);
-      acerStCol.push([existingAcerSt]);
-      lastUpdCol.push([existingLastUpd]);
+      // Ensure Acer columns exist in header (add if missing)
+      if (acerIdColIdx >= numCols) {
+        acerIdColIdx = numCols;
+        schoolSheet.getRange(1, acerIdColIdx + 1).setValue('Acer Case ID');
+        numCols++;
+      }
+      if (acerStColIdx >= numCols) {
+        acerStColIdx = numCols;
+        schoolSheet.getRange(1, acerStColIdx + 1).setValue('Acer Case Status');
+        numCols++;
+      }
+      if (lastUpdColIdx === undefined || lastUpdColIdx >= numCols) {
+        lastUpdColIdx = Math.max(numCols, 19);
+        schoolSheet.getRange(1, lastUpdColIdx + 1).setValue('Last Updated Date');
+        numCols = Math.max(numCols, lastUpdColIdx + 1);
+      }
+
+      var dataRows = schoolSheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+      var acerIdCol = [], acerStCol = [], lastUpdCol = [];
+      for (var i = 0; i < dataRows.length; i++) {
+        var existingAcerId = String(dataRows[i][acerIdColIdx] || '').trim();
+        var existingAcerSt = String(dataRows[i][acerStColIdx] || '').trim();
+        var existingLastUpd = dataRows[i][lastUpdColIdx];
+        var rowSn = String(dataRows[i][snColIdx] || '').trim().toUpperCase().slice(0, 22);
+
+        if (rowSn && mappingMap[rowSn]) {
+          var match = mappingMap[rowSn];
+          var newAcerId = String(match.acerCaseId || '').trim();
+          var newAcerSt = String(match.acerCaseStatus || '').trim();
+          matchedSerials[rowSn] = true;
+          matchedSchoolCount++;
+          var changed = (newAcerId && newAcerId !== existingAcerId) || (newAcerSt && newAcerSt !== existingAcerSt);
+          acerIdCol.push([newAcerId || existingAcerId]);
+          acerStCol.push([newAcerSt || existingAcerSt]);
+          lastUpdCol.push([changed ? nowStr : existingLastUpd]);
+        } else {
+          acerIdCol.push([existingAcerId]);
+          acerStCol.push([existingAcerSt]);
+          lastUpdCol.push([existingLastUpd]);
+        }
+      }
+      schoolSheet.getRange(2, acerIdColIdx + 1, dataRows.length, 1).setValues(acerIdCol);
+      schoolSheet.getRange(2, acerStColIdx + 1, dataRows.length, 1).setValues(acerStCol);
+      schoolSheet.getRange(2, lastUpdColIdx + 1, dataRows.length, 1).setValues(lastUpdCol);
     }
   }
 
-  var n = dataRows.length;
-  sheet.getRange(2, acerIdColIdx + 1, n, 1).setValues(acerIdCol);
-  sheet.getRange(2, acerStColIdx + 1, n, 1).setValues(acerStCol);
-  sheet.getRange(2, lastUpdColIdx + 1, n, 1).setValues(lastUpdCol);
+  // 2. Process Complaints sheet (Portal/Advance Complaints)
+  var matchedComplaintsCount = 0;
+  var complaintsSheet = ss.getSheetByName('Complaints');
+  if (complaintsSheet) {
+    var lastRow = complaintsSheet.getLastRow();
+    if (lastRow > 1) {
+      var numCols = complaintsSheet.getLastColumn();
+      var headerRow = complaintsSheet.getRange(1, 1, 1, numCols).getValues()[0];
+      var colIdx = {};
+      for (var h = 0; h < headerRow.length; h++) {
+        colIdx[String(headerRow[h]).trim()] = h;
+      }
+      var snColIdx       = colIdx['Serial Number'] !== undefined ? colIdx['Serial Number'] : 17;
+      var acerIdColIdx   = colIdx['AcerCaseId'] !== undefined ? colIdx['AcerCaseId'] : 37;
+      var acerStColIdx   = colIdx['AcerCaseStatus'] !== undefined ? colIdx['AcerCaseStatus'] : 38;
+      var lastUpdColIdx  = colIdx['LastUpdatedDate'] !== undefined ? colIdx['LastUpdatedDate'] : 39;
+
+      // Ensure Acer columns exist in header
+      if (acerIdColIdx >= numCols) {
+        acerIdColIdx = numCols;
+        complaintsSheet.getRange(1, acerIdColIdx + 1).setValue('AcerCaseId');
+        numCols++;
+      }
+      if (acerStColIdx >= numCols) {
+        acerStColIdx = numCols;
+        complaintsSheet.getRange(1, acerStColIdx + 1).setValue('AcerCaseStatus');
+        numCols++;
+      }
+      if (lastUpdColIdx === undefined || lastUpdColIdx >= numCols) {
+        lastUpdColIdx = Math.max(numCols, 39);
+        complaintsSheet.getRange(1, lastUpdColIdx + 1).setValue('LastUpdatedDate');
+        numCols = Math.max(numCols, lastUpdColIdx + 1);
+      }
+
+      var dataRows = complaintsSheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+      var acerIdCol = [], acerStCol = [], lastUpdCol = [];
+      for (var i = 0; i < dataRows.length; i++) {
+        var existingAcerId = String(dataRows[i][acerIdColIdx] || '').trim();
+        var existingAcerSt = String(dataRows[i][acerStColIdx] || '').trim();
+        var existingLastUpd = dataRows[i][lastUpdColIdx];
+        var rowSn = String(dataRows[i][snColIdx] || '').trim().toUpperCase().slice(0, 22);
+
+        if (rowSn && mappingMap[rowSn]) {
+          var match = mappingMap[rowSn];
+          var newAcerId = String(match.acerCaseId || '').trim();
+          var newAcerSt = String(match.acerCaseStatus || '').trim();
+          matchedSerials[rowSn] = true;
+          matchedComplaintsCount++;
+          var changed = (newAcerId && newAcerId !== existingAcerId) || (newAcerSt && newAcerSt !== existingAcerSt);
+          acerIdCol.push([newAcerId || existingAcerId]);
+          acerStCol.push([newAcerSt || existingAcerSt]);
+          lastUpdCol.push([changed ? nowStr : existingLastUpd]);
+        } else {
+          acerIdCol.push([existingAcerId]);
+          acerStCol.push([existingAcerSt]);
+          lastUpdCol.push([existingLastUpd]);
+        }
+      }
+      complaintsSheet.getRange(2, acerIdColIdx + 1, dataRows.length, 1).setValues(acerIdCol);
+      complaintsSheet.getRange(2, acerStColIdx + 1, dataRows.length, 1).setValues(acerStCol);
+      complaintsSheet.getRange(2, lastUpdColIdx + 1, dataRows.length, 1).setValues(lastUpdCol);
+    }
+  }
+
+  // 3. Process DepartmentResolutions sheet
+  var matchedDeptCount = 0;
+  var deptSheet = ss.getSheetByName('DepartmentResolutions');
+  if (deptSheet) {
+    var lastRow = deptSheet.getLastRow();
+    if (lastRow > 1) {
+      var numCols = deptSheet.getLastColumn();
+      var headerRow = deptSheet.getRange(1, 1, 1, numCols).getValues()[0];
+      var colIdx = {};
+      for (var h = 0; h < headerRow.length; h++) {
+        colIdx[String(headerRow[h]).trim()] = h;
+      }
+      var snColIdx       = colIdx['SerialNumber'] !== undefined ? colIdx['SerialNumber'] : 13;
+      var acerIdColIdx   = colIdx['AcerCaseId'] !== undefined ? colIdx['AcerCaseId'] : 17;
+      var acerStColIdx   = colIdx['AcerCaseStatus'] !== undefined ? colIdx['AcerCaseStatus'] : 18;
+
+      if (acerIdColIdx >= numCols) {
+        acerIdColIdx = numCols;
+        deptSheet.getRange(1, acerIdColIdx + 1).setValue('AcerCaseId');
+        numCols++;
+      }
+      if (acerStColIdx >= numCols) {
+        acerStColIdx = numCols;
+        deptSheet.getRange(1, acerStColIdx + 1).setValue('AcerCaseStatus');
+        numCols++;
+      }
+
+      var dataRows = deptSheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+      var acerIdCol = [], acerStCol = [];
+      for (var i = 0; i < dataRows.length; i++) {
+        var existingAcerId = String(dataRows[i][acerIdColIdx] || '').trim();
+        var existingAcerSt = String(dataRows[i][acerStColIdx] || '').trim();
+        var rowSn = String(dataRows[i][snColIdx] || '').trim().toUpperCase().slice(0, 22);
+
+        if (rowSn && mappingMap[rowSn]) {
+          var match = mappingMap[rowSn];
+          var newAcerId = String(match.acerCaseId || '').trim();
+          var newAcerSt = String(match.acerCaseStatus || '').trim();
+          matchedSerials[rowSn] = true;
+          matchedDeptCount++;
+          acerIdCol.push([newAcerId || existingAcerId]);
+          acerStCol.push([newAcerSt || existingAcerSt]);
+        } else {
+          acerIdCol.push([existingAcerId]);
+          acerStCol.push([existingAcerSt]);
+        }
+      }
+      deptSheet.getRange(2, acerIdColIdx + 1, dataRows.length, 1).setValues(acerIdCol);
+      deptSheet.getRange(2, acerStColIdx + 1, dataRows.length, 1).setValues(acerStCol);
+    }
+  }
 
   // Serials in the upload that matched no row in the portal
   var unmatchedSerials = [];
@@ -4555,11 +4649,11 @@ function bulkAcerMapping(ss, importKey, mappings) {
 
   return {
     status: 'ok',
-    updatedCount: updatedCount,        // rows matched & written (back-compat)
     totalUploaded: mappings.length,
-    matchedCount: updatedCount,
-    newAcerIds: newAcerIds,
-    statusUpdated: statusUpdated,
+    matchedCount: Object.keys(matchedSerials).length,
+    matchedSchoolCount: matchedSchoolCount,
+    matchedComplaintsCount: matchedComplaintsCount,
+    matchedDeptCount: matchedDeptCount,
     unmatchedCount: unmatchedSerials.length,
     unmatchedSerials: unmatchedSerials.slice(0, 500),
     duplicateSerials: dupSerials.slice(0, 500),
