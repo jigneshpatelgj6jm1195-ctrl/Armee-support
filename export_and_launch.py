@@ -213,14 +213,13 @@ class FormHandler(http.server.SimpleHTTPRequestHandler):
             self._respond(500, {'error': f'Failed to process excel: {e}'})
 
     def _handle_update_school(self, data):
-        """Update a field (principal/mobile/district/block/pincode/address) in school_data.json"""
+        """Update, add, or delete a school record in school_data.json"""
         dise      = str(data.get('dise', '')).strip()
         field     = str(data.get('field', '')).strip()
         new_value = str(data.get('newValue', '')).strip()
         old_value = str(data.get('oldValue', '')).strip()
 
-        allowed_fields = {'principal', 'mobile', 'district', 'block', 'pincode', 'address'}
-        if not dise or field not in allowed_fields or new_value is None:
+        if not dise or not field:
             self._respond(400, {'error': 'Invalid parameters'})
             return
 
@@ -231,24 +230,62 @@ class FormHandler(http.server.SimpleHTTPRequestHandler):
             self._respond(500, {'error': f'Could not read school_data.json: {e}'})
             return
 
-        if dise not in db:
-            self._respond(404, {'error': f'DISE {dise} not found'})
-            return
-
-        entries = db[dise]
-        if not isinstance(entries, list):
-            entries = [entries]
-            db[dise] = entries
-
         updated = 0
-        for record in entries:
-            record[field] = new_value
-            updated += 1
+        if field == 'deleted':
+            if dise in db:
+                existing = db[dise]
+                if not isinstance(existing, list):
+                    existing = [existing]
+                project_filter = data.get('project')
+                if project_filter:
+                    existing = [x for x in existing if str(x.get('project')).strip().upper() != str(project_filter).strip().upper()]
+                    if existing:
+                        db[dise] = existing
+                        updated = 1
+                    else:
+                        db.pop(dise)
+                        updated = 1
+                else:
+                    db.pop(dise)
+                    updated = 1
+                print(f"  [DELETE] School with DISE {dise} (project: {project_filter or 'all'}) deleted")
+        elif field == 'added':
+            try:
+                school_obj = json.loads(new_value)
+                if dise in db:
+                    existing = db[dise]
+                    if not isinstance(existing, list):
+                        existing = [existing]
+                    # remove duplicate project records
+                    existing = [x for x in existing if str(x.get('project')).strip().upper() != str(school_obj.get('project')).strip().upper()]
+                    existing.append(school_obj)
+                    db[dise] = existing
+                else:
+                    db[dise] = [school_obj]
+                updated = 1
+                print(f"  [ADD] School with DISE {dise} added: {school_obj.get('school')} (project: {school_obj.get('project')})")
+            except Exception as pe:
+                self._respond(400, {'error': f'Invalid school JSON payload: {pe}'})
+                return
+        else:
+            if dise not in db:
+                self._respond(404, {'error': f'DISE {dise} not found'})
+                return
+            entries = db[dise]
+            if not isinstance(entries, list):
+                entries = [entries]
+                db[dise] = entries
+            project_filter = data.get('project')
+            for record in entries:
+                if project_filter and str(record.get('project')).strip().upper() != str(project_filter).strip().upper():
+                    continue
+                record[field] = new_value
+                updated += 1
+            print(f"  [UPDATE] DISE {dise}: {field} changed '{old_value}' -> '{new_value}'")
 
         try:
             with open(JSON_FILE, 'w', encoding='utf-8') as f:
                 json.dump(db, f, ensure_ascii=False, separators=(',', ':'))
-            print(f"  [UPDATE] DISE {dise}: {field} changed '{old_value}' -> '{new_value}'")
             self._respond(200, {'ok': True, 'updated': updated})
         except Exception as e:
             self._respond(500, {'error': f'Could not write school_data.json: {e}'})

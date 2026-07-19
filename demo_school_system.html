@@ -1064,7 +1064,27 @@
     <div id="view_dashboard" class="view-content" style="display:none;">
       
       <!-- Filters -->
-      <div class="filter-bar">
+      <div class="filter-bar" style="grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));">
+        <div class="filter-group">
+          <label>DISE Code</label>
+          <input type="text" id="filtDise" class="filter-control" placeholder="Search DISE Code" oninput="renderDashboard()" />
+        </div>
+        <div class="filter-group">
+          <label>School Name</label>
+          <input type="text" id="filtSchoolName" class="filter-control" placeholder="Search School Name" oninput="renderDashboard()" />
+        </div>
+        <div class="filter-group">
+          <label>Complaint Number</label>
+          <input type="text" id="filtSrNo" class="filter-control" placeholder="Search Complaint No." oninput="renderDashboard()" />
+        </div>
+        <div class="filter-group">
+          <label>Department / Project</label>
+          <select id="filtProject" class="filter-control" onchange="renderDashboard()">
+            <option value="ALL">All Projects</option>
+            <option value="GK">GK</option>
+            <option value="ICT">ICT</option>
+          </select>
+        </div>
         <div class="filter-group">
           <label>Branch</label>
           <select id="filtBranch" class="filter-control" onchange="renderDashboard()">
@@ -1072,6 +1092,17 @@
             <option value="Ahmedabad Branch">Ahmedabad Branch</option>
             <option value="Vadodara Branch">Vadodara Branch</option>
             <option value="Rajkot Branch">Rajkot Branch</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>District</label>
+          <select id="filtDistrict" class="filter-control" onchange="renderDashboard()">
+            <option value="ALL">All Districts</option>
+            <option value="AHMEDABAD">AHMEDABAD</option>
+            <option value="ANAND">ANAND</option>
+            <option value="RAJKOT">RAJKOT</option>
+            <option value="VALSAD">VALSAD</option>
+            <option value="SMC">SMC</option>
           </select>
         </div>
         <div class="filter-group">
@@ -1092,15 +1123,19 @@
           </select>
         </div>
         <div class="filter-group">
-          <label>District</label>
-          <select id="filtDistrict" class="filter-control" onchange="renderDashboard()">
-            <option value="ALL">All Districts</option>
-            <option value="AHMEDABAD">AHMEDABAD</option>
-            <option value="ANAND">ANAND</option>
-            <option value="RAJKOT">RAJKOT</option>
-            <option value="VALSAD">VALSAD</option>
-            <option value="SMC">SMC</option>
-          </select>
+          <label>Engineer Name</label>
+          <input type="text" id="filtEngineer" class="filter-control" placeholder="Search Engineer" oninput="renderDashboard()" />
+        </div>
+        <div class="filter-group">
+          <label>From Date</label>
+          <input type="date" id="filtFromDate" class="filter-control" onchange="renderDashboard()" />
+        </div>
+        <div class="filter-group">
+          <label>To Date</label>
+          <input type="date" id="filtToDate" class="filter-control" onchange="renderDashboard()" />
+        </div>
+        <div class="filter-group" style="justify-content: flex-end;">
+          <button type="button" class="btn" onclick="resetSchoolDashboardFilters()" style="height:36px; padding: 0 12px; font-size:0.78rem; font-weight:700; border-radius:6px; cursor:pointer;">🧹 Reset Filters</button>
         </div>
       </div>
 
@@ -1174,8 +1209,9 @@
                 <th>Serial Number</th>
                 <th id="schoolStatusHeaderCol" style="text-align:center;">Status</th>
                 <th>Branch</th>
-                <th>District</th>
-                <th>Complaint Date</th>
+                <th>Log Date</th>
+                <th>Last Updated</th>
+                <th>Close Date</th>
                 <th>Source Tag</th>
               </tr>
             </thead>
@@ -1730,6 +1766,21 @@
       renderDashboard();
     }
 
+    function resetSchoolDashboardFilters() {
+      document.getElementById('filtDise').value = '';
+      document.getElementById('filtSchoolName').value = '';
+      document.getElementById('filtSrNo').value = '';
+      document.getElementById('filtProject').value = 'ALL';
+      document.getElementById('filtBranch').value = 'ALL';
+      document.getElementById('filtDistrict').value = 'ALL';
+      document.getElementById('filtStatus').value = 'ALL';
+      document.getElementById('filtSource').value = 'ALL';
+      document.getElementById('filtEngineer').value = '';
+      document.getElementById('filtFromDate').value = '';
+      document.getElementById('filtToDate').value = '';
+      clearSchoolDrill();
+    }
+
     function getTicketAge(dateStr) {
       if (!dateStr) return 99; // Default old if no date
       const tDate = new Date(dateStr);
@@ -1757,6 +1808,7 @@
           if (!statusVal) statusVal = 'Open';
           return {
             id: c.srNo ? 'TKT-' + c.srNo : '',
+            srNo: c.srNo || '',
             date: c.importDate || c.complaintDate || '',
             name: c.school || c.principal || '',
             diseCode: c.dise || '',
@@ -1764,7 +1816,10 @@
             branch: resolveBranchForSchoolComplaint(c),
             serial: c.serialNumber || '',
             status: statusVal,
-            source: 'School Complaint'
+            source: 'School Complaint',
+            project: c.project || '',
+            principal: c.principal || '',
+            engineer: c.principal || ''
           };
         });
       } else {
@@ -1818,6 +1873,30 @@
       }
       if (filterDistrict !== 'ALL') {
         list = list.filter(r => r.district === filterDistrict);
+      }
+
+      // New advanced combination filters
+      const fDise = document.getElementById('filtDise').value.trim().toLowerCase();
+      const fSchool = document.getElementById('filtSchoolName').value.trim().toLowerCase();
+      const fSrNo = document.getElementById('filtSrNo').value.trim().toLowerCase();
+      const fProject = document.getElementById('filtProject').value;
+      const fEngineer = document.getElementById('filtEngineer').value.trim().toLowerCase();
+      const fFrom = document.getElementById('filtFromDate').value;
+      const fTo = document.getElementById('filtToDate').value;
+
+      if (fDise) list = list.filter(r => String(r.diseCode).toLowerCase().includes(fDise));
+      if (fSchool) list = list.filter(r => String(r.name).toLowerCase().includes(fSchool));
+      if (fSrNo) list = list.filter(r => String(r.srNo || r.id).toLowerCase().includes(fSrNo));
+      if (fProject !== 'ALL') list = list.filter(r => String(r.project).toUpperCase() === fProject);
+      if (fEngineer) list = list.filter(r => String(r.principal || r.engineer).toLowerCase().includes(fEngineer));
+      
+      if (fFrom) {
+        const fromTime = new Date(fFrom).getTime();
+        list = list.filter(r => r.date ? new Date(r.date).getTime() >= fromTime : true);
+      }
+      if (fTo) {
+        const toTime = new Date(fTo + 'T23:59:59').getTime();
+        list = list.filter(r => r.date ? new Date(r.date).getTime() <= toTime : true);
       }
 
       // 2. Compute KPIs
@@ -1950,6 +2029,10 @@
       if (headerCol) headerCol.textContent = 'Status';
 
       drilldownList.forEach(r => {
+        const logDate = r.date ? new Date(r.date).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'}) : '—';
+        const lastUpdated = r.lastUpdatedDate ? new Date(r.lastUpdatedDate).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'}) : (r.status === 'Closed' ? logDate : '—');
+        const closeDate = r.closeDate ? new Date(r.closeDate).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'}) : '—';
+
         drillHtml += `<tr>
           <td style="text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" class="school-select-chk" data-sr-no="${r.srNo}" onchange="updateSchoolSelectionUI()" style="transform: scale(1.2); cursor: pointer;" /></td>
           <td>${r.diseCode}</td>
@@ -1958,12 +2041,14 @@
           <td><span class="badge-status ${r.status.toLowerCase().replace(' ', '')}">${r.status}</span></td>
           <td>${r.branch}</td>
           <td>${r.district}</td>
-          <td>${r.date}</td>
+          <td>${logDate}</td>
+          <td>${lastUpdated}</td>
+          <td>${closeDate}</td>
           <td><span class="badge-source ${r.source === 'Advance Complaint' ? 'advance' : 'school'}">${r.source}</span></td>
         </tr>`;
       });
       if (drilldownList.length === 0) {
-        drillHtml = `<tr><td colspan="9" style="text-align:center;color:var(--text-muted);">No records match the current filters.</td></tr>`;
+        drillHtml = `<tr><td colspan="12" style="text-align:center;color:var(--text-muted);">No records match the current filters.</td></tr>`;
       }
       drillTbody.innerHTML = drillHtml;
       postEmbedHeight();

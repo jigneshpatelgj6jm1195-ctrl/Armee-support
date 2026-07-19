@@ -671,10 +671,13 @@ textarea { resize: none; min-height: 80px; }
           </select>
         </div>
         <div class="field" style="margin-bottom:0;">
-          <label for="lookupDise">DISE Code <span class="req">*</span></label>
-          <input type="text" id="lookupDise" placeholder="Enter 11-digit DISE code"
-            inputmode="numeric" maxlength="15" autocomplete="off"
-            oninput="onDiseInput(this)" />
+          <label for="lookupDise">DISE / School Code <span class="req">*</span></label>
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="lookupDise" placeholder="Enter DISE or School Code..."
+              maxlength="20" autocomplete="off" style="flex:1; margin-bottom:0;"
+              oninput="onDiseInput(this)" onkeydown="if(event.key==='Enter') triggerLookup()" />
+            <button type="button" class="btn btn-primary" onclick="triggerLookup()" style="padding: 0 16px; font-weight: bold; border-radius: 8px; font-size: 0.85rem; height: 42px;">🔍 Lookup</button>
+          </div>
         </div>
         <div class="status-banner" id="lookupStatus"></div>
         <div id="scPicker"></div>
@@ -834,7 +837,7 @@ textarea { resize: none; min-height: 80px; }
         <div class="field mt-12">
           <label for="fSerial">Serial Number <span class="req">*</span></label>
           <div style="display:flex; gap:4px; align-items: center;">
-            <input type="text" id="fSerial" placeholder="e.g. SN20240001" autocapitalize="characters" style="flex:1; margin-bottom:0;" />
+            <input type="text" id="fSerial" placeholder="e.g. SN20240001" maxlength="22" autocapitalize="characters" style="flex:1; margin-bottom:0;" />
             <button type="button" class="btn-cam" style="flex-shrink:0; width:auto; padding:0 14px; height:46px; margin:0; border-radius:12px; font-size:0.82rem; border:none;" onclick="startScanner()">📷 Scan</button>
           </div>
         </div>
@@ -1137,6 +1140,7 @@ let MASTER_DB  = { equipment: [] };
 function isInvalidSerialNumber(serial) {
   if (!serial) return true;
   const s = String(serial).trim().toUpperCase();
+  if (s.length > 22) return true;
   const invalidList = [
     '', 'N/A', 'NA', 'NULL', 'NONE', 'N.A', 'N.A.', 'N/A.', 'N / A', 'N/ A', 'N /A',
     'N. A.', 'N. A', 'N A', 'NOT AVAILABLE', 'NOTAPPLICABLE', 'NOT APPLICABLE',
@@ -1200,7 +1204,7 @@ function selectAdvanceStatus(status) {
 }
 let editFieldKey  = ''; // 'principal' | 'contact'
 let html5QrCode   = null;
-let gpsLocation   = null;
+let gpsLocation   = { latitude: '', longitude: '' };
 
 // Complaint group state (for qty > 1)
 let complaintGroup = null;
@@ -1297,9 +1301,50 @@ async function loadSchoolData() {
         const updates = await resUpdates.json();
         if (Array.isArray(updates)) {
           updates.forEach(update => {
-            const entries = SCHOOL_DB[update.dise];
-            const list = Array.isArray(entries) ? entries : (entries ? [entries] : []);
-            list.forEach(r => { if (r.dise === update.dise) r[update.field] = update.newValue; });
+            const field = update.field;
+            const dise = update.dise;
+            if (field === 'deleted') {
+              if (SCHOOL_DB[dise]) {
+                const oldProj = String(update.oldValue || '').trim().toUpperCase();
+                if (oldProj) {
+                  const arr = Array.isArray(SCHOOL_DB[dise]) ? SCHOOL_DB[dise] : [SCHOOL_DB[dise]];
+                  const filtered = arr.filter(r => String(r.project || '').trim().toUpperCase() !== oldProj);
+                  if (filtered.length > 0) {
+                    SCHOOL_DB[dise] = filtered;
+                  } else {
+                    delete SCHOOL_DB[dise];
+                  }
+                } else {
+                  delete SCHOOL_DB[dise];
+                }
+              }
+            } else if (field === 'added') {
+              try {
+                const newRecord = JSON.parse(update.newValue);
+                if (newRecord && newRecord.dise) {
+                  let arr = SCHOOL_DB[dise] || [];
+                  if (!Array.isArray(arr)) arr = [arr];
+                  arr = arr.filter(r => String(r.project || '').trim().toUpperCase() !== String(newRecord.project || '').trim().toUpperCase());
+                  arr.push(newRecord);
+                  SCHOOL_DB[dise] = arr;
+                }
+              } catch(e) {
+                console.error("Failed to parse added school:", e);
+              }
+            } else {
+              const list = SCHOOL_DB[dise];
+              if (list) {
+                const entries = Array.isArray(list) ? list : [list];
+                const targetProj = String(update.project || '').trim().toUpperCase();
+                entries.forEach(r => {
+                  if (r.dise === dise) {
+                    if (!targetProj || String(r.project || '').trim().toUpperCase() === targetProj) {
+                      r[field] = update.newValue;
+                    }
+                  }
+                });
+              }
+            }
           });
         }
       }
@@ -1412,7 +1457,7 @@ function populateProjectDropdown() {
 
 function onProjectChange() {
   const dise = document.getElementById('lookupDise').value.trim();
-  if (dise.length >= 11) {
+  if (SCHOOL_DB[dise] || (dise.length >= 8 && dise.length <= 15)) {
     triggerLookup();
   }
 }
@@ -1770,7 +1815,7 @@ function deptAction(i, action) {
     '<div class="field" style="margin-bottom:12px;">' +
       '<label style="font-size:0.75rem; font-weight:700;">Serial Number <span class="req">*</span></label>' +
       '<div style="display:flex; gap:4px; align-items:center;">' +
-        '<input type="text" id="deptSerial_' + i + '" placeholder="e.g. SN20240001" autocapitalize="characters" style="flex:1; margin-bottom:0; padding:10px 12px; border-radius:10px; font-size:0.85rem;" />' +
+        '<input type="text" id="deptSerial_' + i + '" placeholder="e.g. SN20240001" maxlength="22" autocapitalize="characters" style="flex:1; margin-bottom:0; padding:10px 12px; border-radius:10px; font-size:0.85rem;" />' +
         '<button type="button" class="btn-cam" style="flex-shrink:0; width:auto; padding:0 14px; height:43px; margin:0; border-radius:10px; font-size:0.82rem; border:none; background:var(--primary); color:white; font-weight:700; cursor:pointer;" onclick="startScanner(\'deptSerial_' + i + '\')">📷 Scan</button>' +
       '</div>' +
     '</div>' +
@@ -2059,7 +2104,15 @@ async function submitDeptResolution(i, action) {
   if (!nature) { showToast('Select Nature of Complaint', 'warn'); return; }
   if (!qty || parseInt(qty) < 1) { showToast('Enter valid quantity', 'warn'); return; }
   if (!date) { showToast('Select Date', 'warn'); return; }
-  if (!serial || isInvalidSerialNumber(serial)) {
+  if (!serial) {
+    showToast('⚠️ Please enter a Serial Number', 'warn');
+    return;
+  }
+  if (serial.length > 22) {
+    showToast('⚠️ Serial Number cannot exceed 22 characters', 'warn');
+    return;
+  }
+  if (isInvalidSerialNumber(serial)) {
     showToast('⚠️ Please enter a valid Serial Number (cannot be blank, null, or N/A)', 'warn');
     return;
   }
@@ -2273,7 +2326,7 @@ async function syncSchoolUpdate(dise, field, newValue, oldValue) {
 /* ─────────────── LOOKUP ─────────────── */
 function onDiseInput(input) {
   const val = input.value.trim();
-  if (val.length >= 11) triggerLookup();
+  if (SCHOOL_DB[val] || val.length >= 11) triggerLookup();
 }
 
 async function triggerLookup() {
@@ -2529,7 +2582,15 @@ function validateStep(step) {
     if (!nature)    { showToast('⚠️ Select Nature of Complaint', 'warn'); return false; }
     if (qty < 1)    { showToast('⚠️ Enter valid Quantity', 'warn'); return false; }
     if (!date)      { showToast('⚠️ Select Complaint Date', 'warn'); return false; }
-    if (!serial || isInvalidSerialNumber(serial)) {
+    if (!serial) {
+      showToast('⚠️ Please enter a Serial Number', 'warn');
+      return false;
+    }
+    if (serial.length > 22) {
+      showToast('⚠️ Serial Number cannot exceed 22 characters', 'warn');
+      return false;
+    }
+    if (isInvalidSerialNumber(serial)) {
       showToast('⚠️ Please enter a valid Serial Number (cannot be blank, null, or N/A)', 'warn');
       return false;
     }
@@ -2976,39 +3037,6 @@ async function submitForm() {
 }
 
 async function proceedWithSubmission() {
-  if (!gpsLocation) {
-    const btn = document.getElementById('btnSubmit');
-    btn.disabled = true;
-    btn.textContent = '📡 Acquiring GPS Location…';
-    showToast('📡 Acquiring GPS Location (Mandatory)…', 'info');
-    
-    navigator.geolocation.getCurrentPosition(
-      position => {
-        gpsLocation = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude
-        };
-        btn.disabled = false;
-        btn.textContent = '✅ Submit Complaint';
-        proceedWithSubmission(); // retry submission with GPS acquired
-      },
-      error => {
-        btn.disabled = false;
-        btn.textContent = '✅ Submit Complaint';
-        let msg = '⚠️ GPS Access is mandatory to submit complaints. Please allow Location permissions in your browser.';
-        if (error.code === error.PERMISSION_DENIED) {
-          msg = '⚠️ Location permission denied. GPS access is mandatory. Please reset website permissions and try again.';
-        } else if (error.code === error.TIMEOUT) {
-          msg = '⚠️ GPS acquisition timed out. Please ensure you are in a location with good GPS visibility and try again.';
-        }
-        showToast(msg, 'warn');
-        alert(msg);
-      },
-      { enableHighAccuracy: true, timeout: 8000 }
-    );
-    return;
-  }
-
   const activePhotos = photos.filter(Boolean);
   const user = getUser() || {};
   const r    = foundRecord;
@@ -3020,6 +3048,13 @@ async function proceedWithSubmission() {
   let otpVal = '';
 
   const isSchool = (appFlow === 'school');
+  
+  if (isSchool && r && r.srNo) {
+    const list = SCHOOL_COMPLAINT_DB[r.dise];
+    if (Array.isArray(list)) {
+      SCHOOL_COMPLAINT_DB[r.dise] = list.filter(item => parseInt(item.srNo) !== parseInt(r.srNo));
+    }
+  }
   const complaint = {
     action:            isSchool ? 'resolve_school_complaint_from_portal' : 'submit_complaint',
     srNo:              isSchool ? r?.srNo : undefined,
@@ -3181,7 +3216,7 @@ function handleNextItem() {
   // Reset photos & gps location
   photos = [];
   serialPhoto = null;
-  gpsLocation = null;
+  gpsLocation = { latitude: '', longitude: '' };
   document.getElementById('photoGrid').innerHTML = '';
   document.getElementById('noPhotosMsg').style.display = '';
   document.getElementById('serialPhotoGrid').innerHTML = '';
@@ -3230,7 +3265,7 @@ function resetAll() {
   foundRecord    = null;
   complaintGroup = null;
   photos         = [];
-  gpsLocation    = null;
+  gpsLocation    = { latitude: '', longitude: '' };
   document.getElementById('lookupDise').value    = '';
   document.getElementById('lookupProject').value = '';
   document.getElementById('lookupStatus').className = 'status-banner';

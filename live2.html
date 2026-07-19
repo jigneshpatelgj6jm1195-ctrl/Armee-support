@@ -367,6 +367,7 @@ tr:hover td { background: #f8fafc; }
   <button class="tab-btn" id="btn-tab-complaints" onclick="switchTab('complaints')">📋 Complaints &amp; Reports</button>
   <button class="tab-btn" id="btn-tab-dept" onclick="switchTab('dept')">🏛️ Dept Complaints</button>
   <button class="tab-btn" id="btn-tab-schoolupload" onclick="switchTab('schoolupload')">📤 School Upload</button>
+  <button class="tab-btn" id="btn-tab-acer" onclick="switchTab('acer')">💻 Acer Case Mapping</button>
   <button class="tab-btn" id="btn-tab-schooldash" onclick="switchTab('schooldash')">📊 School Dash</button>
   <button class="tab-btn" id="btn-tab-branch" onclick="switchTab('branch')">🏢 Branch Management</button>
   <button class="tab-btn" id="btn-tab-branchemails" onclick="switchTab('branchemails')">📧 Branch Emails</button>
@@ -687,51 +688,43 @@ tr:hover td { background: #f8fafc; }
     </div>
 
     <div class="card">
-      <div class="card-title">🔍 Search &amp; Update School Information</div>
-      <div style="display:flex; gap:10px; margin-bottom:18px;">
-        <input type="text" id="schoolSearchDise" placeholder="Enter 11-digit School DISE Code..." style="max-width:320px;" onkeydown="if(event.key==='Enter') searchSchoolInfo()" />
-        <button class="btn btn-primary" onclick="searchSchoolInfo()">🔍 Search</button>
+      <div class="card-title" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+        <span>🔍 Search &amp; Manage School Records</span>
+        <button class="btn btn-success btn-sm" onclick="openSchoolAddModal()" style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; font-weight: bold; border-radius: 8px;">
+          <span>➕ Add New School</span>
+        </button>
+      </div>
+      <div style="display:flex; gap:10px; margin-bottom:18px; flex-wrap: wrap;">
+        <input type="text" id="schoolSearchQuery" placeholder="Search by DISE, School Code, Name, Taluka, or District..." style="flex: 1; max-width:480px; min-width: 250px; padding: 10px 14px; border-radius: 8px; border: 1.5px solid var(--border);" onkeydown="if(event.key==='Enter') searchSchoolMaster(0)" />
+        <button class="btn btn-primary" onclick="searchSchoolMaster(0)" style="padding: 0 16px; border-radius: 8px; font-weight: bold;">🔍 Search</button>
+        <button class="btn btn-ghost" onclick="clearSchoolMasterSearch()" style="padding: 0 16px; border-radius: 8px; border: 1px solid var(--border);">Reset</button>
       </div>
 
-      <div id="schoolSearchResultBox" style="display:none; background:#f8fafc; border:1px solid var(--border); border-radius:12px; padding:20px;">
-        <h4 id="schoolSearchName" style="color:var(--primary); font-size:1rem; font-weight:800; margin-bottom:12px;">School Name</h4>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
-          <div class="field">
-            <label>Project</label>
-            <input type="text" id="schoolEditProject" readonly />
+      <div id="schoolMasterTableContainer" style="display:none; overflow-x:auto; margin-top: 10px;">
+        <table class="sd-table" style="width:100%; border-collapse:collapse; margin-top:8px;">
+          <thead>
+            <tr>
+              <th style="padding: 10px 12px; border-bottom: 2px solid var(--border); text-align: left;">Project</th>
+              <th style="padding: 10px 12px; border-bottom: 2px solid var(--border); text-align: left;">DISE Code</th>
+              <th style="padding: 10px 12px; border-bottom: 2px solid var(--border); text-align: left;">School Code</th>
+              <th style="padding: 10px 12px; border-bottom: 2px solid var(--border); text-align: left;">School Name</th>
+              <th style="padding: 10px 12px; border-bottom: 2px solid var(--border); text-align: left;">District</th>
+              <th style="padding: 10px 12px; border-bottom: 2px solid var(--border); text-align: left;">Taluka / Block</th>
+              <th style="padding: 10px 12px; border-bottom: 2px solid var(--border); text-align: left;">Principal</th>
+              <th style="padding: 10px 12px; border-bottom: 2px solid var(--border); text-align: left;">Contact</th>
+              <th style="text-align:center; width:150px; padding: 10px 12px; border-bottom: 2px solid var(--border);">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="schoolMasterTableBody"></tbody>
+        </table>
+        
+        <!-- Pagination Controls -->
+        <div id="schoolMasterPagination" style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; font-size:0.8rem; color:var(--muted);">
+          <span id="schoolMasterPaginationText">Showing 0 of 0 records</span>
+          <div style="display:flex; gap:6px;">
+            <button class="btn btn-ghost btn-sm" id="schoolMasterPrevBtn" onclick="changeSchoolMasterPage(-1)" style="padding: 4px 10px; border: 1px solid var(--border);">◀ Prev</button>
+            <button class="btn btn-ghost btn-sm" id="schoolMasterNextBtn" onclick="changeSchoolMasterPage(1)" style="padding: 4px 10px; border: 1px solid var(--border);">Next ▶</button>
           </div>
-          <div class="field">
-            <label>DISE Code</label>
-            <input type="text" id="schoolEditDise" readonly />
-          </div>
-          <div class="field">
-            <label>District</label>
-            <input type="text" id="schoolEditDistrict" />
-          </div>
-          <div class="field">
-            <label>Taluka / Block</label>
-            <input type="text" id="schoolEditTaluka" />
-          </div>
-          <div class="field">
-            <label>Principal Name</label>
-            <input type="text" id="schoolEditPrincipal" />
-          </div>
-          <div class="field">
-            <label>Contact Number</label>
-            <input type="tel" id="schoolEditContact" maxlength="10" />
-          </div>
-          <div class="field">
-            <label>Pin Code</label>
-            <input type="text" id="schoolEditPincode" />
-          </div>
-          <div class="field">
-            <label>School Address</label>
-            <textarea id="schoolEditAddress" rows="2"></textarea>
-          </div>
-        </div>
-        <div style="margin-top:14px; text-align:right;">
-          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('schoolSearchResultBox').style.display='none'">Cancel</button>
-          <button class="btn btn-success btn-sm" onclick="saveSchoolEdit()">💾 Update School Record</button>
         </div>
       </div>
     </div>
@@ -1035,8 +1028,8 @@ tr:hover td { background: #f8fafc; }
       </div>
       <div class="table-responsive" style="margin-top:12px;">
         <table>
-          <thead><tr><th style="width:40px; text-align:center;"><input type="checkbox" id="selectAllDept" onclick="toggleSelectAllDept(this)" style="transform: scale(1.25); cursor: pointer;" /></th><th>Ticket</th><th>School</th><th>District</th><th>Branch</th><th>Issue</th><th>Age (BD)</th><th id="deptStatusHeaderCol" style="min-width: 140px;">Status</th></tr></thead>
-          <tbody id="deptListBody"><tr><td colspan="8" style="text-align:center;color:var(--muted);">Loading…</td></tr></tbody>
+          <thead><tr><th style="width:40px; text-align:center;"><input type="checkbox" id="selectAllDept" onclick="toggleSelectAllDept(this)" style="transform: scale(1.25); cursor: pointer;" /></th><th>Ticket</th><th>School</th><th>District</th><th>Branch</th><th>Issue</th><th>Age (BD)</th><th>Log Date</th><th>Last Updated</th><th>Close Date</th><th id="deptStatusHeaderCol" style="min-width: 140px;">Status</th></tr></thead>
+          <tbody id="deptListBody"><tr><td colspan="11" style="text-align:center;color:var(--muted);">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -1098,6 +1091,39 @@ tr:hover td { background: #f8fafc; }
 
       <div id="schoolPreview" style="display:none;background:#f8faff;border:1.5px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:14px;font-size:0.82rem;"></div>
       <div id="schoolResult" style="display:none;border-radius:12px;padding:14px 16px;font-size:0.82rem;font-weight:600;"></div>
+    </div>
+  </div>
+
+  <!-- ================= TAB: ACER CASE MAPPING ================= -->
+  <div class="tab-content" id="tab-acer" style="padding:16px;">
+    <div class="card">
+      <div class="card-title">💻 Acer Case Mapping Excel Tool</div>
+      <p style="color:var(--muted);font-size:0.82rem;margin-bottom:16px;">
+        Upload an Excel or CSV file containing <strong>Serial Number</strong>, <strong>Acer Case ID</strong>, and <strong>Case Status</strong>.
+        The tool will automatically parse the file, match complaints by Serial Number, and update the database.
+      </p>
+
+      <div style="background:#fef3c7; border:1px solid #f59e0b; color:#92400e; padding:12px; border-radius:8px; font-size:0.8rem; margin-bottom:16px; line-height:1.4;">
+        <strong>📋 Template / Columns expected:</strong><br>
+        • <code>Serial Number</code> (or <code>S/N</code>, <code>SerialNumber</code>)<br>
+        • <code>Acer Case ID</code> (or <code>Case ID</code>, <code>AcerCaseId</code>)<br>
+        • <code>Case Status</code> (or <code>Acer Case Status</code>, <code>Status</code>)
+      </div>
+
+      <div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap;">
+        <div>
+          <label style="font-weight:700; font-size:0.75rem; margin-bottom:4px; display:block;">Select File (.xlsx, .xls, .csv)</label>
+          <input type="file" id="acerFile" accept=".xlsx,.xls,.csv" style="display:block;padding:8px;border:2px dashed var(--border);border-radius:8px;background:white;" onchange="handleAcerFileSelect()" />
+        </div>
+        <div>
+          <label style="font-weight:700; font-size:0.75rem; margin-bottom:4px; display:block;">Import key</label>
+          <input type="password" id="acerImportKey" placeholder="Paste the IMPORT_KEY" style="width:220px; padding:8px 12px; border-radius:6px; border:1.5px solid var(--border);" autocomplete="off" />
+        </div>
+        <button class="btn btn-primary" id="acerUploadBtn" onclick="runAcerMapping()" style="height:38px;" disabled>⚙️ Process &amp; Map Acer Cases</button>
+      </div>
+
+      <div id="acerPreview" style="display:none;background:#f8faff;border:1.5px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:14px;font-size:0.82rem;"></div>
+      <div id="acerResult" style="display:none;border-radius:12px;padding:14px 16px;font-size:0.82rem;font-weight:600;"></div>
     </div>
   </div>
 
@@ -1331,6 +1357,35 @@ tr:hover td { background: #f8fafc; }
         <div id="deptDetSuspectedPhotoContainer" style="display:none; text-align:center;">
           <div style="font-size:0.7rem; font-weight:700; margin-bottom:4px;">Suspected Part Photo</div>
           <img id="deptDetSuspectedImg" src="" style="width:100px; height:100px; object-fit:cover; border-radius:8px; border:1px solid #ddd; cursor:pointer;" onclick="viewAdminSerialPhoto(this.src)" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Resolution Inputs -->
+    <div id="deptDetResolutionInputBlock" style="border-top:1px solid var(--border); padding-top:12px;">
+      <h4 style="margin:0 0 10px 0; font-size:0.9rem; color:var(--primary);">🔧 Resolution Input Details</h4>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; font-size:0.8rem; margin-bottom:12px;">
+        <div style="grid-column: 1 / -1;">
+          <label style="font-weight:700; margin-bottom:4px; display:block;">Serial Number <span class="req">*</span></label>
+          <input type="text" id="deptModalSerial" placeholder="Enter alphanumeric Serial Number" maxlength="22" style="width:100%; padding:6px 10px; border-radius:6px; border:1px solid var(--border); font-size:0.8rem; box-sizing:border-box;" />
+        </div>
+        <div>
+          <label style="font-weight:700; margin-bottom:4px; display:block;">OTP Code <span class="req">*</span> (Close with OTP)</label>
+          <input type="text" id="deptModalOtp" placeholder="Enter OTP Code" style="width:100%; padding:6px 10px; border-radius:6px; border:1px solid var(--border); font-size:0.8rem; box-sizing:border-box;" />
+        </div>
+        <div>
+          <label style="font-weight:700; margin-bottom:4px; display:block;">Suspected Part <span class="req">*</span> (Part Request)</label>
+          <select id="deptModalPart" style="width:100%; padding:6px 10px; border-radius:6px; border:1px solid var(--border); font-size:0.8rem; background:white; height:30px; box-sizing:border-box;">
+            <!-- Will be populated dynamically -->
+          </select>
+        </div>
+        <div style="grid-column: 1 / -1;">
+          <label style="font-weight:700; margin-bottom:4px; display:block;">Technician Name</label>
+          <input type="text" id="deptModalTechnician" placeholder="Technician Name" style="width:100%; padding:6px 10px; border-radius:6px; border:1px solid var(--border); font-size:0.8rem; box-sizing:border-box;" />
+        </div>
+        <div style="grid-column: 1 / -1;">
+          <label style="font-weight:700; margin-bottom:4px; display:block;">Diagnosis / Notes</label>
+          <textarea id="deptModalNotes" placeholder="Enter diagnosis or notes" style="width:100%; padding:6px 10px; border-radius:6px; border:1px solid var(--border); font-size:0.8rem; font-family:inherit; height:50px; box-sizing:border-box;"></textarea>
         </div>
       </div>
     </div>
@@ -1745,6 +1800,67 @@ tr:hover td { background: #f8fafc; }
   </div>
 </div>
 
+<div class="modal-bg" id="schoolAddEditModal">
+  <div class="modal" style="max-width: 600px; width: 95%; max-height: 85vh; overflow-y: auto;">
+    <div class="modal-header" style="margin-bottom: 18px;">
+      <h3 id="schoolModalTitle" style="margin: 0; color: var(--primary);">🏫 School Details</h3>
+    </div>
+    <input type="hidden" id="schoolModalMode" value="add" />
+    <input type="hidden" id="schoolModalOriginalDise" value="" />
+    <input type="hidden" id="schoolModalOriginalProject" value="" />
+    
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+      <div class="field">
+        <label for="schoolModalProject">Project *</label>
+        <select id="schoolModalProject">
+          <option value="ICT">ICT</option>
+          <option value="GK">GK</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="schoolModalDise">DISE Code *</label>
+        <input type="text" id="schoolModalDise" placeholder="e.g. 24071005901" maxlength="20" />
+      </div>
+      <div class="field">
+        <label for="schoolModalSchoolCode">School Code</label>
+        <input type="text" id="schoolModalSchoolCode" placeholder="e.g. GNK-AHD-0001" maxlength="25" />
+      </div>
+      <div class="field">
+        <label for="schoolModalName">School Name *</label>
+        <input type="text" id="schoolModalName" placeholder="e.g. DUMALI PRIMARY SCHOOL" />
+      </div>
+      <div class="field">
+        <label for="schoolModalDistrict">District *</label>
+        <input type="text" id="schoolModalDistrict" placeholder="e.g. AHMEDABAD" />
+      </div>
+      <div class="field">
+        <label for="schoolModalTaluka">Taluka / Block *</label>
+        <input type="text" id="schoolModalTaluka" placeholder="e.g. BAVLA" />
+      </div>
+      <div class="field">
+        <label for="schoolModalPrincipal">Principal Name</label>
+        <input type="text" id="schoolModalPrincipal" placeholder="e.g. Ramesh Patel" />
+      </div>
+      <div class="field">
+        <label for="schoolModalContact">Contact Number</label>
+        <input type="tel" id="schoolModalContact" placeholder="10-digit number" maxlength="10" />
+      </div>
+      <div class="field">
+        <label for="schoolModalPincode">Pin Code</label>
+        <input type="text" id="schoolModalPincode" placeholder="e.g. 382240" />
+      </div>
+      <div class="field" style="grid-column: span 2;">
+        <label for="schoolModalAddress">School Address</label>
+        <textarea id="schoolModalAddress" rows="2" placeholder="Complete address..."></textarea>
+      </div>
+    </div>
+    <div class="modal-actions" style="margin-top: 20px;">
+      <button class="btn btn-ghost" onclick="closeModal('schoolAddEditModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitSchoolModal()">💾 Save School</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="adminLoginModal">
   <div class="modal" style="max-width:400px;">
     <div style="text-align:center; margin-bottom: 20px;">
@@ -1807,6 +1923,7 @@ let deleteModeUnlocked = false;
 function isInvalidSerialNumber(serial) {
   if (!serial) return true;
   const s = String(serial).trim().toUpperCase();
+  if (s.length > 22) return true;
   const invalidList = [
     '', 'N/A', 'NA', 'NULL', 'NONE', 'N.A', 'N.A.', 'N/A.', 'N / A', 'N/ A', 'N /A',
     'N. A.', 'N. A', 'N A', 'NOT AVAILABLE', 'NOTAPPLICABLE', 'NOT APPLICABLE',
@@ -2114,15 +2231,60 @@ async function loadSchoolList() {
           showToast('⚠️ Backend Error (School Updates): ' + updates.error, 'error');
         } else if (Array.isArray(updates)) {
           updates.forEach(update => {
-            const list = schoolDataRaw[update.dise];
-            const entries = Array.isArray(list) ? list : (list ? [list] : []);
-            entries.forEach(r => { if (r.dise === update.dise) r[update.field] = update.newValue; });
+            const field = update.field;
+            const dise = update.dise;
+            if (field === 'deleted') {
+              if (schoolDataRaw[dise]) {
+                const oldProj = String(update.oldValue || '').trim().toUpperCase();
+                if (oldProj) {
+                  const arr = Array.isArray(schoolDataRaw[dise]) ? schoolDataRaw[dise] : [schoolDataRaw[dise]];
+                  const filtered = arr.filter(r => String(r.project || '').trim().toUpperCase() !== oldProj);
+                  if (filtered.length > 0) {
+                    schoolDataRaw[dise] = filtered;
+                  } else {
+                    delete schoolDataRaw[dise];
+                  }
+                } else {
+                  delete schoolDataRaw[dise];
+                }
+              }
+            } else if (field === 'added') {
+              try {
+                const newRecord = JSON.parse(update.newValue);
+                if (newRecord && newRecord.dise) {
+                  let arr = schoolDataRaw[dise] || [];
+                  if (!Array.isArray(arr)) arr = [arr];
+                  arr = arr.filter(r => String(r.project || '').trim().toUpperCase() !== String(newRecord.project || '').trim().toUpperCase());
+                  arr.push(newRecord);
+                  schoolDataRaw[dise] = arr;
+                }
+              } catch(e) {
+                console.error("Failed to parse added school:", e);
+              }
+            } else {
+              const list = schoolDataRaw[dise];
+              if (list) {
+                const entries = Array.isArray(list) ? list : [list];
+                const targetProj = String(update.project || '').trim().toUpperCase();
+                entries.forEach(r => {
+                  if (r.dise === dise) {
+                    if (!targetProj || String(r.project || '').trim().toUpperCase() === targetProj) {
+                      r[field] = update.newValue;
+                    }
+                  }
+                });
+              }
+            }
           });
         }
       }
     }
   } catch(_) {}
-  renderDashboard();
+  if (typeof searchSchoolMaster === 'function') {
+    searchSchoolMaster(0);
+    const container = document.getElementById('schoolMasterTableContainer');
+    if (container) container.style.display = 'block';
+  }
 }
 
 /* ─────────────── SAVE ALL CHANGES ─────────────── */
@@ -2209,8 +2371,8 @@ async function saveAll() {
 function checkTabAccess(tabId) {
   if (!currentUser) return tabId === 'dash';
   if (currentUser.role === 'super_admin') return true;
-  // Non-super admin (district_admin, viewer) can access dash, complaints, dept, and schooldash
-  const allowedTabs = ['dash', 'complaints', 'dept', 'schooldash'];
+  // Non-super admin (district_admin, viewer) can access dash, complaints, dept, schooldash, and acer mapping
+  const allowedTabs = ['dash', 'complaints', 'dept', 'schooldash', 'acer'];
   return allowedTabs.includes(tabId);
 }
 
@@ -2224,6 +2386,7 @@ function renderNavigationMenu() {
     'access': document.getElementById('btn-tab-access'),
     'dept': document.getElementById('btn-tab-dept'),
     'schoolupload': document.getElementById('btn-tab-schoolupload'),
+    'acer': document.getElementById('btn-tab-acer'),
     'schooldash': document.getElementById('btn-tab-schooldash'),
     'branch': document.getElementById('btn-tab-branch'),
     'branchemails': document.getElementById('btn-tab-branchemails'),
@@ -2256,6 +2419,7 @@ function applyUrlModule() {
       'complaints': 'complaints',
       'department': 'dept',
       'schoolupload': 'schoolupload',
+      'acer': 'acer',
       'schooldash': 'schooldash',
       'branchmanagement': 'branch',
       'archive': 'archive'
@@ -2302,6 +2466,7 @@ function switchTab(tabId) {
     'complaints': 'complaints',
     'dept': 'department',
     'schoolupload': 'schoolupload',
+    'acer': 'acer',
     'schooldash': 'schooldash',
     'branch': 'branchmanagement',
     'branchemails': 'branchemails',
@@ -3173,86 +3338,286 @@ async function uploadSchoolExcel(event) {
   event.target.value = ''; // clear input
 }
 
-function searchSchoolInfo() {
-  const dise = document.getElementById('schoolSearchDise').value.trim();
-  if (!dise) { showToast('⚠️ Enter School DISE Code', 'warn'); return; }
+/* ─────────────── SCHOOL MASTER MANAGEMENT ─────────────── */
+let schoolMasterFiltered = [];
+let schoolMasterPage = 0;
+const schoolMasterPageSize = 15;
+
+function searchSchoolMaster(pageOffset = 0) {
+  const query = document.getElementById('schoolSearchQuery').value.trim().toLowerCase();
   
-  const entries = schoolDataRaw[dise];
-  if (!entries || (Array.isArray(entries) && entries.length === 0)) {
-    showToast('❌ No school records found for this DISE code', 'warn');
-    document.getElementById('schoolSearchResultBox').style.display = 'none';
-    return;
+  const allSchools = [];
+  for (const [dise, list] of Object.entries(schoolDataRaw)) {
+    const entries = Array.isArray(list) ? list : (list ? [list] : []);
+    entries.forEach((item, idx) => {
+      allSchools.push({
+        dise: item.dise || dise,
+        project: item.project || 'GK',
+        schoolCode: item.schoolCode || item.school_code || '',
+        school: item.school || item.name || '',
+        district: item.district || '',
+        block: item.block || item.taluka || '',
+        principal: item.principal || '',
+        mobile: item.mobile || item.principal_contact || '',
+        address: item.address || '',
+        pincode: item.pincode || '',
+        index: idx
+      });
+    });
   }
-  
-  const record = Array.isArray(entries) ? entries[0] : entries;
-  document.getElementById('schoolSearchName').textContent = record.school;
-  document.getElementById('schoolEditProject').value      = record.project || '';
-  document.getElementById('schoolEditDise').value         = record.dise || '';
-  document.getElementById('schoolEditDistrict').value     = record.district || '';
-  document.getElementById('schoolEditTaluka').value       = record.block || '';
-  document.getElementById('schoolEditPrincipal').value    = record.principal || '';
-  document.getElementById('schoolEditContact').value      = record.mobile || '';
-  document.getElementById('schoolEditPincode').value      = record.pincode || '';
-  document.getElementById('schoolEditAddress').value      = record.address || '';
-  
-  document.getElementById('schoolSearchResultBox').style.display = 'block';
+
+  if (query) {
+    schoolMasterFiltered = allSchools.filter(s => {
+      return String(s.dise).toLowerCase().includes(query) ||
+             String(s.schoolCode).toLowerCase().includes(query) ||
+             String(s.school).toLowerCase().includes(query) ||
+             String(s.block).toLowerCase().includes(query) ||
+             String(s.district).toLowerCase().includes(query);
+    });
+  } else {
+    schoolMasterFiltered = allSchools;
+  }
+
+  schoolMasterFiltered.sort((a, b) => String(a.school).localeCompare(String(b.school)));
+
+  schoolMasterPage = pageOffset;
+  renderSchoolMasterTable();
 }
 
-async function saveSchoolEdit() {
-  const dise = document.getElementById('schoolEditDise').value;
-  const fields = {
-    district:  document.getElementById('schoolEditDistrict').value.trim(),
-    block:     document.getElementById('schoolEditTaluka').value.trim(),
-    principal: document.getElementById('schoolEditPrincipal').value.trim(),
-    mobile:    document.getElementById('schoolEditContact').value.trim(),
-    pincode:   document.getElementById('schoolEditPincode').value.trim(),
-    address:   document.getElementById('schoolEditAddress').value.trim(),
+function clearSchoolMasterSearch() {
+  document.getElementById('schoolSearchQuery').value = '';
+  searchSchoolMaster(0);
+}
+
+function changeSchoolMasterPage(dir) {
+  const newPage = schoolMasterPage + dir;
+  const maxPage = Math.ceil(schoolMasterFiltered.length / schoolMasterPageSize) - 1;
+  if (newPage >= 0 && newPage <= Math.max(0, maxPage)) {
+    schoolMasterPage = newPage;
+    renderSchoolMasterTable();
+  }
+}
+
+function renderSchoolMasterTable() {
+  const container = document.getElementById('schoolMasterTableContainer');
+  const tbody = document.getElementById('schoolMasterTableBody');
+  
+  if (!schoolMasterFiltered.length) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding: 20px; color: var(--muted);">No matching school records found.</td></tr>`;
+    container.style.display = 'block';
+    document.getElementById('schoolMasterPaginationText').textContent = 'Showing 0 of 0 records';
+    document.getElementById('schoolMasterPrevBtn').disabled = true;
+    document.getElementById('schoolMasterNextBtn').disabled = true;
+    return;
+  }
+
+  const start = schoolMasterPage * schoolMasterPageSize;
+  const end = Math.min(start + schoolMasterPageSize, schoolMasterFiltered.length);
+  const pageItems = schoolMasterFiltered.slice(start, end);
+
+  let html = '';
+  pageItems.forEach(s => {
+    html += `
+      <tr style="border-bottom: 1px solid var(--border);">
+        <td style="padding: 10px 12px; font-weight: bold; color: var(--primary);">${sdEsc(s.project)}</td>
+        <td style="padding: 10px 12px; font-family: monospace;">${sdEsc(s.dise)}</td>
+        <td style="padding: 10px 12px; font-family: monospace;">${sdEsc(s.schoolCode || '—')}</td>
+        <td style="padding: 10px 12px; max-width: 250px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${sdEsc(s.school)}">${sdEsc(s.school)}</td>
+        <td style="padding: 10px 12px;">${sdEsc(s.district)}</td>
+        <td style="padding: 10px 12px;">${sdEsc(s.block)}</td>
+        <td style="padding: 10px 12px; max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${sdEsc(s.principal)}">${sdEsc(s.principal || '—')}</td>
+        <td style="padding: 10px 12px; font-family: monospace;">${sdEsc(s.mobile || '—')}</td>
+        <td style="padding: 10px 12px; text-align: center; white-space: nowrap;">
+          <button class="btn btn-ghost btn-xs" onclick="openSchoolEditModal('${s.dise}', ${s.index})" style="color: var(--primary); margin-right: 4px; padding: 2px 6px; border: 1px solid var(--border);">📝 Edit</button>
+          <button class="btn btn-ghost btn-xs" onclick="deleteSchoolMaster('${s.dise}', '${s.project}')" style="color: #ef4444; padding: 2px 6px; border: 1px solid var(--border);">🗑️ Delete</button>
+        </td>
+      </tr>
+    `;
+  });
+
+  tbody.innerHTML = html;
+  container.style.display = 'block';
+
+  document.getElementById('schoolMasterPaginationText').textContent = `Showing ${start + 1} - ${end} of ${schoolMasterFiltered.length} records`;
+  document.getElementById('schoolMasterPrevBtn').disabled = (schoolMasterPage === 0);
+  document.getElementById('schoolMasterNextBtn').disabled = (end >= schoolMasterFiltered.length);
+}
+
+function openSchoolAddModal() {
+  document.getElementById('schoolModalTitle').textContent = '🏫 Add New School Record';
+  document.getElementById('schoolModalMode').value = 'add';
+  document.getElementById('schoolModalOriginalDise').value = '';
+  document.getElementById('schoolModalOriginalProject').value = '';
+
+  document.getElementById('schoolModalProject').value = 'ICT';
+  document.getElementById('schoolModalDise').value = '';
+  document.getElementById('schoolModalSchoolCode').value = '';
+  document.getElementById('schoolModalName').value = '';
+  document.getElementById('schoolModalDistrict').value = '';
+  document.getElementById('schoolModalTaluka').value = '';
+  document.getElementById('schoolModalPrincipal').value = '';
+  document.getElementById('schoolModalContact').value = '';
+  document.getElementById('schoolModalPincode').value = '';
+  document.getElementById('schoolModalAddress').value = '';
+
+  document.getElementById('schoolModalProject').disabled = false;
+  document.getElementById('schoolModalDise').disabled = false;
+
+  openModal('schoolAddEditModal');
+}
+
+function openSchoolEditModal(dise, index) {
+  const list = schoolDataRaw[dise];
+  const entries = Array.isArray(list) ? list : (list ? [list] : []);
+  const record = entries[index];
+  if (!record) return;
+
+  document.getElementById('schoolModalTitle').textContent = '📝 Edit School Details';
+  document.getElementById('schoolModalMode').value = 'edit';
+  document.getElementById('schoolModalOriginalDise').value = dise;
+  document.getElementById('schoolModalOriginalProject').value = record.project || '';
+
+  document.getElementById('schoolModalProject').value = record.project || 'GK';
+  document.getElementById('schoolModalDise').value = record.dise || dise;
+  document.getElementById('schoolModalSchoolCode').value = record.schoolCode || record.school_code || '';
+  document.getElementById('schoolModalName').value = record.school || record.name || '';
+  document.getElementById('schoolModalDistrict').value = record.district || '';
+  document.getElementById('schoolModalTaluka').value = record.block || record.taluka || '';
+  document.getElementById('schoolModalPrincipal').value = record.principal || '';
+  document.getElementById('schoolModalContact').value = record.mobile || record.principal_contact || '';
+  document.getElementById('schoolModalPincode').value = record.pincode || '';
+  document.getElementById('schoolModalAddress').value = record.address || '';
+
+  document.getElementById('schoolModalProject').disabled = false;
+  document.getElementById('schoolModalDise').disabled = false;
+
+  openModal('schoolAddEditModal');
+}
+
+async function deleteSchoolMaster(dise, project) {
+  if (!confirm(`Are you sure you want to delete the school record with DISE: ${dise} and Project: ${project}?`)) return;
+
+  const local = isLocal();
+  let success = true;
+
+  try {
+    showToast('⏳ Deleting school record...', 'info');
+    if (local) {
+      const res = await fetch('/update_school', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dise, field: 'deleted', project })
+      });
+      if (!res.ok) throw new Error('Local deletion failed');
+    } else if (GOOGLE_SCRIPT_URL && navigator.onLine) {
+      await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ action: 'update_school', dise, field: 'deleted', oldValue: project, project })
+      });
+    } else {
+      throw new Error('No connection available');
+    }
+  } catch (err) {
+    console.error("Deletion failed:", err);
+    success = false;
+  }
+
+  if (success) {
+    showToast('✅ School record deleted successfully!', 'success');
+    await loadSchoolList();
+    searchSchoolMaster(schoolMasterPage);
+  } else {
+    showToast('❌ Failed to delete school record', 'danger');
+  }
+}
+
+async function submitSchoolModal() {
+  const mode = document.getElementById('schoolModalMode').value;
+  const origDise = document.getElementById('schoolModalOriginalDise').value;
+  const origProj = document.getElementById('schoolModalOriginalProject').value;
+
+  const project = document.getElementById('schoolModalProject').value.trim();
+  const dise = document.getElementById('schoolModalDise').value.trim();
+  const schoolCode = document.getElementById('schoolModalSchoolCode').value.trim();
+  const schoolName = document.getElementById('schoolModalName').value.trim();
+  const district = document.getElementById('schoolModalDistrict').value.trim();
+  const taluka = document.getElementById('schoolModalTaluka').value.trim();
+  const principal = document.getElementById('schoolModalPrincipal').value.trim();
+  const mobile = document.getElementById('schoolModalContact').value.trim();
+  const pincode = document.getElementById('schoolModalPincode').value.trim();
+  const address = document.getElementById('schoolModalAddress').value.trim();
+
+  if (!project || !dise || !schoolName || !district || !taluka) {
+    showToast('⚠️ Project, DISE Code, School Name, District, and Taluka are required fields.', 'warn');
+    return;
+  }
+
+  const schoolObj = {
+    project: project,
+    dise: dise,
+    schoolCode: schoolCode,
+    school: schoolName,
+    district: district,
+    block: taluka,
+    principal: principal,
+    mobile: mobile,
+    pincode: pincode,
+    address: address
   };
 
-  let success = true;
   const local = isLocal();
-  let hasChanges = false;
+  let success = true;
+  showToast('⏳ Saving school record...', 'info');
 
-  for (const [fieldKey, val] of Object.entries(fields)) {
-    const oldVal = (schoolDataRaw[dise] && schoolDataRaw[dise][0]) ? (schoolDataRaw[dise][0][fieldKey] || '') : '';
-    if (val === oldVal) continue;
-    hasChanges = true;
-
-    try {
+  try {
+    if (mode === 'edit' && (origDise !== dise || origProj !== project)) {
       if (local) {
-        const res = await fetch('/update_school', {
+        await fetch('/update_school', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ dise, field: fieldKey, newValue: val, oldValue: oldVal }),
+          body: JSON.stringify({ dise: origDise, field: 'deleted', project: origProj })
         });
-        if (!res.ok) throw new Error('Local save failed (' + res.status + ')');
       } else if (GOOGLE_SCRIPT_URL && navigator.onLine) {
         await fetch(GOOGLE_SCRIPT_URL, {
           method: 'POST',
           mode: 'no-cors',
           headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({ action: 'update_school', dise, field: fieldKey, newValue: val, oldValue: oldVal }),
+          body: JSON.stringify({ action: 'update_school', dise: origDise, field: 'deleted', oldValue: origProj, project: origProj })
         });
-      } else {
-        throw new Error('No endpoint available');
       }
-    } catch (_) {
-      success = false;
     }
-  }
 
-  if (!hasChanges) {
-    showToast('ℹ️ No changes to save', 'info');
-    document.getElementById('schoolSearchResultBox').style.display = 'none';
-    return;
+    if (local) {
+      const res = await fetch('/update_school', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dise, field: 'added', newValue: JSON.stringify(schoolObj) })
+      });
+      if (!res.ok) throw new Error('Local save failed');
+    } else if (GOOGLE_SCRIPT_URL && navigator.onLine) {
+      await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ action: 'update_school', dise, field: 'added', newValue: JSON.stringify(schoolObj), project })
+      });
+    } else {
+      throw new Error('No connection available');
+    }
+  } catch(err) {
+    console.error("Save failed:", err);
+    success = false;
   }
 
   if (success) {
-    showToast('✅ School record updated!', 'success');
-    document.getElementById('schoolSearchResultBox').style.display = 'none';
+    closeModal('schoolAddEditModal');
+    showToast('✅ School record saved successfully!', 'success');
     await loadSchoolList();
+    searchSchoolMaster(0);
   } else {
-    showToast('⚠️ Some fields could not be saved', 'warn');
+    showToast('❌ Failed to save school record', 'danger');
   }
 }
 
@@ -4977,6 +5342,172 @@ async function runSchoolUpload() {
   }
 }
 
+/* ─────────────── ACER CASE MAPPING ─────────────── */
+let acerParsedRows = [];
+
+function handleAcerFileSelect() {
+  const fileInput = document.getElementById('acerFile');
+  const btn = document.getElementById('acerUploadBtn');
+  const preview = document.getElementById('acerPreview');
+  const result = document.getElementById('acerResult');
+
+  btn.disabled = true;
+  preview.style.display = 'none';
+  result.style.display = 'none';
+  acerParsedRows = [];
+
+  const file = fileInput.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, { type: 'array' });
+      const firstSheetName = wb.SheetNames[0];
+      const ws = wb.Sheets[firstSheetName];
+      const rows = XLSX.utils.sheet_to_json(ws, { raw: false, defval: '' });
+
+      if (!rows.length) {
+        throw new Error('Excel/CSV sheet is empty.');
+      }
+
+      // Detect headers dynamically
+      const headers = Object.keys(rows[0]);
+      let snCol = '', caseIdCol = '', statusCol = '';
+
+      headers.forEach(h => {
+        const clean = h.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (clean.includes('serial') || clean === 'sn' || clean === 's/n' || clean === 'srno') {
+          snCol = h;
+        } else if (clean.includes('caseid') || clean.includes('acer') || clean.includes('case')) {
+          caseIdCol = h;
+        } else if (clean.includes('status') || clean.includes('casestatus') || clean.includes('acerstatus')) {
+          statusCol = h;
+        }
+      });
+
+      // Secondary fallbacks if exact match fails
+      if (!snCol) snCol = headers.find(h => h.toLowerCase().includes('serial')) || headers[0];
+      if (!caseIdCol) caseIdCol = headers.find(h => h.toLowerCase().includes('case')) || headers[1];
+      if (!statusCol) statusCol = headers.find(h => h.toLowerCase().includes('status')) || headers[2];
+
+      // Parse records
+      let matchedCount = 0;
+      let mismatchedCount = 0;
+
+      // Get active serial numbers from parentSchoolComplaintsList
+      const activeSerials = new Set(
+        (window.parentSchoolComplaintsList || [])
+          .map(c => String(c.serialNumber || '').trim().toUpperCase())
+          .filter(Boolean)
+      );
+
+      rows.forEach(r => {
+        const rawSn = String(r[snCol] || '').trim();
+        const rawCaseId = String(r[caseIdCol] || '').trim();
+        const rawStatus = String(r[statusCol] || '').trim();
+
+        if (rawSn) {
+          const snUpper = rawSn.toUpperCase();
+          const match = activeSerials.has(snUpper);
+          if (match) matchedCount++;
+          else mismatchedCount++;
+
+          acerParsedRows.push({
+            serialNumber: rawSn,
+            acerCaseId: rawCaseId,
+            acerCaseStatus: rawStatus
+          });
+        }
+      });
+
+      if (!acerParsedRows.length) {
+        throw new Error('No valid rows found containing a Serial Number.');
+      }
+
+      preview.style.display = 'block';
+      preview.style.background = '#f0fdf4';
+      preview.style.border = '1px solid #bbf7d0';
+      preview.style.color = '#166534';
+      preview.innerHTML = `
+        <strong>📊 Excel Preview Summary:</strong><br>
+        • Total Rows parsed: <strong>${acerParsedRows.length}</strong><br>
+        • Matched with active complaints: <strong style="color:#15803d;">${matchedCount}</strong><br>
+        • Mismatched/Unrecognized serials: <strong style="color:#b91c1c;">${mismatchedCount}</strong>
+      `;
+
+      btn.disabled = false;
+    } catch (err) {
+      preview.style.display = 'block';
+      preview.style.background = '#fef2f2';
+      preview.style.border = '1px solid #fecaca';
+      preview.style.color = '#b91c1c';
+      preview.textContent = `❌ Parsing Error: ${err.message}`;
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+async function runAcerMapping() {
+  const btn = document.getElementById('acerUploadBtn');
+  const result = document.getElementById('acerResult');
+  const keyField = document.getElementById('acerImportKey');
+
+  const importKey = keyField.value.trim() || localStorage.getItem(SCHOOL_IMPORT_KEY_LS) || '';
+
+  if (!importKey) {
+    showToast('⚠️ Paste the import key first.', 'warn');
+    keyField.focus();
+    return;
+  }
+  if (!acerParsedRows || !acerParsedRows.length) {
+    showToast('⚠️ Parse an Excel/CSV file first.', 'warn');
+    return;
+  }
+
+  if (!confirm(`Map Acer Case IDs and statuses for ${acerParsedRows.length} rows?`)) return;
+
+  btn.disabled = true;
+  result.style.display = 'block';
+  result.style.background = '#eff6ff';
+  result.style.color = '#1e40af';
+  result.style.border = '1.5px solid #bfdbfe';
+  result.textContent = `⏳ Mapping Acer cases in sheet…`;
+
+  try {
+    const res = await fetch(GOOGLE_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'bulk_acer_mapping',
+        importKey: importKey,
+        mappings: acerParsedRows
+      }),
+    });
+    const out = await res.json();
+    if (out.status !== 'ok') throw new Error(out.message || 'Server rejected the mapping');
+
+    localStorage.setItem(SCHOOL_IMPORT_KEY_LS, importKey);
+    result.style.background = '#f0fdf4';
+    result.style.color = '#166534';
+    result.style.border = '1.5px solid #bbf7d0';
+    result.textContent = `✅ Success! Matched and mapped: ${out.updatedCount || 0} rows in SchoolComplaintMaster.`;
+    showToast('✅ Acer case mapping processed successfully!', 'success');
+
+    // Reload complaints data to reflect updates in the School Dashboard!
+    await loadData();
+  } catch (err) {
+    result.style.background = '#fef2f2';
+    result.style.color = '#b91c1c';
+    result.style.border = '1.5px solid #fecaca';
+    result.textContent = `❌ Mapping failed: ${err.message}`;
+    showToast('❌ Mapping failed: ' + err.message, 'danger');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 /* ─────────────── DEPARTMENT DASHBOARD (pendency + branch aging) ─────────────── */
 let deptDash = null, deptList = [], deptDrillFilter = null;
 
@@ -5233,6 +5764,38 @@ async function bulkUpdateDeptStatus(action) {
 async function submitDeptStatusUpdate(action) {
   const ticketId = (document.getElementById('deptDetTitle').getAttribute('data-ticket-id') || '').trim();
   if (!ticketId) return;
+
+  const serial = document.getElementById('deptModalSerial').value.trim();
+  const technician = document.getElementById('deptModalTechnician').value.trim();
+  const notes = document.getElementById('deptModalNotes').value.trim();
+  const otp = document.getElementById('deptModalOtp').value.trim();
+  const suspectedPart = document.getElementById('deptModalPart').value;
+
+  if (action === 'closed_with_otp' || action === 'closed_without_otp' || action === 'part_request') {
+    if (!serial) {
+      showToast('⚠️ Please enter a Serial Number', 'warn');
+      return;
+    }
+    if (serial.length > 22) {
+      showToast('⚠️ Serial Number cannot exceed 22 characters', 'warn');
+      return;
+    }
+    if (isInvalidSerialNumber(serial)) {
+      showToast('⚠️ Please enter a valid Serial Number (cannot be blank, null, or N/A)', 'warn');
+      return;
+    }
+  }
+
+  if (action === 'closed_with_otp' && !otp) {
+    showToast('⚠️ Please enter the OTP Code', 'warn');
+    return;
+  }
+
+  if (action === 'part_request' && !suspectedPart) {
+    showToast('⚠️ Please select a Suspected Part', 'warn');
+    return;
+  }
+
   const confirmMsg = `Are you sure you want to update ticket ${ticketId} status to "${action.replace(/_/g, ' ').toUpperCase()}"?`;
   if (!confirm(confirmMsg)) return;
 
@@ -5249,6 +5812,11 @@ async function submitDeptStatusUpdate(action) {
         ticketId: ticketId,
         resolutionAction: action,
         resolvedBy: (currentUser && currentUser.name) || 'admin',
+        technicianName: technician,
+        diagnosisNotes: notes,
+        serialNumber: serial,
+        otp: otp,
+        suspectedPart: suspectedPart,
         source: 'admin_portal'
       })
     });
@@ -5325,24 +5893,37 @@ function renderDeptList() {
   clearBtn.style.display = deptDrillFilter ? '' : 'none';
 
   if (!rows.length) {
-    body.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);">No tickets match.</td></tr>';
+    body.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--muted);">No tickets match.</td></tr>';
     return;
   }
-  body.innerHTML = rows.slice(0, 300).map(r =>
-    '<tr onclick="viewDeptDetails(\'' + esc(r.ticketId) + '\')" style="cursor:pointer;">' +
-    '<td style="text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" class="dept-select-chk" data-ticket-id="' + esc(r.ticketId) + '" onchange="updateDeptSelectionUI()" style="transform: scale(1.2); cursor: pointer;" /></td>' +
-    '<td><b>' + esc(r.ticketId) + '</b></td>' +
-    '<td>' + esc(r.school) + '<br><span style="font-size:0.7rem;color:var(--muted);">' + esc(r.schoolId) + '</span></td>' +
-    '<td>' + esc(r.district) + '</td>' +
-    '<td>' + esc(r.branchName) + '</td>' +
-    '<td>' + esc(r.deviceType) + ' — ' + esc(r.issueType) + '</td>' +
-    '<td style="text-align:center;' + (r.businessDays > 5 ? 'color:#b91c1c;font-weight:700;' : '') + '">' + r.businessDays + '</td>' +
-    '<td>' + deptStatusBadge(r.internalStatus) +
-      (r.internalStatus === 'PendingOTP'
-        ? ' <button class="btn btn-primary btn-sm" title="Enter the OTP collected from the school to close this ticket" onclick="event.stopPropagation(); finalizePendingOtp(\'' + esc(r.ticketId) + '\')">📩 Enter OTP</button>'
-        : '') +
-    '</td></tr>'
-  ).join('') + (rows.length > 300 ? '<tr><td colspan="8" style="text-align:center;color:var(--muted);">…and ' + (rows.length - 300) + ' more (use a narrower filter)</td></tr>' : '');
+  body.innerHTML = rows.slice(0, 300).map(r => {
+    const logDate = r.createdDate ? new Date(r.createdDate).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'}) : '—';
+    let closeDate = '—';
+    let lastUpdated = '—';
+    if (r.resolvedAt) {
+      const rDateStr = new Date(r.resolvedAt).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'});
+      lastUpdated = rDateStr;
+      if (r.internalStatus === 'Closed') {
+        closeDate = rDateStr;
+      }
+    }
+    return '<tr onclick="viewDeptDetails(\'' + esc(r.ticketId) + '\')" style="cursor:pointer;">' +
+      '<td style="text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" class="dept-select-chk" data-ticket-id="' + esc(r.ticketId) + '" onchange="updateDeptSelectionUI()" style="transform: scale(1.2); cursor: pointer;" /></td>' +
+      '<td><b>' + esc(r.ticketId) + '</b></td>' +
+      '<td>' + esc(r.school) + '<br><span style="font-size:0.7rem;color:var(--muted);">' + esc(r.schoolId) + '</span></td>' +
+      '<td>' + esc(r.district) + '</td>' +
+      '<td>' + esc(r.branchName) + '</td>' +
+      '<td>' + esc(r.deviceType) + ' — ' + esc(r.issueType) + '</td>' +
+      '<td style="text-align:center;' + (r.businessDays > 5 ? 'color:#b91c1c;font-weight:700;' : '') + '">' + r.businessDays + '</td>' +
+      '<td>' + logDate + '</td>' +
+      '<td>' + lastUpdated + '</td>' +
+      '<td>' + closeDate + '</td>' +
+      '<td>' + deptStatusBadge(r.internalStatus) +
+        (r.internalStatus === 'PendingOTP'
+          ? ' <button class="btn btn-primary btn-sm" title="Enter the OTP collected from the school to close this ticket" onclick="event.stopPropagation(); finalizePendingOtp(\'' + esc(r.ticketId) + '\')">📩 Enter OTP</button>'
+          : '') +
+      '</td></tr>';
+  }).join('') + (rows.length > 300 ? '<tr><td colspan="11" style="text-align:center;color:var(--muted);">…and ' + (rows.length - 300) + ' more (use a narrower filter)</td></tr>' : '');
 }
 
 /** Finalize a ticket the engineer closed on site without OTP. */
@@ -5400,6 +5981,38 @@ function viewDeptDetails(ticketId) {
   document.getElementById('deptDetQty').textContent = r.quantity || '—';
   document.getElementById('deptDetSerial').textContent = r.serialNumber || '—';
   document.getElementById('deptDetNotes').textContent = r.diagnosisNotes || '—';
+
+  // Populate resolution inputs
+  document.getElementById('deptModalSerial').value = r.serialNumber || '';
+  document.getElementById('deptModalTechnician').value = r.technicianName || '';
+  document.getElementById('deptModalNotes').value = r.diagnosisNotes || '';
+  document.getElementById('deptModalOtp').value = r.otpValue || '';
+
+  // Populate suspected parts select element
+  const modalPartSel = document.getElementById('deptModalPart');
+  if (modalPartSel) {
+    modalPartSel.innerHTML = '<option value="">— Select Suspected Part —</option>';
+    (masterData.suspectedParts || []).forEach(p => {
+      if (p.status === 'active') {
+        const opt = document.createElement('option');
+        opt.value = p.name;
+        opt.textContent = p.name;
+        modalPartSel.appendChild(opt);
+      }
+    });
+    modalPartSel.value = r.suspectedPart || '';
+  }
+
+  // Toggle inputs and buttons block based on Closed status
+  const inputBlock = document.getElementById('deptDetResolutionInputBlock');
+  const updateBlock = document.getElementById('deptDetUpdateStatusBlock');
+  if (r.internalStatus === 'Closed') {
+    if (inputBlock) inputBlock.style.display = 'none';
+    if (updateBlock) updateBlock.style.display = 'none';
+  } else {
+    if (inputBlock) inputBlock.style.display = 'block';
+    if (updateBlock) updateBlock.style.display = 'flex';
+  }
   
   // Photos
   const photosArea = document.getElementById('deptDetPhotosArea');

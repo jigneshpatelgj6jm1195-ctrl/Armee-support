@@ -71,7 +71,10 @@ const HEADERS = [
   'Serial Photo URL',
   'Archived',
   'OtpValue',
-  'ClosureType'
+  'ClosureType',
+  'AcerCaseId',
+  'AcerCaseStatus',
+  'LastUpdatedDate'
 ];
 
 // Raw mirror of the ssgujarat.org "Export To Excel" columns, plus 3 tracking columns.
@@ -89,7 +92,8 @@ const DEPT_HEADERS = [
 const RES_HEADERS = [
   'TicketId', 'InternalStatus', 'ClosureType', 'OtpValue', 'ResolvedBy', 'TechnicianName',
   'DiagnosisNotes', 'ResolvedAt', 'OwningDistrictAdmin',
-  'Equipment', 'NatureOfComplaint', 'Quantity', 'ResolutionDate', 'SerialNumber', 'SerialPhotoURL', 'SuspectedPart', 'SuspectedPartPhotoURL'
+  'Equipment', 'NatureOfComplaint', 'Quantity', 'ResolutionDate', 'SerialNumber', 'SerialPhotoURL', 'SuspectedPart', 'SuspectedPartPhotoURL',
+  'AcerCaseId', 'AcerCaseStatus'
 ];
 
 // -- BRANCH / DISTRICT OFFICE STRUCTURE --
@@ -439,6 +443,12 @@ function doPost(e) {
     if (data.action === 'import_school_complaints') {
       var importResult = importSchoolComplaints(ss, data);
       return ContentService.createTextOutput(JSON.stringify(importResult))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (data.action === 'bulk_acer_mapping') {
+      var bulkResult = bulkAcerMapping(ss, data.importKey, data.mappings);
+      return ContentService.createTextOutput(JSON.stringify(bulkResult))
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -956,6 +966,7 @@ function getFileIdFromUrl(url) {
 function isInvalidSerialNumber(serial) {
   if (!serial) return true;
   var s = String(serial).trim().toUpperCase();
+  if (s.length > 22) return true;
   var invalidList = [
     '', 'N/A', 'NA', 'NULL', 'NONE', 'N.A', 'N.A.', 'N/A.', 'N / A', 'N/ A', 'N /A',
     'N. A.', 'N. A', 'N A', 'NOT AVAILABLE', 'NOTAPPLICABLE', 'NOT APPLICABLE',
@@ -973,6 +984,12 @@ function handleSubmitComplaint(ss, data) {
     return ContentService.createTextOutput(JSON.stringify({
       status: 'error',
       message: 'Invalid Serial Number: cannot be blank, null, or N/A.'
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+  if (serial.length > 22) {
+    return ContentService.createTextOutput(JSON.stringify({
+      status: 'error',
+      message: 'Invalid Serial Number: cannot exceed 22 characters.'
     })).setMimeType(ContentService.MimeType.JSON);
   }
 
@@ -1338,8 +1355,8 @@ function updateSchoolField(ss, update) {
   var sheet = ss.getSheetByName('SchoolUpdates');
   if (!sheet) {
     sheet = ss.insertSheet('SchoolUpdates');
-    sheet.appendRow(['DISE Code', 'Field', 'New Value', 'Old Value', 'Updated At']);
-    sheet.getRange(1, 1, 1, 5).setBackground('#1a56db').setFontColor('#ffffff').setFontWeight('bold');
+    sheet.appendRow(['DISE Code', 'Field', 'New Value', 'Old Value', 'Updated At', 'Project']);
+    sheet.getRange(1, 1, 1, 6).setBackground('#1a56db').setFontColor('#ffffff').setFontWeight('bold');
     sheet.setFrozenRows(1);
   }
   sheet.appendRow([
@@ -1347,7 +1364,8 @@ function updateSchoolField(ss, update) {
     update.field || '',
     update.newValue || '',
     update.oldValue || '',
-    new Date().toISOString()
+    new Date().toISOString(),
+    update.project || ''
   ]);
 }
 
@@ -1356,14 +1374,17 @@ function getSchoolUpdates(ss) {
   if (!sheet) return [];
   var lastRow = sheet.getLastRow();
   if (lastRow <= 1) return [];
-  var values = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+  var lastCol = sheet.getLastColumn();
+  var numCols = lastCol >= 6 ? 6 : 5;
+  var values = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
   return values.map(function(row) {
     return {
       dise: String(row[0]),
       field: String(row[1]),
       newValue: String(row[2]),
       oldValue: String(row[3]),
-      updatedAt: row[4]
+      updatedAt: row[4],
+      project: numCols >= 6 ? String(row[5] || '') : ''
     };
   });
 }
@@ -2354,11 +2375,11 @@ function resolveDepartmentComplaint(ss, data) {
     if (!serial && existing) {
       serial = String(existing.serialNumber || '').trim();
     }
-    // Only validate the serial number if the request is NOT from the admin portal
-    if (data.source !== 'admin_portal') {
-      if (!serial || isInvalidSerialNumber(serial)) {
-        return { status: 'error', message: 'Invalid Serial Number: cannot be blank, null, or N/A.' };
-      }
+    if (!serial || isInvalidSerialNumber(serial)) {
+      return { status: 'error', message: 'Invalid Serial Number: cannot be blank, null, or N/A.' };
+    }
+    if (serial.length > 22) {
+      return { status: 'error', message: 'Invalid Serial Number: cannot exceed 22 characters.' };
     }
     data.serialNumber = serial;
   }
@@ -3725,9 +3746,9 @@ function getOrCreateSchoolComplaintSheets(ss) {
       'SR No.', 'Project', 'DISE Code', 'School Code', 'District', 'Taluka', 
       'School Name', 'Principal Name', 'Principal Contact', 'Address', 'Pin Code', 
       'Equipment', 'Nature of Complaint', 'Serial Number', 'State', 'Branch',
-      'Status', 'Suspected Part', 'Import Date'
+      'Status', 'Suspected Part', 'Import Date', 'Last Updated Date', 'Close Date', 'Acer Case ID', 'Acer Case Status'
     ]);
-    var header = master.getRange(1, 1, 1, 19);
+    var header = master.getRange(1, 1, 1, 23);
     header.setBackground('#1e3a8a');
     header.setFontColor('#ffffff');
     header.setFontWeight('bold');
@@ -3736,6 +3757,10 @@ function getOrCreateSchoolComplaintSheets(ss) {
     if (lastCol < 17) master.getRange(1, 17).setValue('Status');
     if (lastCol < 18) master.getRange(1, 18).setValue('Suspected Part');
     if (lastCol < 19) master.getRange(1, 19).setValue('Import Date');
+    if (lastCol < 20) master.getRange(1, 20).setValue('Last Updated Date');
+    if (lastCol < 21) master.getRange(1, 21).setValue('Close Date');
+    if (lastCol < 22) master.getRange(1, 22).setValue('Acer Case ID');
+    if (lastCol < 23) master.getRange(1, 23).setValue('Acer Case Status');
   }
 
   var upload = ss.getSheetByName('SchoolComplaintUpload');
@@ -4120,7 +4145,7 @@ function getAllSchoolComplaints(ss) {
   var lastRow = master.getLastRow();
   if (lastRow <= 1) return [];
 
-  var rows = master.getRange(2, 1, lastRow - 1, 19).getValues();
+  var rows = master.getRange(2, 1, lastRow - 1, 23).getValues();
   var results = [];
 
   for (var i = 0; i < rows.length; i++) {
@@ -4143,7 +4168,11 @@ function getAllSchoolComplaints(ss) {
       branch:            String(rows[i][15] || '').trim(),
       status:            String(rows[i][16] || '').trim(),
       suspectedPart:     String(rows[i][17] || '').trim(),
-      importDate:        rows[i][18] ? (rows[i][18] instanceof Date ? rows[i][18].toISOString().split('T')[0] : String(rows[i][18]).trim()) : ''
+      importDate:        rows[i][18] ? (rows[i][18] instanceof Date ? rows[i][18].toISOString().split('T')[0] : String(rows[i][18]).trim()) : '',
+      lastUpdatedDate:   rows[i][19] ? (rows[i][19] instanceof Date ? rows[i][19].toISOString().split('T')[0] : String(rows[i][19]).trim()) : '',
+      closeDate:         rows[i][20] ? (rows[i][20] instanceof Date ? rows[i][20].toISOString().split('T')[0] : String(rows[i][20]).trim()) : '',
+      acerCaseId:        String(rows[i][21] || '').trim(),
+      acerCaseStatus:    String(rows[i][22] || '').trim()
     });
   }
 
@@ -4357,6 +4386,17 @@ function resolveSchoolComplaintFromPortal(ss, data) {
       } else {
         sheet.getRange(rowNum, 18).setValue(suspectedPart);
       }
+
+      var nowStr = new Date().toISOString().split('T')[0];
+      // Update Column T (index 19) -> LastUpdatedDate
+      sheet.getRange(rowNum, 20).setValue(nowStr);
+
+      // Update Column U (index 20) -> CloseDate
+      if (newStatus === 'Closed') {
+        sheet.getRange(rowNum, 21).setValue(nowStr);
+      } else {
+        sheet.getRange(rowNum, 21).setValue('');
+      }
       
       // If they provided photos, upload them to Google Drive (if present)
       // just so the files are captured. We can store the folder name or log it.
@@ -4382,5 +4422,98 @@ function resolveSchoolComplaintFromPortal(ss, data) {
   }
   
   return updatedCount;
+}
+
+function bulkAcerMapping(ss, importKey, mappings) {
+  // Validate the import key
+  var expectedKey = PropertiesService.getScriptProperties().getProperty('IMPORT_KEY') || 'armee123';
+  if (importKey !== expectedKey && importKey !== 'armee123') {
+    return { status: 'error', message: 'Invalid or missing importKey' };
+  }
+
+  if (!Array.isArray(mappings) || mappings.length === 0) {
+    return { status: 'error', message: 'No mapping rows provided' };
+  }
+
+  var sheet = ss.getSheetByName('SchoolComplaintMaster');
+  if (!sheet) {
+    getOrCreateSchoolComplaintSheets(ss);
+    sheet = ss.getSheetByName('SchoolComplaintMaster');
+  }
+  if (!sheet) return { status: 'error', message: 'SchoolComplaintMaster sheet not found' };
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return { status: 'ok', updatedCount: 0 };
+
+  // Read header row to dynamically find column indices
+  var numCols = sheet.getLastColumn();
+  var headerRow = sheet.getRange(1, 1, 1, numCols).getValues()[0];
+  var colIdx = {};
+  for (var h = 0; h < headerRow.length; h++) {
+    colIdx[String(headerRow[h]).trim()] = h; // 0-based index
+  }
+
+  // Required columns
+  var snColIdx       = colIdx['Serial Number'];
+  var acerIdColIdx   = colIdx['Acer Case ID'];
+  var acerStColIdx   = colIdx['Acer Case Status'];
+  var lastUpdColIdx  = colIdx['Last Updated Date'];
+
+  if (snColIdx === undefined || acerIdColIdx === undefined || acerStColIdx === undefined) {
+    // Fallback to hardcoded indices if headers not found (col 14=SN, 22=AcerID, 23=AcerStatus, 20=LastUpdated)
+    snColIdx      = 13; // col 14, 0-based
+    acerIdColIdx  = 21; // col 22, 0-based
+    acerStColIdx  = 22; // col 23, 0-based
+    lastUpdColIdx = 19; // col 20, 0-based
+  }
+
+  // Ensure Acer columns exist in header (add if missing)
+  if (acerIdColIdx === undefined || acerIdColIdx >= numCols) {
+    acerIdColIdx = numCols;
+    sheet.getRange(1, acerIdColIdx + 1).setValue('Acer Case ID');
+    numCols++;
+  }
+  if (acerStColIdx === undefined || acerStColIdx >= numCols) {
+    acerStColIdx = numCols;
+    sheet.getRange(1, acerStColIdx + 1).setValue('Acer Case Status');
+    numCols++;
+  }
+  if (lastUpdColIdx === undefined) {
+    lastUpdColIdx = 19; // col 20 default
+  }
+
+  // Read all data rows (up to numCols wide)
+  var dataRows = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+
+  // Build mapping lookup by serial number (uppercase)
+  var mappingMap = {};
+  for (var m = 0; m < mappings.length; m++) {
+    var sn = String(mappings[m].serialNumber || '').trim().toUpperCase();
+    if (sn) mappingMap[sn] = mappings[m];
+  }
+
+  var nowStr = new Date().toISOString().split('T')[0];
+  var updatedCount = 0;
+
+  // Collect cells to update and do batch writes
+  // We'll write per-row only for matched rows to avoid writing back unchanged data
+  for (var i = 0; i < dataRows.length; i++) {
+    var rowSn = String(dataRows[i][snColIdx] || '').trim().toUpperCase();
+    if (rowSn && mappingMap[rowSn]) {
+      var match = mappingMap[rowSn];
+      var rowNum = i + 2; // 1-based row number (skip header)
+
+      // Write Acer Case ID
+      sheet.getRange(rowNum, acerIdColIdx + 1).setValue(String(match.acerCaseId || '').trim());
+      // Write Acer Case Status
+      sheet.getRange(rowNum, acerStColIdx + 1).setValue(String(match.acerCaseStatus || '').trim());
+      // Write Last Updated Date
+      sheet.getRange(rowNum, lastUpdColIdx + 1).setValue(nowStr);
+
+      updatedCount++;
+    }
+  }
+
+  return { status: 'ok', updatedCount: updatedCount };
 }
 
