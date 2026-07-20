@@ -5329,6 +5329,12 @@ function renderComplaintsTable() {
         </td>
         <td>
           <code>${esc(c.serialNumber || 'N/A')}</code>
+          ${c.acerCaseId ? `<div style="margin-top:6px; font-size:0.7rem; color:#475569; line-height:1.2;">
+            <b>Acer Case ID:</b><br><span style="font-family:monospace;color:var(--primary);font-weight:700;">${esc(c.acerCaseId)}</span>
+          </div>` : ''}
+          ${c.acerCaseStatus ? `<div style="margin-top:4px; font-size:0.7rem; color:#475569; line-height:1.2;">
+            <b>Acer Status:</b><br><span class="sd-chip ${esc(c.acerCaseStatus).toLowerCase().replace(/\s+/g,'')}" style="font-size:0.65rem; padding:1px 5px; display:inline-block; margin-top:2px;">${esc(c.acerCaseStatus)}</span>
+          </div>` : ''}
           ${(() => {
             const serialPhotoSrc = c.serialPhotoUrl || c.serialPhoto || '';
             return serialPhotoSrc 
@@ -6405,19 +6411,19 @@ function handleAcerFileSelect() {
 
       headers.forEach(h => {
         const clean = h.toLowerCase().replace(/[^a-z0-9]/g, '');
-        if (clean.includes('serial') || clean === 'sn' || clean === 's/n' || clean === 'srno') {
-          snCol = h;
-        } else if (clean.includes('caseid') || clean.includes('acer') || clean.includes('case')) {
-          caseIdCol = h;
-        } else if (clean.includes('status') || clean.includes('casestatus') || clean.includes('acerstatus')) {
+        if (clean.includes('status')) {
           statusCol = h;
+        } else if (clean.includes('serial') || clean === 'sn' || clean === 'srno') {
+          snCol = h;
+        } else if (clean.includes('caseid') || clean.includes('case') || clean === 'id' || clean.includes('ticket')) {
+          caseIdCol = h;
         }
       });
 
       // Secondary fallbacks if exact match fails
-      if (!snCol) snCol = headers.find(h => h.toLowerCase().includes('serial')) || headers[0];
-      if (!caseIdCol) caseIdCol = headers.find(h => h.toLowerCase().includes('case')) || headers[1];
+      if (!snCol) snCol = headers.find(h => { const c = h.toLowerCase(); return c.includes('serial') || c.includes('s/n'); }) || headers[0];
       if (!statusCol) statusCol = headers.find(h => h.toLowerCase().includes('status')) || headers[2];
+      if (!caseIdCol) caseIdCol = headers.find(h => { const c = h.toLowerCase(); return (c.includes('case') || c.includes('id') || c.includes('ticket')) && !c.includes('status'); }) || headers[1];
 
       // Parse records
       let matchedSchool = 0;

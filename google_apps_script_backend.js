@@ -758,6 +758,132 @@ function doGet(e) {
 
 // ═══════════════ SUB-HANDLERS & DATABASE LOGIC ═══════════════
 
+function isStatusWord(val) {
+  if (!val) return false;
+  var s = String(val).trim().toUpperCase();
+  var statusList = [
+    'CLOSED', 'OPEN', 'AWAITING ONSITE', 'AWAITING', 'ONSITE', 'REJECTED', 'PART REQUEST', 'PART REQUESTED', 'PART_REQUEST', 'PART_REQUESTED',
+    'IN PROGRESS', 'IN_PROGRESS', 'PENDING OTP', 'PENDING_OTP', 'PENDING', 'RESOLVED', 'REOPENED', 'CANCELLED', 'ASSIGNED'
+  ];
+  return statusList.indexOf(s) !== -1;
+}
+
+function migrateInvalidAcerCaseIds(ss) {
+  var complaintsSheet = ss.getSheetByName('Complaints');
+  if (complaintsSheet) {
+    var lastRow = complaintsSheet.getLastRow();
+    if (lastRow > 1) {
+      var lastCol = complaintsSheet.getLastColumn();
+      var headerRow = complaintsSheet.getRange(1, 1, 1, lastCol).getValues()[0];
+      var colIdx = {};
+      for (var h = 0; h < headerRow.length; h++) {
+        colIdx[String(headerRow[h]).trim()] = h;
+      }
+      var acerIdColIdx = colIdx['AcerCaseId'];
+      var acerStColIdx = colIdx['AcerCaseStatus'];
+      if (acerIdColIdx !== undefined && acerStColIdx !== undefined) {
+        var range = complaintsSheet.getRange(2, 1, lastRow - 1, lastCol);
+        var vals = range.getValues();
+        var idCol = [], stCol = [];
+        var modified = false;
+        for (var i = 0; i < vals.length; i++) {
+          var idVal = String(vals[i][acerIdColIdx] || '').trim();
+          var stVal = String(vals[i][acerStColIdx] || '').trim();
+          if (isStatusWord(idVal)) {
+            if (!stVal || isStatusWord(stVal)) {
+              stVal = idVal;
+            }
+            idVal = '';
+            modified = true;
+          }
+          idCol.push([idVal]);
+          stCol.push([stVal]);
+        }
+        if (modified) {
+          complaintsSheet.getRange(2, acerIdColIdx + 1, vals.length, 1).setValues(idCol);
+          complaintsSheet.getRange(2, acerStColIdx + 1, vals.length, 1).setValues(stCol);
+        }
+      }
+    }
+  }
+
+  var schoolSheet = ss.getSheetByName('SchoolComplaintMaster');
+  if (schoolSheet) {
+    var lastRow = schoolSheet.getLastRow();
+    if (lastRow > 1) {
+      var lastCol = schoolSheet.getLastColumn();
+      var headerRow = schoolSheet.getRange(1, 1, 1, lastCol).getValues()[0];
+      var colIdx = {};
+      for (var h = 0; h < headerRow.length; h++) {
+        colIdx[String(headerRow[h]).trim()] = h;
+      }
+      var acerIdColIdx = colIdx['Acer Case ID'];
+      var acerStColIdx = colIdx['Acer Case Status'];
+      if (acerIdColIdx !== undefined && acerStColIdx !== undefined) {
+        var range = schoolSheet.getRange(2, 1, lastRow - 1, lastCol);
+        var vals = range.getValues();
+        var idCol = [], stCol = [];
+        var modified = false;
+        for (var i = 0; i < vals.length; i++) {
+          var idVal = String(vals[i][acerIdColIdx] || '').trim();
+          var stVal = String(vals[i][acerStColIdx] || '').trim();
+          if (isStatusWord(idVal)) {
+            if (!stVal || isStatusWord(stVal)) {
+              stVal = idVal;
+            }
+            idVal = '';
+            modified = true;
+          }
+          idCol.push([idVal]);
+          stCol.push([stVal]);
+        }
+        if (modified) {
+          schoolSheet.getRange(2, acerIdColIdx + 1, vals.length, 1).setValues(idCol);
+          schoolSheet.getRange(2, acerStColIdx + 1, vals.length, 1).setValues(stCol);
+        }
+      }
+    }
+  }
+
+  var deptSheet = ss.getSheetByName('DepartmentResolutions');
+  if (deptSheet) {
+    var lastRow = deptSheet.getLastRow();
+    if (lastRow > 1) {
+      var lastCol = deptSheet.getLastColumn();
+      var headerRow = deptSheet.getRange(1, 1, 1, lastCol).getValues()[0];
+      var colIdx = {};
+      for (var h = 0; h < headerRow.length; h++) {
+        colIdx[String(headerRow[h]).trim()] = h;
+      }
+      var acerIdColIdx = colIdx['AcerCaseId'];
+      var acerStColIdx = colIdx['AcerCaseStatus'];
+      if (acerIdColIdx !== undefined && acerStColIdx !== undefined) {
+        var range = deptSheet.getRange(2, 1, lastRow - 1, lastCol);
+        var vals = range.getValues();
+        var idCol = [], stCol = [];
+        var modified = false;
+        for (var i = 0; i < vals.length; i++) {
+          var idVal = String(vals[i][acerIdColIdx] || '').trim();
+          var stVal = String(vals[i][acerStColIdx] || '').trim();
+          if (isStatusWord(idVal)) {
+            if (!stVal || isStatusWord(stVal)) {
+              stVal = idVal;
+            }
+            idVal = '';
+            modified = true;
+          }
+          idCol.push([idVal]);
+          stCol.push([stVal]);
+        }
+        if (modified) {
+          deptSheet.getRange(2, acerIdColIdx + 1, vals.length, 1).setValues(idCol);
+          deptSheet.getRange(2, acerStColIdx + 1, vals.length, 1).setValues(stCol);
+        }
+      }
+    }
+  }
+}
+
 function getComplaintsList(ss) {
   var sheet = ss.getSheetByName(SHEET_TAB_NAME);
   if (!sheet) return [];
@@ -803,6 +929,9 @@ function getComplaintsList(ss) {
       continue;
     }
 
+    var rawAcerId = String(row[37] || '').trim();
+    var rawAcerSt = String(row[38] || '').trim();
+
     var obj = {
       srNo: row[0],
       submittedAt: row[1],
@@ -839,7 +968,12 @@ function getComplaintsList(ss) {
       serialPhotoPreview: row[31] || '',
       viewSerialPhoto: row[32] || '',
       serialPhotoUrl: row[33] || '',
-      archived: archivedVal
+      archived: archivedVal,
+      otpValue: row[35] || '',
+      closureType: row[36] || '',
+      acerCaseId: isStatusWord(rawAcerId) ? '' : rawAcerId,
+      acerCaseStatus: isStatusWord(rawAcerId) ? rawAcerId : rawAcerSt,
+      lastUpdatedDate: row[39] || ''
     };
 
     // If photoUrl is empty, try extracting from formulas
@@ -2304,6 +2438,8 @@ function getResolutionsMap(ss) {
     var row = rows[i];
     var ticketId = String(row[0] || '').trim();
     if (!ticketId) continue;
+    var rawAcerId = String(row[17] || '').trim();
+    var rawAcerSt = String(row[18] || '').trim();
     map[ticketId] = {
       internalStatus: row[1] || 'Pending',
       closureType: row[2] || '',
@@ -2321,6 +2457,8 @@ function getResolutionsMap(ss) {
       serialPhotoUrl: row[14] || '',
       suspectedPart: row[15] || '',
       suspectedPartPhotoUrl: row[16] || '',
+      acerCaseId: isStatusWord(rawAcerId) ? '' : rawAcerId,
+      acerCaseStatus: isStatusWord(rawAcerId) ? rawAcerId : rawAcerSt,
       rowNumber: i + 2
     };
   }
@@ -3157,7 +3295,9 @@ function getDepartmentComplaintsList(ss) {
       serialNumber: res.serialNumber || '',
       serialPhotoUrl: res.serialPhotoUrl || '',
       suspectedPart: res.suspectedPart || '',
-      suspectedPartPhotoUrl: res.suspectedPartPhotoUrl || ''
+      suspectedPartPhotoUrl: res.suspectedPartPhotoUrl || '',
+      acerCaseId: res.acerCaseId || '',
+      acerCaseStatus: res.acerCaseStatus || ''
     });
   }
   return out;
@@ -4164,6 +4304,8 @@ function getAllSchoolComplaints(ss) {
   var results = [];
 
   for (var i = 0; i < rows.length; i++) {
+    var rawAcerId = String(rows[i][21] || '').trim();
+    var rawAcerSt = String(rows[i][22] || '').trim();
     results.push({
       srNo:              rows[i][0],
       project:           String(rows[i][1] || 'ICT').trim(),
@@ -4186,8 +4328,8 @@ function getAllSchoolComplaints(ss) {
       importDate:        rows[i][18] ? (rows[i][18] instanceof Date ? rows[i][18].toISOString().split('T')[0] : String(rows[i][18]).trim()) : '',
       lastUpdatedDate:   rows[i][19] ? (rows[i][19] instanceof Date ? rows[i][19].toISOString().split('T')[0] : String(rows[i][19]).trim()) : '',
       closeDate:         rows[i][20] ? (rows[i][20] instanceof Date ? rows[i][20].toISOString().split('T')[0] : String(rows[i][20]).trim()) : '',
-      acerCaseId:        String(rows[i][21] || '').trim(),
-      acerCaseStatus:    String(rows[i][22] || '').trim()
+      acerCaseId:        isStatusWord(rawAcerId) ? '' : rawAcerId,
+      acerCaseStatus:    isStatusWord(rawAcerId) ? rawAcerId : rawAcerSt
     });
   }
 
@@ -4450,6 +4592,13 @@ function bulkAcerMapping(ss, importKey, mappings) {
     return { status: 'error', message: 'No mapping rows provided' };
   }
 
+  // Automatically migrate legacy invalid Case IDs in database first
+  try {
+    migrateInvalidAcerCaseIds(ss);
+  } catch (e) {
+    Logger.log("Error running migrateInvalidAcerCaseIds: " + e.toString());
+  }
+
   // Build mapping lookup by serial number (uppercase, capped at 22 chars)
   var mappingMap = {};
   var dupSerials = [];
@@ -4458,8 +4607,22 @@ function bulkAcerMapping(ss, importKey, mappings) {
     var sn = String(mappings[m].serialNumber || '').trim().toUpperCase().slice(0, 22);
     if (!sn) continue;
     if (mappingMap[sn]) dupSerials.push(sn);
-    mappingMap[sn] = mappings[m];
+
     var aid = String(mappings[m].acerCaseId || '').trim();
+    var ast = String(mappings[m].acerCaseStatus || '').trim();
+    if (isStatusWord(aid)) {
+      if (!ast || isStatusWord(ast)) {
+        ast = aid;
+      }
+      aid = '';
+    }
+
+    mappingMap[sn] = {
+      serialNumber: mappings[m].serialNumber,
+      acerCaseId: aid,
+      acerCaseStatus: ast
+    };
+
     if (aid) {
       if (seenAcerIds[aid]) { if (dupAcerIds.indexOf(aid) === -1) dupAcerIds.push(aid); }
       else seenAcerIds[aid] = true;
