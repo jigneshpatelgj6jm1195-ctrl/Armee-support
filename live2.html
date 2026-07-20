@@ -2224,6 +2224,26 @@ async function loadSchoolList() {
     // Apply live online updates if available
     const isLocalhost = isLocal();
     if (GOOGLE_SCRIPT_URL && !isLocalhost && navigator.onLine) {
+      try {
+        const resMaster = await fetch(GOOGLE_SCRIPT_URL + '?action=get_school_master');
+        if (resMaster.ok) {
+          const liveMaster = await resMaster.json();
+          if (Array.isArray(liveMaster) && liveMaster.length > 0) {
+            const newRaw = {};
+            liveMaster.forEach(s => {
+              const d = s.dise;
+              if (d) {
+                if (!newRaw[d]) newRaw[d] = [];
+                newRaw[d].push(s);
+              }
+            });
+            schoolDataRaw = newRaw;
+          }
+        }
+      } catch (e) {
+        console.error("Failed to load live school master:", e);
+      }
+
       const resUpdates = await fetch(GOOGLE_SCRIPT_URL + '?action=get_school_updates');
       if (resUpdates.ok) {
         const updates = await resUpdates.json();
@@ -3321,20 +3341,84 @@ async function uploadSchoolExcel(event) {
   const file = event.target.files[0];
   if (!file) return;
   
-  showToast('⏳ Uploading school Excel database...', 'info');
+  showToast('⏳ Parsing school Excel database...', 'info');
   
-  try {
-    const res = await fetch('/upload_school_excel', {
-      method: 'POST',
-      body: file
-    });
-    if (!res.ok) throw new Error(await res.text());
-    const result = await res.json();
-    showToast(`✅ Uploaded & parsed ${result.count} records successfully!`, 'success');
-    await loadSchoolList();
-  } catch (err) {
-    showToast(`❌ Excel upload failed: ${err.message}`, 'danger');
-  }
+  const reader = new FileReader();
+  reader.onload = async function(e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, { type: 'array' });
+      
+      let masterSheetName = wb.SheetNames.find(name => name.trim() === "Master Sheet");
+      if (!masterSheetName) {
+        masterSheetName = wb.SheetNames[0];
+      }
+      const ws = wb.Sheets[masterSheetName];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      
+      if (!rows || rows.length <= 1) {
+        throw new Error("Master Sheet is empty or invalid.");
+      }
+      
+      const parsedSchools = [];
+      const dupCheck = {};
+      
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || row.length === 0 || !row[2] || !row[1]) continue;
+        
+        const dise = String(row[2]).trim();
+        const project = String(row[1]).trim();
+        const key = `${dise}_${project}`;
+        if (dupCheck[key]) continue;
+        dupCheck[key] = true;
+        
+        parsedSchools.push({
+          project: project,
+          dise: dise,
+          schoolCode: row[3] ? String(row[3]).trim() : "",
+          district: row[4] ? String(row[4]).trim() : "",
+          block: row[5] ? String(row[5]).trim() : "",
+          school: row[6] ? String(row[6]).trim() : "",
+          principal: row[7] ? String(row[7]).trim() : "",
+          mobile: row[8] ? String(row[8]).trim() : "",
+          address: row[9] ? String(row[9]).trim() : "",
+          pincode: row[10] ? String(row[10]).trim() : ""
+        });
+      }
+      
+      const local = isLocal();
+      if (local) {
+        const res = await fetch('/upload_school_excel', {
+          method: 'POST',
+          body: file
+        });
+        if (!res.ok) throw new Error(await res.text());
+        showToast(`✅ Uploaded & parsed ${parsedSchools.length} records successfully!`, 'success');
+      } else if (GOOGLE_SCRIPT_URL && navigator.onLine) {
+        showToast(`⏳ Syncing ${parsedSchools.length} records to Google Sheets...`, 'info');
+        const res = await fetch(GOOGLE_SCRIPT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({
+            action: 'import_school_master',
+            importKey: 'armee123',
+            schools: parsedSchools
+          })
+        });
+        const out = await res.json();
+        if (out.status !== 'ok') throw new Error(out.message || 'Server rejected the import');
+        showToast(`✅ Successfully uploaded and mapped ${parsedSchools.length} records on Google Sheets!`, 'success');
+      } else {
+        throw new Error("No network connection available to update live database.");
+      }
+      
+      await loadSchoolList();
+    } catch (err) {
+      showToast(`❌ Excel upload failed: ${err.message}`, 'danger');
+    }
+  };
+  reader.readAsArrayBuffer(file);
   event.target.value = ''; // clear input
 }
 
@@ -4591,8 +4675,13 @@ function updateSaveBar() {
   document.getElementById('saveBar').classList.toggle('visible', isDirty);
   document.getElementById('btnSave').disabled = !isDirty;
 }
+function openModal(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.add('show');
+}
 function closeModal(id) {
-  document.getElementById(id).classList.remove('show');
+  const el = document.getElementById(id);
+  if (el) el.classList.remove('show');
 }
 function esc(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');

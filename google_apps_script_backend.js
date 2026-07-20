@@ -96,6 +96,9 @@ const RES_HEADERS = [
   'AcerCaseId', 'AcerCaseStatus'
 ];
 
+const SCHOOL_MASTER_TAB_NAME = 'SchoolMaster';
+const SCHOOL_MASTER_HEADERS = ['Project', 'DISE Code', 'School Code', 'School Name', 'District', 'Block', 'Principal', 'Mobile', 'Address', 'Pincode'];
+
 // -- BRANCH / DISTRICT OFFICE STRUCTURE --
 // District Office and Branch are separate entities: today each office has exactly
 // one branch of the same name, but the schema allows one office -> many branches.
@@ -453,6 +456,12 @@ function doPost(e) {
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
+    if (data.action === 'import_school_master') {
+      var importResult = importSchoolMaster(ss, data);
+      return ContentService.createTextOutput(JSON.stringify(importResult))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
     if (data.action === 'bulk_acer_mapping') {
       var bulkResult = bulkAcerMapping(ss, data.importKey, data.mappings);
       return ContentService.createTextOutput(JSON.stringify(bulkResult))
@@ -628,6 +637,12 @@ function doGet(e) {
     if (action === 'get_school_updates') {
       var schoolUpdates = getSchoolUpdates(ss);
       return ContentService.createTextOutput(JSON.stringify(schoolUpdates))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (action === 'get_school_master') {
+      var schoolMaster = getSchoolMaster(ss);
+      return ContentService.createTextOutput(JSON.stringify(schoolMaster))
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -4832,5 +4847,63 @@ function bulkAcerMapping(ss, importKey, mappings) {
     duplicateSerials: dupSerials.slice(0, 500),
     duplicateAcerIds: dupAcerIds.slice(0, 500)
   };
+}
+
+function getSchoolMaster(ss) {
+  var sheet = ss.getSheetByName(SCHOOL_MASTER_TAB_NAME);
+  if (!sheet) return [];
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return [];
+  var values = sheet.getRange(2, 1, lastRow - 1, 10).getValues();
+  return values.map(function(row) {
+    return {
+      project: String(row[0] || '').trim(),
+      dise: String(row[1] || '').trim(),
+      schoolCode: String(row[2] || '').trim(),
+      school: String(row[3] || '').trim(),
+      district: String(row[4] || '').trim(),
+      block: String(row[5] || '').trim(),
+      principal: String(row[6] || '').trim(),
+      mobile: String(row[7] || '').trim(),
+      address: String(row[8] || '').trim(),
+      pincode: String(row[9] || '').trim()
+    };
+  });
+}
+
+function importSchoolMaster(ss, data) {
+  if (data.importKey !== 'armee123') {
+    return { status: 'error', message: 'Invalid importKey' };
+  }
+  var sheet = ss.getSheetByName(SCHOOL_MASTER_TAB_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(SCHOOL_MASTER_TAB_NAME);
+  }
+  sheet.clear();
+  sheet.appendRow(SCHOOL_MASTER_HEADERS);
+  sheet.getRange(1, 1, 1, SCHOOL_MASTER_HEADERS.length).setBackground('#1a56db').setFontColor('#ffffff').setFontWeight('bold');
+  sheet.setFrozenRows(1);
+
+  var schools = data.schools || [];
+  if (schools.length > 0) {
+    var rows = [];
+    for (var i = 0; i < schools.length; i++) {
+      var s = schools[i];
+      rows.push([
+        s.project || '',
+        s.dise || '',
+        s.schoolCode || '',
+        s.school || '',
+        s.district || '',
+        s.block || '',
+        s.principal || '',
+        s.mobile || '',
+        s.address || '',
+        s.pincode || ''
+      ]);
+    }
+    sheet.getRange(2, 1, rows.length, SCHOOL_MASTER_HEADERS.length).setValues(rows);
+  }
+  return { status: 'ok', count: schools.length };
 }
 
