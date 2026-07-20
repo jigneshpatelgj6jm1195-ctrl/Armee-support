@@ -4114,7 +4114,15 @@ function getSchoolComplaints(ss, dise, schoolName) {
       }
     }
 
-    if ((isDiseMatch || isNameMatch) && !status) {
+    // "Active" = not yet resolved. Historically only blank status meant active,
+    // but the admin dashboard / status normalization now write the explicit string
+    // "Open" for unresolved complaints. Treat blank AND "Open" as active so an
+    // Open complaint stays visible to engineers (fixes: some complaints for a DISE
+    // not appearing in the engineer search after an admin touched their status).
+    var statusLc = status.toLowerCase();
+    var isActive = (!status || statusLc === 'open');
+
+    if ((isDiseMatch || isNameMatch) && isActive) {
       results.push({
         srNo:              rowSrNo,
         project:           String(rows[i][1] || 'ICT').trim(),
