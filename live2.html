@@ -3360,15 +3360,46 @@ async function uploadSchoolExcel(event) {
         throw new Error("Master Sheet is empty or invalid.");
       }
       
+      const headers = rows[0].map(h => String(h || '').trim().toLowerCase());
+      
+      const colMap = {
+        project: headers.findIndex(h => h.includes('project')),
+        dise: headers.findIndex(h => h.includes('dise') || h.includes('d.i.s.e.')),
+        schoolCode: headers.findIndex(h => h.includes('school code') || h.includes('schoolcode') || h === 'code' || h.includes('sch code') || h.includes('school_code')),
+        district: headers.findIndex(h => h.includes('district') || h === 'dist'),
+        block: headers.findIndex(h => h.includes('block') || h.includes('taluka') || h.includes('tq') || h.includes('block/taluka')),
+        school: headers.findIndex(h => h.includes('school name') || h.includes('schoolname') || h === 'school' || h.includes('sch name') || h.includes('school_name')),
+        principal: headers.findIndex(h => h.includes('principal') || h.includes('hm name') || h.includes('head') || h.includes('principal name')),
+        mobile: headers.findIndex(h => h.includes('mobile') || h.includes('contact') || h.includes('phone') || h.includes('number') || h.includes('mobile_number')),
+        address: headers.findIndex(h => h.includes('address')),
+        pincode: headers.findIndex(h => h.includes('pincode') || h.includes('pin code') || h === 'pin')
+      };
+
       const parsedSchools = [];
       const dupCheck = {};
       
       for (let i = 1; i < rows.length; i++) {
         const row = rows[i];
-        if (!row || row.length === 0 || !row[2] || !row[1]) continue;
+        if (!row || row.length === 0) continue;
         
-        const dise = String(row[2]).trim();
-        const project = String(row[1]).trim();
+        const project = colMap.project !== -1 && row[colMap.project] ? String(row[colMap.project]).trim() : "GK";
+        let dise = colMap.dise !== -1 && row[colMap.dise] ? String(row[colMap.dise]).trim() : "";
+        const schoolCode = colMap.schoolCode !== -1 && row[colMap.schoolCode] ? String(row[colMap.schoolCode]).trim() : "";
+        
+        if (!dise && schoolCode) {
+          dise = schoolCode; // Fallback to school code as DISE if DISE is blank/missing
+        }
+        
+        if (!dise || !project) continue;
+        
+        const district = colMap.district !== -1 && row[colMap.district] ? String(row[colMap.district]).trim() : "";
+        const block = colMap.block !== -1 && row[colMap.block] ? String(row[colMap.block]).trim() : "";
+        const schoolName = colMap.school !== -1 && row[colMap.school] ? String(row[colMap.school]).trim() : "";
+        const principal = colMap.principal !== -1 && row[colMap.principal] ? String(row[colMap.principal]).trim() : "";
+        const mobile = colMap.mobile !== -1 && row[colMap.mobile] ? String(row[colMap.mobile]).trim() : "";
+        const address = colMap.address !== -1 && row[colMap.address] ? String(row[colMap.address]).trim() : "";
+        const pincode = colMap.pincode !== -1 && row[colMap.pincode] ? String(row[colMap.pincode]).trim() : "";
+        
         const key = `${dise}_${project}`;
         if (dupCheck[key]) continue;
         dupCheck[key] = true;
@@ -3376,14 +3407,14 @@ async function uploadSchoolExcel(event) {
         parsedSchools.push({
           project: project,
           dise: dise,
-          schoolCode: row[3] ? String(row[3]).trim() : "",
-          district: row[4] ? String(row[4]).trim() : "",
-          block: row[5] ? String(row[5]).trim() : "",
-          school: row[6] ? String(row[6]).trim() : "",
-          principal: row[7] ? String(row[7]).trim() : "",
-          mobile: row[8] ? String(row[8]).trim() : "",
-          address: row[9] ? String(row[9]).trim() : "",
-          pincode: row[10] ? String(row[10]).trim() : ""
+          schoolCode: schoolCode,
+          district: district,
+          block: block,
+          school: schoolName,
+          principal: principal,
+          mobile: mobile,
+          address: address,
+          pincode: pincode
         });
       }
       
