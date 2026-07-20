@@ -2606,7 +2606,9 @@ function resolveDepartmentComplaint(ss, data) {
     data.serialNumber || (existing ? (existing.serialNumber || '') : ''),
     serialPhotoUrl,
     data.suspectedPart || (existing ? (existing.suspectedPart || '') : ''),
-    suspectedPartPhotoUrl
+    suspectedPartPhotoUrl,
+    existing ? (existing.acerCaseId || '') : '',
+    existing ? (existing.acerCaseStatus || '') : ''
   ];
 
   if (existing) {
