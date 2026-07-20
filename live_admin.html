@@ -3320,9 +3320,32 @@ async function uploadSchoolExcel(event) {
         throw new Error("Master Sheet is empty or invalid.");
       }
       
-      const headers = rows[0].map(h => String(h || '').trim().toLowerCase());
+      let headerRowIdx = 0;
+      let maxMatches = 0;
+      const keywords = ['project', 'dise', 'school', 'district', 'block', 'taluka', 'principal', 'mobile', 'contact', 'address', 'pincode'];
       
-      const colMap = {
+      const scanLimit = Math.min(rows.length, 10);
+      for (let r = 0; r < scanLimit; r++) {
+        const rowCells = rows[r];
+        if (!rowCells) continue;
+        let matches = 0;
+        rowCells.forEach(cell => {
+          const val = String(cell || '').trim().toLowerCase();
+          if (val) {
+            keywords.forEach(kw => {
+              if (val.includes(kw)) matches++;
+            });
+          }
+        });
+        if (matches > maxMatches) {
+          maxMatches = matches;
+          headerRowIdx = r;
+        }
+      }
+      
+      const headers = (rows[headerRowIdx] || []).map(h => String(h || '').trim().toLowerCase());
+      
+      let colMap = {
         project: headers.findIndex(h => h.includes('project')),
         dise: headers.findIndex(h => h.includes('dise') || h.includes('d.i.s.e.')),
         schoolCode: headers.findIndex(h => h.includes('school code') || h.includes('schoolcode') || h === 'code' || h.includes('sch code') || h.includes('school_code')),
@@ -3335,10 +3358,37 @@ async function uploadSchoolExcel(event) {
         pincode: headers.findIndex(h => h.includes('pincode') || h.includes('pin code') || h === 'pin')
       };
 
+      if (maxMatches === 0 || colMap.dise === -1 || colMap.school === -1) {
+        let hasSrNo = false;
+        const startRow = maxMatches > 0 ? headerRowIdx + 1 : 1;
+        for (let r = startRow; r < Math.min(rows.length, startRow + 5); r++) {
+          const firstVal = rows[r] ? rows[r][0] : null;
+          if (firstVal !== null && firstVal !== undefined && firstVal !== '' && !isNaN(Number(firstVal))) {
+            hasSrNo = true;
+            break;
+          }
+        }
+        
+        const offset = hasSrNo ? 1 : 0;
+        colMap = {
+          project: offset + 0,
+          dise: offset + 1,
+          schoolCode: offset + 2,
+          district: offset + 3,
+          block: offset + 4,
+          school: offset + 5,
+          principal: offset + 6,
+          mobile: offset + 7,
+          address: offset + 8,
+          pincode: offset + 9
+        };
+      }
+
       const parsedSchools = [];
       const dupCheck = {};
+      const startRowIdx = maxMatches > 0 ? headerRowIdx + 1 : 1;
       
-      for (let i = 1; i < rows.length; i++) {
+      for (let i = startRowIdx; i < rows.length; i++) {
         const row = rows[i];
         if (!row || row.length === 0) continue;
         
@@ -3347,7 +3397,7 @@ async function uploadSchoolExcel(event) {
         const schoolCode = colMap.schoolCode !== -1 && row[colMap.schoolCode] ? String(row[colMap.schoolCode]).trim() : "";
         
         if (!dise && schoolCode) {
-          dise = schoolCode; // Fallback to school code as DISE if DISE is blank/missing
+          dise = schoolCode;
         }
         
         if (!dise || !project) continue;
