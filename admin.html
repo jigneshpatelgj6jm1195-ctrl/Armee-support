@@ -6524,6 +6524,87 @@ function handleAcerFileSelect() {
   reader.readAsArrayBuffer(file);
 }
 
+// Professional upload-summary panel for the Acer mapping result.
+function renderAcerSummary(out) {
+  const result = document.getElementById('acerResult');
+  const dupSerials = out.duplicateSerials || [];
+  const dupAcerIds = out.duplicateAcerIds || [];
+  const unmatched  = out.unmatchedSerials || [];
+  const hasIssues  = (out.unmatchedCount || unmatched.length || dupSerials.length || dupAcerIds.length) > 0;
+
+  const card = (label, value, tone) => {
+    const tones = {
+      blue:   ['#eff6ff', '#bfdbfe', '#1e40af'],
+      green:  ['#f0fdf4', '#bbf7d0', '#166534'],
+      red:    ['#fef2f2', '#fecaca', '#b91c1c'],
+      amber:  ['#fffbeb', '#fde68a', '#92400e'],
+      grey:   ['#f8fafc', '#e2e8f0', '#475569'],
+    };
+    const t = tones[tone] || tones.grey;
+    return `<div style="background:${t[0]};border:1px solid ${t[1]};border-radius:10px;padding:12px 14px;">
+      <div style="font-size:0.62rem;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:${t[2]};opacity:0.85;">${label}</div>
+      <div style="font-size:1.5rem;font-weight:800;color:${t[2]};margin-top:2px;font-variant-numeric:tabular-nums;">${value}</div>
+    </div>`;
+  };
+
+  result.style.display = 'block';
+  result.style.background = '#ffffff';
+  result.style.color = 'var(--text)';
+  result.style.border = '1.5px solid var(--border)';
+  result.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+      <span style="font-size:1.15rem;">${hasIssues ? '⚠️' : '✅'}</span>
+      <strong style="font-size:0.95rem;">Acer mapping complete${hasIssues ? ' — with items to review' : ''}</strong>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px;">
+      ${card('Total Uploaded', out.totalUploaded || 0, 'blue')}
+      ${card('Matched & Updated', out.matchedCount || 0, 'green')}
+      ${card('Unmatched S/N', out.unmatchedCount || 0, (out.unmatchedCount ? 'red' : 'grey'))}
+      ${card('Duplicate S/N', dupSerials.length, (dupSerials.length ? 'amber' : 'grey'))}
+      ${card('Duplicate Acer ID', dupAcerIds.length, (dupAcerIds.length ? 'amber' : 'grey'))}
+    </div>
+    <div style="font-size:0.78rem;color:var(--muted);margin-bottom:${hasIssues ? '14px' : '0'};line-height:1.6;">
+      Matched across modules —
+      School: <b style="color:var(--text);">${out.matchedSchoolCount || 0}</b> ·
+      Portal / Advance: <b style="color:var(--text);">${out.matchedComplaintsCount || 0}</b> ·
+      Department: <b style="color:var(--text);">${out.matchedDeptCount || 0}</b>
+    </div>
+    ${hasIssues ? `
+      <button class="btn btn-ghost btn-sm" onclick="downloadAcerErrorReport()" style="border:1.5px solid var(--border);">
+        ⬇️ Download Error Report (CSV) — ${unmatched.length + dupSerials.length + dupAcerIds.length} row(s)
+      </button>
+      <div style="font-size:0.72rem;color:var(--muted);margin-top:8px;">Contains unmatched serial numbers and duplicate Acer Case IDs for correction and re-upload.</div>
+    ` : ''}
+  `;
+}
+
+// Build and download a CSV error report from the last mapping result.
+function downloadAcerErrorReport() {
+  const out = window.__lastAcerResult;
+  if (!out) { showToast('No mapping result to export.', 'warn'); return; }
+  const rows = [['Issue Type', 'Value', 'Note']];
+  (out.unmatchedSerials || []).forEach(sn => rows.push(['Unmatched Serial Number', sn, 'No complaint found with this S/N in any module']));
+  (out.duplicateSerials || []).forEach(sn => rows.push(['Duplicate Serial Number', sn, 'Appeared more than once in the uploaded file — last value used']));
+  (out.duplicateAcerIds || []).forEach(id => rows.push(['Duplicate Acer Case ID', id, 'Same Acer Case ID on multiple uploaded rows']));
+
+  const esc = v => {
+    const s = String(v == null ? '' : v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const csv = rows.map(r => r.map(esc).join(',')).join('\r\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  a.href = url;
+  a.download = `acer-mapping-errors-${stamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('📥 Error report downloaded.', 'success');
+}
+
 async function runAcerMapping() {
   const btn = document.getElementById('acerUploadBtn');
   const result = document.getElementById('acerResult');
@@ -6564,16 +6645,8 @@ async function runAcerMapping() {
     if (out.status !== 'ok') throw new Error(out.message || 'Server rejected the mapping');
 
     localStorage.setItem(SCHOOL_IMPORT_KEY_LS, importKey);
-    result.style.background = '#f0fdf4';
-    result.style.color = '#166534';
-    result.style.border = '1.5px solid #bbf7d0';
-    result.innerHTML = `
-      <strong>✅ Success! Matched and mapped:</strong><br>
-      • School Complaints (SchoolComplaintMaster): <strong>${out.matchedSchoolCount || 0}</strong> rows updated<br>
-      • Portal/Advance Complaints (Complaints): <strong>${out.matchedComplaintsCount || 0}</strong> rows updated<br>
-      • Department Complaints (DepartmentResolutions): <strong>${out.matchedDeptCount || 0}</strong> rows updated<br>
-      • Total unique serials matched: <strong>${out.matchedCount || 0}</strong> of ${out.totalUploaded || 0} uploaded.
-    `;
+    window.__lastAcerResult = out; // used by the error-report download
+    renderAcerSummary(out);
     showToast('✅ Acer case mapping processed successfully!', 'success');
 
     // Reload complaints data to reflect updates in the School Dashboard!
