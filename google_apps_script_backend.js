@@ -4940,30 +4940,42 @@ function healSchoolComplaintMasterColumns(ss) {
     lastCol = 23;
   }
 
-  var col21Header = String(sheet.getRange(1, 21).getValue()).trim().toUpperCase();
-  if (col21Header === 'ACER CASE ID' || col21Header === 'ACERCASEID') {
-    Logger.log("Healer: Shifting detected in SchoolComplaintMaster. Repairing...");
+  // Force correct headers
+  sheet.getRange(1, 21).setValue('Close Date');
+  sheet.getRange(1, 22).setValue('Acer Case ID');
+  sheet.getRange(1, 23).setValue('Acer Case Status');
+
+  if (lastRow > 1) {
+    var range = sheet.getRange(2, 21, lastRow - 1, 3);
+    var vals = range.getValues();
+    var changed = false;
     
-    if (lastRow > 1) {
-      var range = sheet.getRange(2, 21, lastRow - 1, 3);
-      var vals = range.getValues();
-      var newVals = [];
-      for (var i = 0; i < vals.length; i++) {
-        var statusVal = String(vals[i][0] || '').trim();
-        var idVal = String(vals[i][1] || '').trim();
-        var closeDateVal = ''; 
-        var newAcerId = idVal;
-        var newAcerStatus = statusVal;
-        newVals.push([closeDateVal, newAcerId, newAcerStatus]);
+    for (var i = 0; i < vals.length; i++) {
+      var col21Val = String(vals[i][0] || '').trim();
+      var col22Val = String(vals[i][1] || '').trim();
+      
+      // Check if Column 21 (Close Date) contains a status word (like Closed, ReAssign, Allocated, etc.)
+      var valUpper = col21Val.toUpperCase();
+      if (isStatusWord(col21Val) || valUpper === 'REASSIGN' || valUpper === 'ALLOCATED') {
+        // Move the status word to Column 23 (Acer Case Status)
+        vals[i][2] = col21Val; 
+        
+        // Clear Column 21 (Close Date)
+        vals[i][0] = '';
+        
+        // If Column 22 was filled with status, clear it as well
+        if (isStatusWord(col22Val) || col22Val.toUpperCase() === 'REASSIGN' || col22Val.toUpperCase() === 'ALLOCATED') {
+          vals[i][1] = '';
+        }
+        
+        changed = true;
       }
-      range.setValues(newVals);
     }
     
-    sheet.getRange(1, 21).setValue('Close Date');
-    sheet.getRange(1, 22).setValue('Acer Case ID');
-    sheet.getRange(1, 23).setValue('Acer Case Status');
-    
-    Logger.log("Healer: SchoolComplaintMaster columns healed successfully!");
+    if (changed) {
+      range.setValues(vals);
+      Logger.log("Healer: Realigned school complaints data rows successfully!");
+    }
   }
 }
 
