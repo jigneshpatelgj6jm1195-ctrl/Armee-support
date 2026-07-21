@@ -1384,6 +1384,7 @@ tr:hover td { background: #f8fafc; }
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
         <div class="card-title" style="margin-bottom:0;">📋 Complaint Records <span id="sdDrillLabel" style="font-size:0.78rem; color:var(--primary); font-weight:700;"></span></div>
         <div style="display:flex; gap:8px; align-items:center;">
+          <input type="text" id="sdDrillSearch" oninput="renderSchoolDash()" placeholder="🔍 Quick search..." style="padding: 4px 8px; font-size: 0.74rem; border-radius: 6px; border: 1px solid var(--border); width: 160px; outline: none; margin-right: 4px;" />
           <button class="btn btn-primary" onclick="exportSchoolComplaintsCSV()" style="padding:4px 10px; font-size:0.75rem; border-radius:6px; cursor:pointer; font-weight:700; background-color:var(--primary); color:white; border:none;">📥 Export CSV</button>
           <button onclick="runFixProjectCodes()" style="padding:4px 10px; font-size:0.75rem; border-radius:6px; cursor:pointer; font-weight:700; background-color:#f59e0b; color:white; border:none;" title="Fix Project column: IFP/Laptop=GK, CPU/TFT=ICT">🔧 Fix Project Codes</button>
           <span id="sdDrillCount" style="font-size:0.75rem; color:var(--muted); font-weight:700;"></span>
@@ -2800,6 +2801,9 @@ function sdGetList() {
       status: statusVal,
       project: c.project || '',
       principal: c.principal || '',
+      mobile: c.mobile || '',
+      address: c.address || '',
+      pincode: c.pincode || '',
       engineer: c.principal || '',
       lastUpdatedDate: c.lastUpdatedDate || '',
       closeDate: c.closeDate || '',
@@ -3010,6 +3014,27 @@ function renderSchoolDash() {
     lbl.textContent = '';
     if (clearBtn) clearBtn.style.display = 'none';
   }
+
+  // Apply quick search on the drill-down list
+  const searchInput = document.getElementById('sdDrillSearch');
+  const q = searchInput ? searchInput.value.trim().toLowerCase() : '';
+  if (q) {
+    drillList = drillList.filter(r => 
+      String(r.diseCode || '').toLowerCase().includes(q) ||
+      String(r.name || '').toLowerCase().includes(q) ||
+      String(r.serial || '').toLowerCase().includes(q) ||
+      String(r.status || '').toLowerCase().includes(q) ||
+      String(r.branch || '').toLowerCase().includes(q) ||
+      String(r.district || '').toLowerCase().includes(q) ||
+      String(r.acerCaseId || '').toLowerCase().includes(q) ||
+      String(r.acerCaseStatus || '').toLowerCase().includes(q) ||
+      String(r.project || '').toLowerCase().includes(q) ||
+      String(r.principal || '').toLowerCase().includes(q) ||
+      String(r.mobile || '').toLowerCase().includes(q) ||
+      String(r.address || '').toLowerCase().includes(q)
+    );
+  }
+
   document.getElementById('sdDrillCount').textContent = drillList.length + ' record(s)';
   
   // Save globally for CSV export
@@ -3348,13 +3373,20 @@ function exportSchoolComplaintsCSV() {
     return;
   }
   
-  const csvHeaders = ['Sr No', 'Project', 'DISE Code', 'School Name', 'Serial Number', 'Status', 'Branch', 'District', 'Complaint Date', 'Last Updated Date', 'Close Date', 'Acer Case ID', 'Acer Case Status'];
+  const csvHeaders = [
+    'Sr No', 'Project', 'DISE Code', 'School Name', 'Principal Name', 'Contact Number', 'Address', 'Pincode',
+    'Serial Number', 'Status', 'Branch', 'District', 'Complaint Date', 'Last Updated Date', 'Close Date', 'Acer Case ID', 'Acer Case Status'
+  ];
   
   const csvRows = list.map(r => [
     r.srNo || '',
     r.project || 'ICT',
     r.diseCode || '',
     r.name || '',
+    r.principal || '',
+    r.mobile || '',
+    r.address || '',
+    r.pincode || '',
     r.serial || '',
     r.status || 'Open',
     r.branch || '',

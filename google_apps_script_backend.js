@@ -653,6 +653,11 @@ function doGet(e) {
     }
 
     if (action === 'get_all_school_complaints') {
+      try {
+        healSchoolComplaintMasterColumns(ss);
+      } catch (he) {
+        Logger.log("Error in healSchoolComplaintMasterColumns: " + he.toString());
+      }
       var list = getAllSchoolComplaints(ss);
       return ContentService.createTextOutput(JSON.stringify(list))
                            .setMimeType(ContentService.MimeType.JSON);
@@ -4609,6 +4614,13 @@ function bulkAcerMapping(ss, importKey, mappings) {
     return { status: 'error', message: 'No mapping rows provided' };
   }
 
+  // Automatically heal columns
+  try {
+    healSchoolComplaintMasterColumns(ss);
+  } catch (he) {
+    Logger.log("Error in healSchoolComplaintMasterColumns: " + he.toString());
+  }
+
   // Automatically migrate legacy invalid Case IDs in database first
   try {
     migrateInvalidAcerCaseIds(ss);
@@ -4666,21 +4678,21 @@ function bulkAcerMapping(ss, importKey, mappings) {
       var acerStColIdx   = colIdx['Acer Case Status'] !== undefined ? colIdx['Acer Case Status'] : 22;
       var lastUpdColIdx  = colIdx['Last Updated Date'] !== undefined ? colIdx['Last Updated Date'] : 19;
 
-      // Ensure Acer columns exist in header (add if missing)
-      if (acerIdColIdx >= numCols) {
-        acerIdColIdx = numCols;
-        schoolSheet.getRange(1, acerIdColIdx + 1).setValue('Acer Case ID');
-        numCols++;
-      }
-      if (acerStColIdx >= numCols) {
-        acerStColIdx = numCols;
-        schoolSheet.getRange(1, acerStColIdx + 1).setValue('Acer Case Status');
-        numCols++;
-      }
-      if (lastUpdColIdx === undefined || lastUpdColIdx >= numCols) {
-        lastUpdColIdx = Math.max(numCols, 19);
-        schoolSheet.getRange(1, lastUpdColIdx + 1).setValue('Last Updated Date');
-        numCols = Math.max(numCols, lastUpdColIdx + 1);
+      // Ensure Acer columns exist in header (add if missing) without shifting columns
+      if (numCols < 23) {
+        var neededHeaders = [
+          'SR No.', 'Project', 'DISE Code', 'School Code', 'District', 'Taluka', 
+          'School Name', 'Principal Name', 'Principal Contact', 'Address', 'Pin Code', 
+          'Equipment', 'Nature of Complaint', 'Serial Number', 'State', 'Branch',
+          'Status', 'Suspected Part', 'Import Date', 'Last Updated Date', 'Close Date', 'Acer Case ID', 'Acer Case Status'
+        ];
+        for (var k = 0; k < neededHeaders.length; k++) {
+          schoolSheet.getRange(1, k + 1).setValue(neededHeaders[k]);
+        }
+        numCols = 23;
+        acerIdColIdx = 21;
+        acerStColIdx = 22;
+        lastUpdColIdx = 19;
       }
 
       var dataRows = schoolSheet.getRange(2, 1, lastRow - 1, numCols).getValues();
@@ -4905,5 +4917,53 @@ function importSchoolMaster(ss, data) {
     sheet.getRange(2, 1, rows.length, SCHOOL_MASTER_HEADERS.length).setValues(rows);
   }
   return { status: 'ok', count: schools.length };
+}
+
+function healSchoolComplaintMasterColumns(ss) {
+  var sheet = ss.getSheetByName('SchoolComplaintMaster');
+  if (!sheet) return;
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  
+  if (lastCol < 23) {
+    var neededHeaders = [
+      'SR No.', 'Project', 'DISE Code', 'School Code', 'District', 'Taluka', 
+      'School Name', 'Principal Name', 'Principal Contact', 'Address', 'Pin Code', 
+      'Equipment', 'Nature of Complaint', 'Serial Number', 'State', 'Branch',
+      'Status', 'Suspected Part', 'Import Date', 'Last Updated Date', 'Close Date', 'Acer Case ID', 'Acer Case Status'
+    ];
+    for (var k = 0; k < neededHeaders.length; k++) {
+      sheet.getRange(1, k + 1).setValue(neededHeaders[k]);
+    }
+    var headerRange = sheet.getRange(1, 1, 1, 23);
+    headerRange.setBackground('#1e3a8a').setFontColor('#ffffff').setFontWeight('bold');
+    lastCol = 23;
+  }
+
+  var col21Header = String(sheet.getRange(1, 21).getValue()).trim().toUpperCase();
+  if (col21Header === 'ACER CASE ID' || col21Header === 'ACERCASEID') {
+    Logger.log("Healer: Shifting detected in SchoolComplaintMaster. Repairing...");
+    
+    if (lastRow > 1) {
+      var range = sheet.getRange(2, 21, lastRow - 1, 3);
+      var vals = range.getValues();
+      var newVals = [];
+      for (var i = 0; i < vals.length; i++) {
+        var statusVal = String(vals[i][0] || '').trim();
+        var idVal = String(vals[i][1] || '').trim();
+        var closeDateVal = ''; 
+        var newAcerId = idVal;
+        var newAcerStatus = statusVal;
+        newVals.push([closeDateVal, newAcerId, newAcerStatus]);
+      }
+      range.setValues(newVals);
+    }
+    
+    sheet.getRange(1, 21).setValue('Close Date');
+    sheet.getRange(1, 22).setValue('Acer Case ID');
+    sheet.getRange(1, 23).setValue('Acer Case Status');
+    
+    Logger.log("Healer: SchoolComplaintMaster columns healed successfully!");
+  }
 }
 
