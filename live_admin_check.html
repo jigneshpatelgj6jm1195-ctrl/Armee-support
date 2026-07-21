@@ -1025,8 +1025,8 @@ tr:hover td { background: #f8fafc; }
       </div>
       <div class="table-responsive" style="margin-top:12px;">
         <table>
-          <thead><tr><th style="width:40px; text-align:center;"><input type="checkbox" id="selectAllDept" onclick="toggleSelectAllDept(this)" style="transform: scale(1.25); cursor: pointer;" /></th><th>Ticket</th><th>School</th><th>District</th><th>Branch</th><th>Issue</th><th>Age (BD)</th><th>Log Date</th><th>Last Updated</th><th>Close Date</th><th id="deptStatusHeaderCol" style="min-width: 140px;">Status</th></tr></thead>
-          <tbody id="deptListBody"><tr><td colspan="11" style="text-align:center;color:var(--muted);">Loading…</td></tr></tbody>
+          <thead><tr><th style="width:40px; text-align:center;"><input type="checkbox" id="selectAllDept" onclick="toggleSelectAllDept(this)" style="transform: scale(1.25); cursor: pointer;" /></th><th>Ticket</th><th>School</th><th>District</th><th>Branch</th><th>Issue</th><th>Age (BD)</th><th>Log Date</th><th>Last Updated</th><th>Close Date</th><th>Acer Case ID</th><th>Acer Status</th><th id="deptStatusHeaderCol" style="min-width: 140px;">Status</th></tr></thead>
+          <tbody id="deptListBody"><tr><td colspan="13" style="text-align:center;color:var(--muted);">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -1339,6 +1339,8 @@ tr:hover td { background: #f8fafc; }
         <div><b>Nature:</b> <span id="deptDetNature"></span></div>
         <div><b>Quantity:</b> <span id="deptDetQty"></span></div>
         <div><b>Serial Number:</b> <span id="deptDetSerial"></span></div>
+        <div><b>Acer Case ID:</b> <span id="deptDetAcerCaseId"></span></div>
+        <div><b>Acer Status:</b> <span id="deptDetAcerCaseStatus"></span></div>
         <div style="grid-column:1/-1;"><b>Diagnosis / Notes:</b> <div id="deptDetNotes" style="background:#fafafa; padding:8px; border-radius:6px; margin-top:4px;"></div></div>
       </div>
     </div>
@@ -6063,12 +6065,16 @@ function renderDeptList() {
       const ticketId = String(r.ticketId || '').toLowerCase();
       const district = String(r.district || '').toLowerCase();
       const block = String(r.block || '').toLowerCase();
+      const acerCaseId = String(r.acerCaseId || '').toLowerCase();
+      const acerCaseStatus = String(r.acerCaseStatus || '').toLowerCase();
       return school.includes(searchText) || 
              schoolId.includes(searchText) || 
              serialNumber.includes(searchText) || 
              ticketId.includes(searchText) ||
              district.includes(searchText) ||
-             block.includes(searchText);
+             block.includes(searchText) ||
+             acerCaseId.includes(searchText) ||
+             acerCaseStatus.includes(searchText);
     });
   }
 
@@ -6076,7 +6082,7 @@ function renderDeptList() {
   clearBtn.style.display = deptDrillFilter ? '' : 'none';
 
   if (!rows.length) {
-    body.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--muted);">No tickets match.</td></tr>';
+    body.innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--muted);">No tickets match.</td></tr>';
     return;
   }
   body.innerHTML = rows.slice(0, 300).map(r => {
@@ -6101,12 +6107,14 @@ function renderDeptList() {
       '<td>' + logDate + '</td>' +
       '<td>' + lastUpdated + '</td>' +
       '<td>' + closeDate + '</td>' +
+      '<td>' + esc(r.acerCaseId || '—') + '</td>' +
+      '<td>' + esc(r.acerCaseStatus || '—') + '</td>' +
       '<td>' + deptStatusBadge(r.internalStatus) +
         (r.internalStatus === 'PendingOTP'
           ? ' <button class="btn btn-primary btn-sm" title="Enter the OTP collected from the school to close this ticket" onclick="event.stopPropagation(); finalizePendingOtp(\'' + esc(r.ticketId) + '\')">📩 Enter OTP</button>'
           : '') +
       '</td></tr>';
-  }).join('') + (rows.length > 300 ? '<tr><td colspan="11" style="text-align:center;color:var(--muted);">…and ' + (rows.length - 300) + ' more (use a narrower filter)</td></tr>' : '');
+  }).join('') + (rows.length > 300 ? '<tr><td colspan="13" style="text-align:center;color:var(--muted);">…and ' + (rows.length - 300) + ' more (use a narrower filter)</td></tr>' : '');
 }
 
 /** Finalize a ticket the engineer closed on site without OTP. */
@@ -6163,6 +6171,8 @@ function viewDeptDetails(ticketId) {
   document.getElementById('deptDetNature').textContent = r.natureOfComplaint || '—';
   document.getElementById('deptDetQty').textContent = r.quantity || '—';
   document.getElementById('deptDetSerial').textContent = r.serialNumber || '—';
+  document.getElementById('deptDetAcerCaseId').textContent = r.acerCaseId || '—';
+  document.getElementById('deptDetAcerCaseStatus').textContent = r.acerCaseStatus || '—';
   document.getElementById('deptDetNotes').textContent = r.diagnosisNotes || '—';
 
   // Populate resolution inputs
@@ -6255,12 +6265,16 @@ function downloadDeptReport() {
       const ticketId = String(r.ticketId || '').toLowerCase();
       const district = String(r.district || '').toLowerCase();
       const block = String(r.block || '').toLowerCase();
+      const acerCaseId = String(r.acerCaseId || '').toLowerCase();
+      const acerCaseStatus = String(r.acerCaseStatus || '').toLowerCase();
       return school.includes(searchText) || 
              schoolId.includes(searchText) || 
              serialNumber.includes(searchText) || 
              ticketId.includes(searchText) ||
              district.includes(searchText) ||
-             block.includes(searchText);
+             block.includes(searchText) ||
+             acerCaseId.includes(searchText) ||
+             acerCaseStatus.includes(searchText);
     });
   }
 
@@ -6285,6 +6299,8 @@ function downloadDeptReport() {
     'Age (Business Days)',
     'Status',
     'Branch',
+    'Acer Case ID',
+    'Acer Case Status',
     'Technician',
     'Resolution Date',
     'Serial Number',
@@ -6310,6 +6326,8 @@ function downloadDeptReport() {
     r.businessDays || 0,
     r.internalStatus || 'Pending',
     r.branchName || 'Unmapped',
+    r.acerCaseId || '',
+    r.acerCaseStatus || '',
     r.technicianName || '',
     r.resolvedAt || '',
     r.serialNumber || '',
