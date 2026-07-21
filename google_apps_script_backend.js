@@ -788,6 +788,25 @@ function isStatusWord(val) {
   return statusList.indexOf(s) !== -1;
 }
 
+function mapAcerStatusToTicketStatus(acerStatus, currentStatus) {
+  if (!acerStatus) return currentStatus || 'Open';
+  var s = acerStatus.trim().toUpperCase();
+  
+  if (s === 'CLOSED' || s === 'RESOLVED' || s === 'CANCELLED' || s === 'REJECTED') {
+    return 'Closed';
+  }
+  
+  if (s === 'PART REQUEST' || s === 'PART REQUESTED' || s === 'PART_REQUEST' || s === 'PART_REQUESTED') {
+    return 'Part Request';
+  }
+  
+  if (currentStatus === 'Part Request') {
+    return 'Part Request';
+  }
+  
+  return 'Open';
+}
+
 function migrateInvalidAcerCaseIds(ss) {
   var complaintsSheet = ss.getSheetByName('Complaints');
   if (complaintsSheet) {
@@ -4677,6 +4696,8 @@ function bulkAcerMapping(ss, importKey, mappings) {
       var acerIdColIdx   = colIdx['Acer Case ID'] !== undefined ? colIdx['Acer Case ID'] : 21;
       var acerStColIdx   = colIdx['Acer Case Status'] !== undefined ? colIdx['Acer Case Status'] : 22;
       var lastUpdColIdx  = colIdx['Last Updated Date'] !== undefined ? colIdx['Last Updated Date'] : 19;
+      var statusColIdx   = colIdx['Status'] !== undefined ? colIdx['Status'] : 16;
+      var closeDateColIdx = colIdx['Close Date'] !== undefined ? colIdx['Close Date'] : 20;
 
       // Ensure Acer columns exist in header (add if missing) without shifting columns
       if (numCols < 23) {
@@ -4693,6 +4714,8 @@ function bulkAcerMapping(ss, importKey, mappings) {
         acerIdColIdx = 21;
         acerStColIdx = 22;
         lastUpdColIdx = 19;
+        statusColIdx = 16;
+        closeDateColIdx = 20;
       }
 
       var dataRows = schoolSheet.getRange(2, 1, lastRow - 1, numCols).getValues();
@@ -4709,7 +4732,23 @@ function bulkAcerMapping(ss, importKey, mappings) {
           var newAcerSt = String(match.acerCaseStatus || '').trim();
           matchedSerials[rowSn] = true;
           matchedSchoolCount++;
-          var changed = (newAcerId && newAcerId !== existingAcerId) || (newAcerSt && newAcerSt !== existingAcerSt);
+          
+          var currentStatus = String(dataRows[i][statusColIdx] || '').trim();
+          var newStatus = mapAcerStatusToTicketStatus(newAcerSt || existingAcerSt, currentStatus);
+          
+          var changed = (newAcerId && newAcerId !== existingAcerId) || 
+                        (newAcerSt && newAcerSt !== existingAcerSt) || 
+                        (newStatus !== currentStatus);
+          
+          if (newStatus !== currentStatus) {
+            schoolSheet.getRange(i + 2, statusColIdx + 1).setValue(newStatus);
+            if (newStatus === 'Closed') {
+              schoolSheet.getRange(i + 2, closeDateColIdx + 1).setValue(nowStr);
+            } else {
+              schoolSheet.getRange(i + 2, closeDateColIdx + 1).setValue('');
+            }
+          }
+          
           acerIdCol.push([newAcerId || existingAcerId]);
           acerStCol.push([newAcerSt || existingAcerSt]);
           lastUpdCol.push([changed ? nowStr : existingLastUpd]);
@@ -4741,6 +4780,8 @@ function bulkAcerMapping(ss, importKey, mappings) {
       var acerIdColIdx   = colIdx['AcerCaseId'] !== undefined ? colIdx['AcerCaseId'] : 37;
       var acerStColIdx   = colIdx['AcerCaseStatus'] !== undefined ? colIdx['AcerCaseStatus'] : 38;
       var lastUpdColIdx  = colIdx['LastUpdatedDate'] !== undefined ? colIdx['LastUpdatedDate'] : 39;
+      var statusColIdx   = colIdx['Status'] !== undefined ? colIdx['Status'] : 16;
+      var closeDateColIdx = colIdx['CloseDate'] !== undefined ? colIdx['CloseDate'] : (colIdx['Close Date'] !== undefined ? colIdx['Close Date'] : -1);
 
       // Ensure Acer columns exist in header
       if (acerIdColIdx >= numCols) {
@@ -4773,7 +4814,25 @@ function bulkAcerMapping(ss, importKey, mappings) {
           var newAcerSt = String(match.acerCaseStatus || '').trim();
           matchedSerials[rowSn] = true;
           matchedComplaintsCount++;
-          var changed = (newAcerId && newAcerId !== existingAcerId) || (newAcerSt && newAcerSt !== existingAcerSt);
+          
+          var currentStatus = String(dataRows[i][statusColIdx] || '').trim();
+          var newStatus = mapAcerStatusToTicketStatus(newAcerSt || existingAcerSt, currentStatus);
+          
+          var changed = (newAcerId && newAcerId !== existingAcerId) || 
+                        (newAcerSt && newAcerSt !== existingAcerSt) || 
+                        (newStatus !== currentStatus);
+          
+          if (newStatus !== currentStatus) {
+            complaintsSheet.getRange(i + 2, statusColIdx + 1).setValue(newStatus);
+            if (closeDateColIdx !== -1) {
+              if (newStatus === 'Closed') {
+                complaintsSheet.getRange(i + 2, closeDateColIdx + 1).setValue(nowStr);
+              } else {
+                complaintsSheet.getRange(i + 2, closeDateColIdx + 1).setValue('');
+              }
+            }
+          }
+          
           acerIdCol.push([newAcerId || existingAcerId]);
           acerStCol.push([newAcerSt || existingAcerSt]);
           lastUpdCol.push([changed ? nowStr : existingLastUpd]);
