@@ -7267,14 +7267,18 @@ async function bulkUpdateDeptStatus(action) {
 }
 
 async function submitDeptStatusUpdate(action) {
-  const ticketId = (document.getElementById('deptDetTitle').getAttribute('data-ticket-id') || '').trim();
-  if (!ticketId) return;
+  const ticketIdEl = document.getElementById('deptDetTitle');
+  const ticketId = (ticketIdEl ? ticketIdEl.getAttribute('data-ticket-id') || '' : '').trim();
+  if (!ticketId) {
+    showToast('⚠️ Ticket ID not found. Please re-open the ticket details.', 'warn');
+    return;
+  }
 
-  const serial = document.getElementById('deptModalSerial').value.trim();
-  const technician = document.getElementById('deptModalTechnician').value.trim();
-  const notes = document.getElementById('deptModalNotes').value.trim();
-  const otp = document.getElementById('deptModalOtp').value.trim();
-  const suspectedPart = document.getElementById('deptModalPart').value;
+  const serial = (document.getElementById('deptModalSerial')?.value || '').trim();
+  const technician = (document.getElementById('deptModalTechnician')?.value || '').trim();
+  const notes = (document.getElementById('deptModalNotes')?.value || '').trim();
+  const otp = (document.getElementById('deptModalOtp')?.value || '').trim();
+  const suspectedPart = (document.getElementById('deptModalPart')?.value || '').trim();
 
   if (action === 'closed_with_otp' || action === 'closed_without_otp' || action === 'part_request') {
     if (!serial) {
@@ -7301,12 +7305,17 @@ async function submitDeptStatusUpdate(action) {
     return;
   }
 
-  const confirmMsg = `Are you sure you want to update ticket ${ticketId} status to "${action.replace(/_/g, ' ').toUpperCase()}"?`;
+  const actionLabel = action.replace(/_/g, ' ').toUpperCase();
+  const confirmMsg = `Are you sure you want to update ticket ${ticketId} status to "${actionLabel}"?`;
   if (!confirm(confirmMsg)) return;
 
   const block = document.getElementById('deptDetUpdateStatusBlock');
-  const origHtml = block.innerHTML;
-  block.innerHTML = '<div style="text-align:center;color:var(--primary);font-weight:bold;padding:10px;width:100%;">⏳ Submitting update to Google Sheet...</div>';
+  const origHtml = block ? block.innerHTML : '';
+  if (block) {
+    block.innerHTML = '<div style="text-align:center;color:var(--primary);font-weight:bold;padding:10px;width:100%;">⏳ Submitting update to Google Sheet...</div>';
+  }
+
+  const userName = (typeof currentUser !== 'undefined' && currentUser && currentUser.name) ? currentUser.name : 'admin';
 
   try {
     const res = await fetch(GOOGLE_SCRIPT_URL, {
@@ -7316,7 +7325,7 @@ async function submitDeptStatusUpdate(action) {
         action: 'resolve_department_complaint',
         ticketId: ticketId,
         resolutionAction: action,
-        resolvedBy: (currentUser && currentUser.name) || 'admin',
+        resolvedBy: userName,
         technicianName: technician,
         diagnosisNotes: notes,
         serialNumber: serial,
@@ -7334,7 +7343,7 @@ async function submitDeptStatusUpdate(action) {
   } catch (e) {
     showToast('❌ ' + e.message, 'danger');
   } finally {
-    block.innerHTML = origHtml;
+    if (block) block.innerHTML = origHtml;
   }
 }
 
