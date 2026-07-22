@@ -7266,90 +7266,8 @@ async function bulkUpdateDeptStatus(action) {
   await loadDeptDashboard();
 }
 
-async function submitDeptStatusUpdate(action) {
-  const ticketId = (document.getElementById('deptDetTitle').getAttribute('data-ticket-id') || '').trim();
-  if (!ticketId) return;
-
-  const serial = document.getElementById('deptModalSerial').value.trim();
-  const technician = document.getElementById('deptModalTechnician').value.trim();
-  const notes = document.getElementById('deptModalNotes').value.trim();
-  const otp = document.getElementById('deptModalOtp').value.trim();
-  const suspectedPart = document.getElementById('deptModalPart').value;
-
-  if (action === 'closed_with_otp' || action === 'closed_without_otp' || action === 'part_request') {
-    if (!serial) {
-      showToast('⚠️ Please enter a Serial Number', 'warn');
-      return;
-    }
-    if (serial.length > 22) {
-      showToast('⚠️ Serial Number cannot exceed 22 characters', 'warn');
-      return;
-    }
-    if (isInvalidSerialNumber(serial)) {
-      showToast('⚠️ Please enter a valid Serial Number (cannot be blank, null, or N/A)', 'warn');
-      return;
-    }
-  }
-
-  if (action === 'closed_with_otp' && !otp) {
-    showToast('⚠️ Please enter the OTP Code', 'warn');
-    return;
-  }
-
-  if (action === 'part_request' && !suspectedPart) {
-    showToast('⚠️ Please select a Suspected Part', 'warn');
-    return;
-  }
-
-  const confirmMsg = `Are you sure you want to update ticket ${ticketId} status to "${action.replace(/_/g, ' ').toUpperCase()}"?`;
-  if (!confirm(confirmMsg)) return;
-
-  const block = document.getElementById('deptDetUpdateStatusBlock');
-  const origHtml = block.innerHTML;
-  block.innerHTML = '<div style="text-align:center;color:var(--primary);font-weight:bold;padding:10px;width:100%;">⏳ Submitting update to Google Sheet...</div>';
-
-  try {
-    const res = await fetch(GOOGLE_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({
-        action: 'resolve_department_complaint',
-        ticketId: ticketId,
-        resolutionAction: action,
-        resolvedBy: (currentUser && currentUser.name) || 'admin',
-        technicianName: technician,
-        diagnosisNotes: notes,
-        serialNumber: serial,
-        otp: otp,
-        suspectedPart: suspectedPart,
-        source: 'admin_portal'
-      })
-    });
-    const out = await res.json();
-    if (out.status !== 'ok') throw new Error(out.message || 'Server rejected the update');
-    
-    showToast('✅ Ticket status updated successfully!', 'success');
-    closeModal('deptDetailModal');
-    await loadDeptDashboard();
-  } catch (e) {
-    showToast('❌ ' + e.message, 'danger');
-  } finally {
-    block.innerHTML = origHtml;
-  }
-}
-
-function renderDeptList() {
-  const selectAll = document.getElementById('selectAllDept');
-  if (selectAll) selectAll.checked = false;
-  const headerCol = document.getElementById('deptStatusHeaderCol');
-  if (headerCol) headerCol.innerHTML = 'Status';
-
-  const body = document.getElementById('deptListBody');
-  const label = document.getElementById('deptDrillLabel');
-  const clearBtn = document.getElementById('deptDrillClear');
+function getFilteredDeptComplaints() {
   let rows = deptList.slice();
-  let labelText = '— active tickets';
-
   if (!deptDrillFilter) {
     rows = rows.filter(r => r.internalStatus !== 'Closed' && r.internalStatus !== 'PendingOTP');
   } else {
@@ -7357,17 +7275,14 @@ function renderDeptList() {
     if (f.type === 'status') {
       if (f.val === 'total') {
         rows = rows.filter(r => r.internalStatus !== 'Closed' && r.internalStatus !== 'PendingOTP');
-        labelText = '— all active tickets';
       }
-      else if (f.val === 'ClosedWithOTP') { rows = rows.filter(r => r.internalStatus === 'Closed' && r.closureType === 'ClosedWithOTP'); labelText = '— Closed with OTP'; }
-      else if (f.val === 'ClosedWithoutOTP') { rows = rows.filter(r => r.internalStatus === 'Closed' && r.closureType !== 'ClosedWithOTP'); labelText = '— Closed without OTP'; }
-      else { rows = rows.filter(r => r.internalStatus === f.val); labelText = '— ' + f.val; }
+      else if (f.val === 'ClosedWithOTP') { rows = rows.filter(r => r.internalStatus === 'Closed' && r.closureType === 'ClosedWithOTP'); }
+      else if (f.val === 'ClosedWithoutOTP') { rows = rows.filter(r => r.internalStatus === 'Closed' && r.closureType !== 'ClosedWithOTP'); }
+      else { rows = rows.filter(r => r.internalStatus === f.val); }
     } else if (f.type === 'branch') {
-      if (f.val === 'UNMAPPED') { rows = rows.filter(r => !r.branchId); labelText = '— Unmapped'; }
+      if (f.val === 'UNMAPPED') { rows = rows.filter(r => !r.branchId); }
       else {
         rows = rows.filter(r => r.branchId === f.val);
-        const b = (deptDash.branches || []).find(x => x.branchId === f.val);
-        labelText = '— ' + (b ? b.branchName : f.val) + ' branch (open, oldest first)';
         rows = rows.filter(r => r.internalStatus !== 'Closed' && r.internalStatus !== 'PendingOTP');
       }
     } else if (f.type === 'today_inflow') {
@@ -7378,24 +7293,9 @@ function renderDeptList() {
         if (!d || isNaN(d)) return '';
         return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
       };
-
       rows = rows.filter(r => helperToDateStr(r.createdDate) === targetDate);
-      
-      // format date for label
-      let dateLabel = targetDate;
-      try {
-        const parts = targetDate.split('-');
-        if (parts.length === 3) {
-          const dObj = new Date(parts[0], parts[1] - 1, parts[2]);
-          dateLabel = dObj.toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
-        }
-      } catch(e){}
-
       if (f.branchName && f.branchName !== 'ALL') {
         rows = rows.filter(r => (r.branchName || 'Unmapped') === f.branchName);
-        labelText = `— Inflow on ${dateLabel} for ${f.branchName}`;
-      } else {
-        labelText = `— Inflow on ${dateLabel} (All Branches)`;
       }
     } else if (f.type === 'today_outflow') {
       const targetDate = f.targetDate;
@@ -7405,40 +7305,21 @@ function renderDeptList() {
         if (!d || isNaN(d)) return '';
         return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
       };
-
       rows = rows.filter(r => {
         const outDate = helperToDateStr(r.resolutionDate) || helperToDateStr(r.resolvedAt);
         return outDate === targetDate && r.internalStatus !== 'Pending';
       });
-
       if (f.status && f.status !== 'ALL') {
         rows = rows.filter(r => r.internalStatus === f.status);
       }
-
-      // format date for label
-      let dateLabel = targetDate;
-      try {
-        const parts = targetDate.split('-');
-        if (parts.length === 3) {
-          const dObj = new Date(parts[0], parts[1] - 1, parts[2]);
-          dateLabel = dObj.toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
-        }
-      } catch(e){}
-
-      const statusText = f.status === 'ALL' ? 'Total' : (f.status === 'InProgress' ? 'In Progress' : (f.status === 'PartRequest' ? 'Part Request' : (f.status === 'PendingOTP' ? 'Pending OTP' : f.status)));
-
       if (f.branchName && f.branchName !== 'ALL') {
         rows = rows.filter(r => (r.branchName || 'Unmapped') === f.branchName);
-        labelText = `— Outflow (${statusText}) on ${dateLabel} for ${f.branchName}`;
-      } else {
-        labelText = `— Outflow (${statusText}) on ${dateLabel} (All Branches)`;
       }
     }
   }
 
   rows.sort((a, b) => b.businessDays - a.businessDays);
 
-  // Apply search filtering
   const searchText = (document.getElementById('deptFilterText')?.value || '').toLowerCase().trim();
   if (searchText) {
     rows = rows.filter(r => {
@@ -7460,6 +7341,69 @@ function renderDeptList() {
              acerCaseStatus.includes(searchText);
     });
   }
+
+  return rows;
+}
+
+function renderDeptList() {
+  const selectAll = document.getElementById('selectAllDept');
+  if (selectAll) selectAll.checked = false;
+  const headerCol = document.getElementById('deptStatusHeaderCol');
+  if (headerCol) headerCol.innerHTML = 'Status';
+
+  const body = document.getElementById('deptListBody');
+  const label = document.getElementById('deptDrillLabel');
+  const clearBtn = document.getElementById('deptDrillClear');
+  let labelText = '— active tickets';
+
+  if (deptDrillFilter) {
+    const f = deptDrillFilter;
+    if (f.type === 'status') {
+      if (f.val === 'total') labelText = '— all active tickets';
+      else if (f.val === 'ClosedWithOTP') labelText = '— Closed with OTP';
+      else if (f.val === 'ClosedWithoutOTP') labelText = '— Closed without OTP';
+      else labelText = '— ' + f.val;
+    } else if (f.type === 'branch') {
+      if (f.val === 'UNMAPPED') labelText = '— Unmapped';
+      else {
+        const b = (deptDash.branches || []).find(x => x.branchId === f.val);
+        labelText = '— ' + (b ? b.branchName : f.val) + ' branch (open, oldest first)';
+      }
+    } else if (f.type === 'today_inflow') {
+      const targetDate = f.targetDate;
+      let dateLabel = targetDate;
+      try {
+        const parts = targetDate.split('-');
+        if (parts.length === 3) {
+          const dObj = new Date(parts[0], parts[1] - 1, parts[2]);
+          dateLabel = dObj.toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
+        }
+      } catch(e){}
+      if (f.branchName && f.branchName !== 'ALL') {
+        labelText = `— Inflow on ${dateLabel} for ${f.branchName}`;
+      } else {
+        labelText = `— Inflow on ${dateLabel} (All Branches)`;
+      }
+    } else if (f.type === 'today_outflow') {
+      const targetDate = f.targetDate;
+      let dateLabel = targetDate;
+      try {
+        const parts = targetDate.split('-');
+        if (parts.length === 3) {
+          const dObj = new Date(parts[0], parts[1] - 1, parts[2]);
+          dateLabel = dObj.toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
+        }
+      } catch(e){}
+      const statusText = f.status === 'ALL' ? 'Total' : (f.status === 'InProgress' ? 'In Progress' : (f.status === 'PartRequest' ? 'Part Request' : (f.status === 'PendingOTP' ? 'Pending OTP' : f.status)));
+      if (f.branchName && f.branchName !== 'ALL') {
+        labelText = `— Outflow (${statusText}) on ${dateLabel} for ${f.branchName}`;
+      } else {
+        labelText = `— Outflow (${statusText}) on ${dateLabel} (All Branches)`;
+      }
+    }
+  }
+
+  const rows = getFilteredDeptComplaints();
 
   label.textContent = labelText + ' · ' + rows.length + ' ticket(s)';
   clearBtn.style.display = deptDrillFilter ? '' : 'none';
@@ -7504,24 +7448,18 @@ function renderDeptList() {
 async function finalizePendingOtp(ticketId) {
   const otp = (prompt('Ticket ' + ticketId + ' was closed on site without OTP.\n\nEnter the OTP collected from the school to finalize the closure:') || '').trim();
   if (!otp) return;
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = '⏳ Closing…';
   try {
-    const res = await fetch(GOOGLE_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({
-        action: 'resolve_department_complaint',
-        ticketId: ticketId,
-        resolutionAction: 'finalize_otp',
-        otp: otp,
-        resolvedBy: (currentUser && currentUser.name) || 'admin',
-      }),
-    });
-    const out = await res.json();
-    if (out.status !== 'ok') throw new Error(out.message || 'Server rejected the update');
-    showToast('✅ Ticket ' + ticketId + ' closed with OTP.', 'success');
+    const res = await fetch(GOOGLE_SCRIPT_URL + '?action=finalize_pending_otp&ticketId=' + encodeURIComponent(ticketId) + '&otp=' + encodeURIComponent(otp) + '&t=' + Date.now()).then(r => r.json());
+    if (res.error) throw new Error(res.error);
+    showToast('✅ Ticket ' + ticketId + ' closed with OTP!', 'success');
     loadDeptDashboard();
-  } catch (e) {
+  } catch(e) {
     showToast('❌ ' + e.message, 'danger');
+    btn.disabled = false;
+    btn.textContent = '📩 Enter OTP';
   }
 }
 
@@ -7618,44 +7556,7 @@ function viewDeptDetails(ticketId) {
 }
 
 function downloadDeptReport() {
-  let rows = deptList.slice();
-  if (!deptDrillFilter) {
-    rows = rows.filter(r => r.internalStatus !== 'Closed' && r.internalStatus !== 'PendingOTP');
-  } else {
-    const f = deptDrillFilter;
-    if (f.type === 'status') {
-      if (f.val === 'total') {
-        rows = rows.filter(r => r.internalStatus !== 'Closed' && r.internalStatus !== 'PendingOTP');
-      }
-      else if (f.val === 'ClosedWithOTP') { rows = rows.filter(r => r.internalStatus === 'Closed' && r.closureType === 'ClosedWithOTP'); }
-      else if (f.val === 'ClosedWithoutOTP') { rows = rows.filter(r => r.internalStatus === 'Closed' && r.closureType !== 'ClosedWithOTP'); }
-      else { rows = rows.filter(r => r.internalStatus === f.val); }
-    } else if (f.type === 'branch') {
-      if (f.val === 'UNMAPPED') { rows = rows.filter(r => !r.branchId); }
-      else {
-        rows = rows.filter(r => r.branchId === f.val);
-        rows = rows.filter(r => r.internalStatus !== 'Closed' && r.internalStatus !== 'PendingOTP');
-      }
-    }
-  }
-
-  const searchText = (document.getElementById('deptFilterText')?.value || '').toLowerCase().trim();
-  if (searchText) {
-    rows = rows.filter(r => {
-      const school = String(r.school || '').toLowerCase();
-      const schoolId = String(r.schoolId || '').toLowerCase();
-      const serialNumber = String(r.serialNumber || '').toLowerCase();
-      const ticketId = String(r.ticketId || '').toLowerCase();
-      const district = String(r.district || '').toLowerCase();
-      const block = String(r.block || '').toLowerCase();
-      return school.includes(searchText) || 
-             schoolId.includes(searchText) || 
-             serialNumber.includes(searchText) || 
-             ticketId.includes(searchText) ||
-             district.includes(searchText) ||
-             block.includes(searchText);
-    });
-  }
+  const rows = getFilteredDeptComplaints();
 
   if (rows.length === 0) {
     showToast('⚠️ No department complaints data available to download', 'warn');
