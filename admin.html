@@ -7266,6 +7266,78 @@ async function bulkUpdateDeptStatus(action) {
   await loadDeptDashboard();
 }
 
+async function submitDeptStatusUpdate(action) {
+  const ticketId = (document.getElementById('deptDetTitle').getAttribute('data-ticket-id') || '').trim();
+  if (!ticketId) return;
+
+  const serial = document.getElementById('deptModalSerial').value.trim();
+  const technician = document.getElementById('deptModalTechnician').value.trim();
+  const notes = document.getElementById('deptModalNotes').value.trim();
+  const otp = document.getElementById('deptModalOtp').value.trim();
+  const suspectedPart = document.getElementById('deptModalPart').value;
+
+  if (action === 'closed_with_otp' || action === 'closed_without_otp' || action === 'part_request') {
+    if (!serial) {
+      showToast('⚠️ Please enter a Serial Number', 'warn');
+      return;
+    }
+    if (serial.length > 22) {
+      showToast('⚠️ Serial Number cannot exceed 22 characters', 'warn');
+      return;
+    }
+    if (isInvalidSerialNumber(serial)) {
+      showToast('⚠️ Please enter a valid Serial Number (cannot be blank, null, or N/A)', 'warn');
+      return;
+    }
+  }
+
+  if (action === 'closed_with_otp' && !otp) {
+    showToast('⚠️ Please enter the OTP Code', 'warn');
+    return;
+  }
+
+  if (action === 'part_request' && !suspectedPart) {
+    showToast('⚠️ Please select a Suspected Part', 'warn');
+    return;
+  }
+
+  const confirmMsg = `Are you sure you want to update ticket ${ticketId} status to "${action.replace(/_/g, ' ').toUpperCase()}"?`;
+  if (!confirm(confirmMsg)) return;
+
+  const block = document.getElementById('deptDetUpdateStatusBlock');
+  const origHtml = block.innerHTML;
+  block.innerHTML = '<div style="text-align:center;color:var(--primary);font-weight:bold;padding:10px;width:100%;">⏳ Submitting update to Google Sheet...</div>';
+
+  try {
+    const res = await fetch(GOOGLE_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'resolve_department_complaint',
+        ticketId: ticketId,
+        resolutionAction: action,
+        resolvedBy: (currentUser && currentUser.name) || 'admin',
+        technicianName: technician,
+        diagnosisNotes: notes,
+        serialNumber: serial,
+        otp: otp,
+        suspectedPart: suspectedPart,
+        source: 'admin_portal'
+      })
+    });
+    const out = await res.json();
+    if (out.status !== 'ok') throw new Error(out.message || 'Server rejected the update');
+    
+    showToast('✅ Ticket status updated successfully!', 'success');
+    closeModal('deptDetailModal');
+    await loadDeptDashboard();
+  } catch (e) {
+    showToast('❌ ' + e.message, 'danger');
+  } finally {
+    block.innerHTML = origHtml;
+  }
+}
+
 function getFilteredDeptComplaints() {
   let rows = deptList.slice();
   if (!deptDrillFilter) {
