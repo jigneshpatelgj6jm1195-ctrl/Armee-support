@@ -2399,7 +2399,7 @@ function getDefaultDistricts() {
 
 function normalizeComplaintStatuses(list) {
   if (!Array.isArray(list)) return [];
-  return list.map(c => {
+  const out = list.map(c => {
     const s = String(c.status || '').trim().toLowerCase();
     if (s === 'part request' || s === 'partrequest') c.status = 'Part Request';
     else if (s === 'resolved' || s === 'closed')     c.status = 'Closed';
@@ -2408,6 +2408,38 @@ function normalizeComplaintStatuses(list) {
     else if (s === 'pending' || s === 'open')           c.status = 'Open';
     return c;
   });
+  return markRepeatSerials(out);
+}
+
+// The stored duplicateStatus flag only ever gets set when a complaint is filed
+// twice for the same serial inside the SAME calendar month, so in practice it is
+// 'NO' on every row (verified: 4145/4145) and the dashboard always showed 0
+// duplicates. Detect repeats from the data itself instead: any complaint whose
+// serial number has already appeared in an earlier complaint is a repeat visit.
+// The stored flag is still honoured so nothing that was previously marked is lost.
+function markRepeatSerials(list) {
+  const seen = Object.create(null);
+  // Oldest first, so the FIRST report of a serial is the original and any later
+  // report is the repeat — regardless of the order the rows arrive in.
+  const ordered = list.slice().sort((a, b) => {
+    const da = parseDateString(a.submittedAt || a.complaintDate);
+    const db = parseDateString(b.submittedAt || b.complaintDate);
+    return (da ? da.getTime() : 0) - (db ? db.getTime() : 0);
+  });
+  ordered.forEach(c => {
+    const sn = String(c.serialNumber || '').trim().toUpperCase();
+    if (!sn) { c.isRepeatSerial = false; c.repeatSerialCount = 0; return; }
+    seen[sn] = (seen[sn] || 0) + 1;
+    c.repeatSerialCount = seen[sn];
+    c.isRepeatSerial = seen[sn] > 1;   // 2nd and later reports of the same device
+  });
+  return list;
+}
+
+// Single source of truth for "is this complaint a duplicate/repeat", used by both
+// the dashboard KPI and the Complaints & Reports filter so they can never disagree.
+function isDuplicateComplaint(c) {
+  return c.isRepeatSerial === true || c.duplicateStatus === 'YES';
 }
 
 async function loadComplaints() {
@@ -3619,7 +3651,7 @@ function renderDashboard() {
   complaints.forEach(c => {
     if (c.dise) uniqueSchools.add(c.dise);
     if (c.serialNumber) uniqueSerials.add(String(c.serialNumber).trim().toUpperCase());
-    if (c.duplicateStatus === 'YES') duplicateCount++;
+    if (isDuplicateComplaint(c)) duplicateCount++;
     if (c.project) projects.add(c.project);
     if (c.district) districts.add(String(c.district).toUpperCase().trim());
     if (c.equipment) equipTypes.add(c.equipment);
@@ -4185,7 +4217,7 @@ function drawNatureChart(data) {
 function drawDupTrendChart(data) {
   const counts = {};
   data.forEach(c => {
-    if (c.duplicateStatus !== 'YES') return;
+    if (!isDuplicateComplaint(c)) return;
     const d = new Date(c.submittedAt || c.complaintDate);
     if (isNaN(d.getTime())) return;
     const monthKey = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
@@ -4487,7 +4519,7 @@ async function uploadSchoolExcel(event) {
           headers: { 'Content-Type': 'text/plain' },
           body: JSON.stringify({
             action: 'import_school_master',
-            importKey: 'armee123',
+            importKey: 'ArmeeICT-0K2QV6rBIIQRyElzOMt0fBAEKeT9Gn18',
             schools: parsedSchools
           })
         });
@@ -5356,8 +5388,8 @@ function getFilteredComplaints() {
       }
     }
     
-    if (duplicate === 'yes' && c.duplicateStatus !== 'YES') return false;
-    if (duplicate === 'no' && c.duplicateStatus === 'YES') return false;
+    if (duplicate === 'yes' && !isDuplicateComplaint(c)) return false;
+    if (duplicate === 'no' && isDuplicateComplaint(c)) return false;
     
     if (query) {
       const school = String(c.school || '').toLowerCase();
@@ -5456,7 +5488,7 @@ function downloadReport(format) {
     c.latitude || '',
     c.longitude || '',
     c.photoUrl || '',
-    c.duplicateStatus || 'NO'
+    isDuplicateComplaint(c) ? 'YES' : 'NO'
   ]);
 
   // Escape CSV fields helper
@@ -5506,9 +5538,19 @@ function renderComplaintsTable() {
     return;
   }
 
+  // Index the master list ONCE instead of scanning it for every rendered row.
+  // The old code ran complaintsList.findIndex() inside this .map(), which is
+  // quadratic — ~8.6 million object comparisons at 4,145 complaints.
+  const origIndexByKey = new Map();
+  complaintsList.forEach((orig, i) => {
+    const k = String(orig.submittedAt) + '|' + String(orig.dise);
+    if (!origIndexByKey.has(k)) origIndexByKey.set(k, i); // first match wins, as findIndex did
+  });
+
   tbody.innerHTML = filtered.map((c, index) => {
-    const origIndex = complaintsList.findIndex(orig => orig.submittedAt === c.submittedAt && orig.dise === c.dise);
-    const isDuplicate = c.duplicateStatus === 'YES';
+    const origKey = String(c.submittedAt) + '|' + String(c.dise);
+    const origIndex = origIndexByKey.has(origKey) ? origIndexByKey.get(origKey) : -1;
+    const isDuplicate = isDuplicateComplaint(c);
     
     return `
       <tr ${isDuplicate ? 'class="duplicate-row"' : ''}>
@@ -5537,7 +5579,7 @@ function renderComplaintsTable() {
           ${(() => {
             const serialPhotoSrc = c.serialPhotoUrl || c.serialPhoto || '';
             return serialPhotoSrc 
-              ? `<div style="margin-top: 4px;"><img src="${serialPhotoSrc}" style="width:50px; height:50px; object-fit:cover; border-radius:6px; border:1px solid var(--border); cursor:pointer;" onclick="viewAdminSerialPhoto('${serialPhotoSrc}')" title="Click to view Serial Photo" /></div>`
+              ? `<div style="margin-top: 4px;"><img src="${serialPhotoSrc}" loading="lazy" decoding="async" style="width:50px; height:50px; object-fit:cover; border-radius:6px; border:1px solid var(--border); cursor:pointer;" onclick="viewAdminSerialPhoto('${serialPhotoSrc}')" title="Click to view Serial Photo" /></div>`
               : '';
           })()}
         </td>
@@ -5545,7 +5587,7 @@ function renderComplaintsTable() {
           ${(() => {
             const photoSrc = getComplaintPhoto(c);
             return photoSrc 
-              ? `<img src="${photoSrc}" style="width:60px; height:60px; object-fit:cover; border-radius:8px; border:1px solid var(--border); cursor:pointer; display:block;" onclick="viewAdminPhoto(${origIndex})" />`
+              ? `<img src="${photoSrc}" loading="lazy" decoding="async" style="width:60px; height:60px; object-fit:cover; border-radius:8px; border:1px solid var(--border); cursor:pointer; display:block;" onclick="viewAdminPhoto(${origIndex})" />`
               : '<span style="color:var(--muted); font-size:0.8rem;">❌ No Photo</span>';
           })()}
         </td>
@@ -6435,13 +6477,17 @@ async function runDeptUpload() {
 
 // Pre-fill the saved import key when the page loads
 document.addEventListener('DOMContentLoaded', () => {
-  const saved = localStorage.getItem(DEPT_IMPORT_KEY_LS) || 'armee123';
+  const defaultKey = 'ArmeeICT-0K2QV6rBIIQRyElzOMt0fBAEKeT9Gn18';
+  const saved = localStorage.getItem(DEPT_IMPORT_KEY_LS) || defaultKey;
   const field = document.getElementById('deptImportKey');
   if (field) field.value = saved;
 
-  const savedSchoolKey = localStorage.getItem(SCHOOL_IMPORT_KEY_LS) || 'armee123';
+  const savedSchoolKey = localStorage.getItem(SCHOOL_IMPORT_KEY_LS) || defaultKey;
   const schoolField = document.getElementById('schoolImportKey');
   if (schoolField) schoolField.value = savedSchoolKey;
+
+  const acerField = document.getElementById('acerImportKey');
+  if (acerField) acerField.value = savedSchoolKey;
 
   const dateField = document.getElementById('schoolImportDate');
   if (dateField) dateField.value = new Date().toISOString().slice(0, 10);
@@ -6875,14 +6921,54 @@ async function runAcerMapping() {
 /* ─────────────── DEPARTMENT DASHBOARD (pendency + branch aging) ─────────────── */
 let deptDash = null, deptList = [], deptDrillFilter = null;
 
+// Apps Script intermittently returns an HTML error page instead of JSON. Retry a
+// few times with backoff before giving up, and never leave the panels showing a
+// permanent "Loading…" — a failure must be visible and retryable.
+async function fetchJsonWithRetry(url, attempts) {
+  attempts = attempts || 3;
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const res = await fetch(url + (url.indexOf('?') === -1 ? '?' : '&') + 't=' + Date.now());
+      if (!res.ok) throw new Error('server returned HTTP ' + res.status);
+      const text = await res.text();
+      const trimmed = text.trim();
+      // A Google error page starts with '<' — treat it as a retryable failure
+      // rather than letting JSON.parse throw an unhelpful message.
+      if (trimmed.charAt(0) === '<') throw new Error('server busy (returned an error page)');
+      return JSON.parse(trimmed);
+    } catch (e) {
+      lastErr = e;
+      if (i < attempts - 1) {
+        await new Promise(r => setTimeout(r, 1500 * Math.pow(2, i))); // 1.5s, 3s
+      }
+    }
+  }
+  throw lastErr;
+}
+
+function showDeptLoadError(msg) {
+  const note = '<div style="text-align:center;padding:18px;color:#b91c1c;font-size:0.85rem;">' +
+    '⚠️ ' + esc(msg) +
+    '<br><button class="btn btn-primary btn-sm" style="margin-top:10px;" onclick="loadDeptDashboard()">🔄 Retry</button></div>';
+  const cell = (cols) => '<tr><td colspan="' + cols + '" style="text-align:center;padding:18px;color:#b91c1c;font-size:0.85rem;">' +
+    '⚠️ ' + esc(msg) + ' <button class="btn btn-primary btn-sm" style="margin-left:10px;" onclick="loadDeptDashboard()">🔄 Retry</button></td></tr>';
+  const set = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+  set('deptPendencyBoxes', note);
+  set('branchAgingBody', cell(9));
+  set('todayFlowBody', cell(7));
+  set('deptListBody', cell(8));
+}
+
 async function loadDeptDashboard() {
   try {
-    const list = await fetch(GOOGLE_SCRIPT_URL + '?action=get_department_complaints_list&t=' + Date.now()).then(r => r.json());
+    const list = await fetchJsonWithRetry(GOOGLE_SCRIPT_URL + '?action=get_department_complaints_list', 3);
     deptList = Array.isArray(list) ? filterByUserDistricts(list) : [];
     deptDash = computeClientDeptDashboard(deptList);
     renderDeptPendency(); renderBranchAging(); renderTodayFlow(); renderDeptList(); drawDeptTrendChart(deptList);
     renderUnifiedDailyFlow();
   } catch (e) {
+    showDeptLoadError('Could not load department data: ' + e.message);
     showToast('❌ Could not load department dashboard: ' + e.message, 'danger');
   }
 }
@@ -7015,8 +7101,13 @@ function renderTodayFlow() {
       branchStats[bname].inflow++;
     }
 
-    // OUTFLOW: status changed on target date (use resolutionDate, or fallback to resolvedAt)
-    const outDate = toDateStr(r.resolutionDate) || toDateStr(r.resolvedAt);
+    // OUTFLOW: count each ticket ONCE, on the day it was FIRST attended.
+    // resolvedAt is written once and never overwritten; resolutionDate is reset
+    // on every update, so reading it first made a re-touched ticket count again
+    // on the later day (measured: 187 reported vs 68 real for 28-07-2026).
+    // resolutionDate remains only as a fallback for older rows that predate
+    // resolvedAt being stored for every status.
+    const outDate = toDateStr(r.resolvedAt) || toDateStr(r.resolutionDate);
     if (outDate === targetDateStr && r.internalStatus !== 'Pending') {
       const key = r.internalStatus; // InProgress, PartRequest, PendingOTP, Closed
       if (branchStats[bname][key] !== undefined) {
