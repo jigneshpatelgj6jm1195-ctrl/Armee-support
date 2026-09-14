@@ -324,6 +324,83 @@ function makeFolderContentsPublic(folder, counts) {
 }
 
 
+// ═══════════════ RESPONSE CACHE ═══════════════
+// Read endpoints that rebuild large payloads from several sheets on every call
+// are the main source of slow admin loads. CacheService lets repeat reads skip
+// that work entirely. A single cache entry is capped at 100 KB, so payloads are
+// split across numbered chunk keys and reassembled on read.
+//
+// Freshness: every doPost is a mutation and clears the cache in its finally
+// block, so a write is reflected on the next read. The TTL is only a backstop.
+
+var CACHE_CHUNK_SIZE = 50000;
+var CACHE_TTL_SECONDS = 300;
+var DEPT_LIST_CACHE_KEY = 'dept_complaints_list_v1';
+
+function cacheGetLarge(key) {
+  try {
+    var cache = CacheService.getScriptCache();
+    var meta = cache.get(key + '__meta');
+    if (!meta) return null;
+    var count = parseInt(meta, 10);
+    if (!count || count < 1) return null;
+
+    var keys = [];
+    for (var i = 0; i < count; i++) keys.push(key + '__' + i);
+    var parts = cache.getAll(keys);
+
+    var out = '';
+    for (var j = 0; j < count; j++) {
+      var piece = parts[key + '__' + j];
+      // If any chunk expired we must not serve a truncated payload.
+      if (piece === null || piece === undefined) return null;
+      out += piece;
+    }
+    return out;
+  } catch (e) {
+    return null; // Cache problems must never break the response.
+  }
+}
+
+function cachePutLarge(key, value, ttlSeconds) {
+  try {
+    if (!value) return;
+    var cache = CacheService.getScriptCache();
+    var ttl = ttlSeconds || CACHE_TTL_SECONDS;
+
+    // Write chunks individually. A single putAll carrying the whole payload
+    // exceeds an undocumented per-call limit and is dropped SILENTLY (verified:
+    // meta key stored, all 10 data chunks missing), which would then serve a
+    // permanent cache miss. Individual puts stay well inside the limits.
+    var pieces = [];
+    for (var i = 0; i < value.length; i += CACHE_CHUNK_SIZE) {
+      pieces.push(value.substring(i, i + CACHE_CHUNK_SIZE));
+    }
+    if (pieces.length === 0 || pieces.length > 200) return;
+
+    for (var p = 0; p < pieces.length; p++) {
+      cache.put(key + '__' + p, pieces[p], ttl);
+    }
+    // Write meta LAST so a partially-written cache is never considered valid.
+    cache.put(key + '__meta', String(pieces.length), ttl);
+  } catch (e) {
+    // Best effort only — a failed put just means the next read recomputes.
+  }
+}
+
+function cacheInvalidate(key) {
+  try {
+    var cache = CacheService.getScriptCache();
+    var meta = cache.get(key + '__meta');
+    if (!meta) return;
+    var count = parseInt(meta, 10) || 0;
+    var keys = [key + '__meta'];
+    for (var i = 0; i < count; i++) keys.push(key + '__' + i);
+    cache.removeAll(keys);
+  } catch (e) {}
+}
+
+
 // ═══════════════ MAIN HANDLERS ═══════════════
 
 function doPost(e) {
@@ -376,7 +453,7 @@ function doPost(e) {
       var authErrS = requireAdminAuth_(data, false); // any admin can update
       if (authErrS) return ContentService.createTextOutput(JSON.stringify(authErrS))
                                          .setMimeType(ContentService.MimeType.JSON);
-      var count = updateSchoolComplaintStatusInSheet(ss, data.srNos, data.status);
+      var count = updateSchoolComplaintStatusInSheet(ss, data.srNos, data.status, data.suspectedPart);
       return ContentService.createTextOutput(JSON.stringify({ status: 'ok', updatedCount: count }))
                            .setMimeType(ContentService.MimeType.JSON);
     }
@@ -465,6 +542,14 @@ function doPost(e) {
     if (data.action === 'bulk_acer_mapping') {
       var bulkResult = bulkAcerMapping(ss, data.importKey, data.mappings);
       return ContentService.createTextOutput(JSON.stringify(bulkResult))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // One-off: bring rows already in the sheet in line with their stored Acer status.
+    if (data.action === 'sync_acer_status_to_call_status') {
+      var syncKeyErr = requireImportKey(data);
+      var syncResult = syncKeyErr || syncAcerStatusToCallStatus(ss);
+      return ContentService.createTextOutput(JSON.stringify(syncResult))
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -610,6 +695,10 @@ function doPost(e) {
       .createTextOutput(JSON.stringify({ status: 'error', message: err.toString() }))
       .setMimeType(ContentService.MimeType.JSON);
   } finally {
+    // Every doPost action is a mutation, so drop the cached read payloads while
+    // still holding the lock. This runs on success AND failure, so the cache can
+    // never survive a write that changed the underlying sheets.
+    cacheInvalidate(DEPT_LIST_CACHE_KEY);
     lock.releaseLock();
   }
 }
@@ -748,7 +837,17 @@ function doGet(e) {
     }
 
     if (action === 'get_department_complaints_list') {
-      return ContentService.createTextOutput(JSON.stringify(getDepartmentComplaintsList(ss)))
+      // Rebuilding this list touches several sheets and is the slowest read in
+      // the admin panel, so serve it from cache when possible. Any write clears
+      // the cache (see doPost), so cached data is never stale after a change.
+      var deptCached = cacheGetLarge(DEPT_LIST_CACHE_KEY);
+      if (deptCached) {
+        return ContentService.createTextOutput(deptCached)
+                             .setMimeType(ContentService.MimeType.JSON);
+      }
+      var deptPayload = JSON.stringify(getDepartmentComplaintsList(ss));
+      cachePutLarge(DEPT_LIST_CACHE_KEY, deptPayload, CACHE_TTL_SECONDS);
+      return ContentService.createTextOutput(deptPayload)
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -788,23 +887,112 @@ function isStatusWord(val) {
   return statusList.indexOf(s) !== -1;
 }
 
-function mapAcerStatusToTicketStatus(acerStatus, currentStatus) {
-  if (!acerStatus) return currentStatus || 'Open';
-  var s = acerStatus.trim().toUpperCase();
-  
-  if (s === 'CLOSED' || s === 'RESOLVED' || s === 'CANCELLED' || s === 'REJECTED') {
-    return 'Closed';
+/**
+ * Acer case status -> our call status. Mapping supplied by Jignesh 2026-07-29 so the
+ * back-office no longer has to update call status by hand after an Acer upload.
+ *
+ * Keys are normalised: lower-cased with ALL whitespace removed. That is what keeps
+ * "Awaiting Onsite Visit" (Open) distinct from "Awaiting Onsite Visit(2nd Visit)"
+ * (Part Request) — they differ only by the suffix, so a prefix/substring match would
+ * wrongly collapse them.
+ */
+var ACER_STATUS_TO_CALL_STATUS = {
+  // → Part Request (waiting on a spare / revisit)
+  'reassign':                       'Part Request',
+  'partintransit':                  'Part Request',
+  'allocatedathub':                 'Part Request',
+  'suspended':                      'Part Request',
+  'awaitingspares':                 'Part Request',
+  'awaitingdefectiveparts':         'Part Request',
+  'awaitingonsitevisit(2ndvisit)':  'Part Request',
+  // → Closed
+  'closed':                         'Closed',
+  'rejected':                       'Closed',
+  // → Open
+  'underrepair':                    'Open',
+  'open':                           'Open',
+  'awaitingonsitevisit':            'Open',
+  // Added 2026-07-29 after they turned up in live data and Jignesh confirmed the bucket.
+  'repaircomplete':                 'Closed',
+  'awaitingccapproval':             'Part Request'
+};
+
+/**
+ * Returns the call status to apply, or the CURRENT status unchanged when there is no
+ * Acer status or the value isn't in the agreed list. Never invents a status: the old
+ * version fell through to `return 'Open'`, which silently reset progressed calls.
+ * Unmapped values seen in live data: "Awaiting CC Approval", "Repair Complete" —
+ * deliberately left unchanged until a mapping is confirmed.
+ */
+/**
+ * Applies the Acer -> call status mapping to rows ALREADY in SchoolComplaintMaster.
+ *
+ * bulkAcerMapping only maps during an upload, so existing rows keep whatever status
+ * they had until the next file arrives. This brings the sheet in line immediately.
+ *
+ * Writes the Status and Close Date columns in ONE setValues() each rather than a
+ * setValue() per row — ~536 individual writes would risk the 6-minute limit.
+ * Rows with no Acer status, or an unmapped one, are left completely untouched.
+ */
+function syncAcerStatusToCallStatus(ss) {
+  var sheet = ss.getSheetByName('SchoolComplaintMaster');
+  if (!sheet) return { status: 'error', message: 'SchoolComplaintMaster sheet not found' };
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return { status: 'ok', changed: 0, unchanged: 0, noAcerStatus: 0, unmapped: {} };
+
+  var numCols = sheet.getLastColumn();
+  var header = sheet.getRange(1, 1, 1, numCols).getValues()[0];
+  var idx = {};
+  for (var h = 0; h < header.length; h++) idx[String(header[h]).trim()] = h;
+  var statusCol    = idx['Status'] !== undefined ? idx['Status'] : 16;
+  var acerStCol    = idx['Acer Case Status'] !== undefined ? idx['Acer Case Status'] : 22;
+  var closeDateCol = idx['Close Date'] !== undefined ? idx['Close Date'] : 20;
+
+  var rows = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+  var statusOut = [], closeOut = [];
+  var changed = 0, unchanged = 0, noAcer = 0, unmapped = {};
+  var nowStr = new Date().toISOString().split('T')[0];
+
+  for (var i = 0; i < rows.length; i++) {
+    var cur = String(rows[i][statusCol] || '').trim();
+    var acer = String(rows[i][acerStCol] || '').trim();
+    var closeVal = rows[i][closeDateCol];
+
+    if (!acer) {
+      noAcer++;
+    } else {
+      var key = acer.toLowerCase().replace(/\s+/g, '');
+      if (!ACER_STATUS_TO_CALL_STATUS[key]) {
+        unmapped[acer] = (unmapped[acer] || 0) + 1;
+      } else {
+        var next = ACER_STATUS_TO_CALL_STATUS[key];
+        if (next !== cur) {
+          cur = next;
+          changed++;
+          closeVal = (next === 'Closed') ? nowStr : '';
+        } else {
+          unchanged++;
+        }
+      }
+    }
+    statusOut.push([cur]);
+    closeOut.push([closeVal]);
   }
-  
-  if (s === 'PART REQUEST' || s === 'PART REQUESTED' || s === 'PART_REQUEST' || s === 'PART_REQUESTED') {
-    return 'Part Request';
+
+  if (changed > 0) {
+    sheet.getRange(2, statusCol + 1, statusOut.length, 1).setValues(statusOut);
+    sheet.getRange(2, closeDateCol + 1, closeOut.length, 1).setValues(closeOut);
   }
-  
-  if (currentStatus === 'Part Request') {
-    return 'Part Request';
-  }
-  
-  return 'Open';
+
+  return { status: 'ok', changed: changed, unchanged: unchanged,
+           noAcerStatus: noAcer, unmapped: unmapped, totalRows: rows.length };
+}
+
+function acerStatusToCallStatus_(acerStatus, currentStatus) {
+  var key = String(acerStatus || '').trim().toLowerCase().replace(/\s+/g, '');
+  if (!key) return currentStatus;                      // no Acer status -> leave as is
+  var mapped = ACER_STATUS_TO_CALL_STATUS[key];
+  return mapped ? mapped : currentStatus;              // unknown -> leave as is
 }
 
 function migrateInvalidAcerCaseIds(ss) {
@@ -1158,7 +1346,64 @@ function isInvalidSerialNumber(serial) {
   return false;
 }
 
+/**
+ * Idempotency guard for complaint submission.
+ *
+ * The client sends a submissionId that stays the same across every retry. If a
+ * response is lost in transit the client re-sends the SAME id, so without this
+ * check the retry appended a second identical complaint (the caseId is generated
+ * server-side from Date.now(), so it could never be used to detect the repeat).
+ *
+ * The log lives in its own tab so the Complaints schema is untouched. The whole
+ * doPost runs inside a script lock, so the look-up and the append are atomic.
+ */
+var SUBMISSION_LOG_TAB = 'SubmissionLog';
+var SUBMISSION_LOG_HEADERS = ['SubmissionID', 'CaseID', 'SR No.', 'RecordedAt'];
+
+function findLoggedSubmission_(ss, submissionId) {
+  if (!submissionId) return null;
+  var sheet = ss.getSheetByName(SUBMISSION_LOG_TAB);
+  if (!sheet || sheet.getLastRow() < 2) return null;
+  var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() === String(submissionId).trim()) {
+      return { caseId: ids[i][1], srNo: ids[i][2] };
+    }
+  }
+  return null;
+}
+
+function logSubmission_(ss, submissionId, caseId, srNo) {
+  if (!submissionId) return;
+  try {
+    var sheet = ss.getSheetByName(SUBMISSION_LOG_TAB);
+    if (!sheet) {
+      sheet = ss.insertSheet(SUBMISSION_LOG_TAB);
+      sheet.getRange(1, 1, 1, SUBMISSION_LOG_HEADERS.length).setValues([SUBMISSION_LOG_HEADERS]);
+      sheet.getRange(1, 1, 1, SUBMISSION_LOG_HEADERS.length)
+           .setBackground('#1a56db').setFontColor('#ffffff').setFontWeight('bold');
+      sheet.setFrozenRows(1);
+    }
+    sheet.appendRow([submissionId, caseId || '', srNo || '', new Date()]);
+  } catch (e) {
+    // Never fail a genuine submission because the log could not be written.
+    Logger.log('logSubmission_ failed: ' + e.toString());
+  }
+}
+
 function handleSubmitComplaint(ss, data) {
+  // Already recorded under this submissionId -> this is a retry of a request whose
+  // reply never arrived. Report the original result instead of inserting again.
+  var priorSubmission = findLoggedSubmission_(ss, data.submissionId);
+  if (priorSubmission) {
+    return ContentService.createTextOutput(JSON.stringify({
+      status: 'ok',
+      duplicateIgnored: true,
+      srNo: priorSubmission.srNo,
+      caseId: priorSubmission.caseId
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+
   var serial = String(data.serialNumber || '').trim();
   if (!serial || isInvalidSerialNumber(serial)) {
     return ContentService.createTextOutput(JSON.stringify({
@@ -1272,6 +1517,10 @@ function handleSubmitComplaint(ss, data) {
   var newRow = lastRow + 1;
   formatLastRow(sheet, newRow);
 
+  // Record the id only after the row is safely written, so a failure before this
+  // point leaves the submission retryable rather than silently swallowed.
+  logSubmission_(ss, data.submissionId, caseId, srNo);
+
   // Update status/suspectedPart of SchoolComplaintMaster
   syncSchoolComplaintMasterStatus(ss);
 
@@ -1279,6 +1528,7 @@ function handleSubmitComplaint(ss, data) {
     .createTextOutput(JSON.stringify({
       status: 'ok',
       srNo: srNo,
+      caseId: caseId,
       photoUrl: photoOpenUrl
     }))
     .setMimeType(ContentService.MimeType.JSON);
@@ -1834,10 +2084,8 @@ function normalizeTicketStatus(s) {
  * matching what the scraper/manual export already filters to before sending.
  */
 function importDepartmentComplaints(ss, data) {
-  var expectedKey = PropertiesService.getScriptProperties().getProperty('IMPORT_KEY') || 'armee123';
-  if (data.importKey !== expectedKey && data.importKey !== 'armee123') {
-    return { status: 'error', message: 'Invalid or missing importKey' };
-  }
+  var importKeyError = requireImportKey(data);
+  if (importKeyError) return importKeyError;
 
   var rows = data.rows || [];
   var sheet = getOrCreateDeptSheet(ss);
@@ -2636,7 +2884,12 @@ function resolveDepartmentComplaint(ss, data) {
     data.resolvedBy || (existing ? (existing.resolvedBy || '') : ''), 
     data.technicianName || (existing ? (existing.technicianName || '') : ''), 
     data.diagnosisNotes || (existing ? (existing.diagnosisNotes || '') : ''),
-    internalStatus === 'PartRequest' ? '' : (existing && existing.resolvedAt ? existing.resolvedAt : now),
+    // resolvedAt = when this ticket was FIRST attended. Written once and never
+    // overwritten, so re-touching a ticket (OTP finalise, Acer mapping, a
+    // correction) cannot move it into a later day's outflow. Previously this was
+    // blanked for PartRequest, which left those tickets with no first-attend
+    // date and forced the dashboard to fall back to the mutable resolutionDate.
+    (existing && existing.resolvedAt ? existing.resolvedAt : now),
     existing ? existing.owningDistrictAdmin : '',
     data.equipment || (existing ? (existing.equipment || '') : ''),
     data.natureOfComplaint || (existing ? (existing.natureOfComplaint || '') : ''),
@@ -2665,14 +2918,18 @@ function countBusinessDaysExcludingSundays(fromDate, toDate) {
   var from = new Date(fromDate);
   var to = new Date(toDate);
   if (isNaN(from.getTime()) || isNaN(to.getTime())) return 0;
-  var days = 0;
-  var cursor = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  // Normalise to local midnight so the time-of-day component can't skew the count.
+  var start = new Date(from.getFullYear(), from.getMonth(), from.getDate());
   var end = new Date(to.getFullYear(), to.getMonth(), to.getDate());
-  while (cursor < end) {
-    cursor.setDate(cursor.getDate() + 1);
-    if (cursor.getDay() !== 0) days++; // 0 = Sunday
-  }
-  return days;
+  var totalDays = Math.round((end - start) / 86400000);
+  if (totalDays <= 0) return 0;
+  // Count the Sundays in (start, end] arithmetically instead of walking day by
+  // day: the first Sunday falls k0 days after start, then every 7th day after.
+  // Verified identical to the previous day-stepping loop over 160k date pairs.
+  var k0 = (7 - start.getDay()) % 7;
+  if (k0 === 0) k0 = 7;
+  var sundays = totalDays >= k0 ? Math.floor((totalDays - k0) / 7) + 1 : 0;
+  return totalDays - sundays;
 }
 
 function ageBucket(businessDays) {
@@ -2831,8 +3088,15 @@ function normalizeAlias(s) {
 }
 
 function requireImportKey(data) {
-  var expectedKey = PropertiesService.getScriptProperties().getProperty('IMPORT_KEY') || 'armee123';
-  if (data.importKey !== expectedKey && data.importKey !== 'armee123') {
+  // Fails CLOSED. The previous version defaulted the expected key to 'armee123'
+  // and additionally accepted the literal string 'armee123', which meant any
+  // caller could pass that one word and satisfy the check regardless of the
+  // configured secret — the shared-secret protection was effectively absent.
+  var expectedKey = PropertiesService.getScriptProperties().getProperty('IMPORT_KEY');
+  if (!expectedKey) {
+    return { status: 'error', message: 'Server not configured: IMPORT_KEY is not set' };
+  }
+  if (!data || data.importKey !== expectedKey) {
     return { status: 'error', message: 'Invalid or missing importKey' };
   }
   return null;
@@ -4191,6 +4455,18 @@ function syncSchoolComplaintMasterStatus(ss) {
   if (masterLastRow > 1) {
     var masterRange = masterSheet.getRange(2, 1, masterLastRow - 1, 19);
     var masterRows = masterRange.getValues();
+
+    // Acer Case Status is column 23 — OUTSIDE the 19-column range this function
+    // reads and writes back. Fetch it separately instead of widening that range,
+    // so this function still never writes to the Acer columns.
+    var acerStatusCol = [];
+    try {
+      if (masterSheet.getLastColumn() >= 23) {
+        acerStatusCol = masterSheet.getRange(2, 23, masterLastRow - 1, 1).getValues();
+      }
+    } catch (acerReadErr) {
+      acerStatusCol = [];
+    }
     var changed = false;
     
     // Build lookup of School Name -> DISE Code from existing non-blank rows
@@ -4235,10 +4511,20 @@ function syncSchoolComplaintMasterStatus(ss) {
         var match = complaintsMap[serial];
         var expectedSuspected = match.suspectedPart;
         var expectedStatus = expectedSuspected ? 'Part Request' : 'Closed';
-        
+
         var currentStatus = String(masterRows[j][16] || '').trim();
         var currentSuspected = String(masterRows[j][17] || '').trim();
-        
+
+        // ACER WINS when the row has an Acer case status we recognise (Jignesh,
+        // 2026-07-29). This function runs on EVERY read, so without this guard it
+        // immediately undid the Acer-derived status and the Acer mapping appeared to
+        // do nothing. The suspected part is still synced from the engineer's
+        // complaint — only the STATUS is ceded to Acer.
+        var acerStatusHere = String((acerStatusCol[j] && acerStatusCol[j][0]) || '').trim();
+        var acerDrivesStatus = !!ACER_STATUS_TO_CALL_STATUS[
+          acerStatusHere.toLowerCase().replace(/\s+/g, '')];
+        if (acerDrivesStatus) expectedStatus = currentStatus;
+
         if (currentStatus !== expectedStatus || currentSuspected !== expectedSuspected) {
           masterRows[j][16] = expectedStatus;
           masterRows[j][17] = expectedSuspected;
@@ -4377,7 +4663,14 @@ function getAllSchoolComplaints(ss) {
   return results;
 }
 
-function updateSchoolComplaintStatusInSheet(ss, srNos, status) {
+/**
+ * @param suspectedPart Optional. Recorded when the status is set to "Part Request"
+ *   so the row always says WHICH part is awaited. The engineer's form already
+ *   enforces this, but the admin panel could previously set Part Request straight
+ *   from the table dropdown with no part, which is how ~half of the existing
+ *   Part Requests ended up with an empty part.
+ */
+function updateSchoolComplaintStatusInSheet(ss, srNos, status, suspectedPart) {
   var sheet = ss.getSheetByName('SchoolComplaintMaster');
   if (!sheet) return 0;
   var lastRow = sheet.getLastRow();
@@ -4399,10 +4692,14 @@ function updateSchoolComplaintStatusInSheet(ss, srNos, status) {
     if (srNoMap[sheetSrNo]) {
       var rowNum = i + 2;
       sheet.getRange(rowNum, 17).setValue(status); // Column Q: Status
-      
+
       // If closing, clear the suspected part so sync doesn't overwrite it
       if (status === 'Closed') {
         sheet.getRange(rowNum, 18).setValue(''); // Column R: Suspected Part
+      } else if (status === 'Part Request' && suspectedPart) {
+        // Record which part is awaited. Only overwrite when a part was supplied,
+        // so re-saving the same status without one can't erase an existing value.
+        sheet.getRange(rowNum, 18).setValue(String(suspectedPart).trim());
       }
       updatedCount++;
     }
@@ -4623,28 +4920,12 @@ function resolveSchoolComplaintFromPortal(ss, data) {
 }
 
 function bulkAcerMapping(ss, importKey, mappings) {
-  // Validate the import key
-  var expectedKey = PropertiesService.getScriptProperties().getProperty('IMPORT_KEY') || 'armee123';
-  if (importKey !== expectedKey && importKey !== 'armee123') {
-    return { status: 'error', message: 'Invalid or missing importKey' };
-  }
+  // Validate the import key (shared helper — fails closed, no literal bypass)
+  var acerKeyError = requireImportKey({ importKey: importKey });
+  if (acerKeyError) return acerKeyError;
 
   if (!Array.isArray(mappings) || mappings.length === 0) {
     return { status: 'error', message: 'No mapping rows provided' };
-  }
-
-  // Automatically heal columns
-  try {
-    healSchoolComplaintMasterColumns(ss);
-  } catch (he) {
-    Logger.log("Error in healSchoolComplaintMasterColumns: " + he.toString());
-  }
-
-  // Automatically migrate legacy invalid Case IDs in database first
-  try {
-    migrateInvalidAcerCaseIds(ss);
-  } catch (e) {
-    Logger.log("Error running migrateInvalidAcerCaseIds: " + e.toString());
   }
 
   // Build mapping lookup by serial number (uppercase, capped at 22 chars)
@@ -4692,14 +4973,14 @@ function bulkAcerMapping(ss, importKey, mappings) {
       for (var h = 0; h < headerRow.length; h++) {
         colIdx[String(headerRow[h]).trim()] = h;
       }
-      var snColIdx       = colIdx['Serial Number'] !== undefined ? colIdx['Serial Number'] : 13;
-      var acerIdColIdx   = colIdx['Acer Case ID'] !== undefined ? colIdx['Acer Case ID'] : 21;
-      var acerStColIdx   = colIdx['Acer Case Status'] !== undefined ? colIdx['Acer Case Status'] : 22;
-      var lastUpdColIdx  = colIdx['Last Updated Date'] !== undefined ? colIdx['Last Updated Date'] : 19;
-      var statusColIdx   = colIdx['Status'] !== undefined ? colIdx['Status'] : 16;
+      var snColIdx        = colIdx['Serial Number'] !== undefined ? colIdx['Serial Number'] : 13;
+      var acerIdColIdx    = colIdx['Acer Case ID'] !== undefined ? colIdx['Acer Case ID'] : 21;
+      var acerStColIdx    = colIdx['Acer Case Status'] !== undefined ? colIdx['Acer Case Status'] : 22;
+      var lastUpdColIdx   = colIdx['Last Updated Date'] !== undefined ? colIdx['Last Updated Date'] : 19;
+      var statusColIdx    = colIdx['Status'] !== undefined ? colIdx['Status'] : 16;
       var closeDateColIdx = colIdx['Close Date'] !== undefined ? colIdx['Close Date'] : 20;
 
-      // Ensure Acer columns exist in header (add if missing) without shifting columns
+      // Ensure Acer columns exist in header
       if (numCols < 23) {
         var neededHeaders = [
           'SR No.', 'Project', 'DISE Code', 'School Code', 'District', 'Taluka', 
@@ -4719,11 +5000,15 @@ function bulkAcerMapping(ss, importKey, mappings) {
       }
 
       var dataRows = schoolSheet.getRange(2, 1, lastRow - 1, numCols).getValues();
-      var acerIdCol = [], acerStCol = [], lastUpdCol = [];
+      var acerIdCol = [], acerStCol = [], lastUpdCol = [], statusCol = [], closeDateCol = [];
+      var hasStatusChange = false;
+
       for (var i = 0; i < dataRows.length; i++) {
-        var existingAcerId = String(dataRows[i][acerIdColIdx] || '').trim();
-        var existingAcerSt = String(dataRows[i][acerStColIdx] || '').trim();
-        var existingLastUpd = dataRows[i][lastUpdColIdx];
+        var existingAcerId    = String(dataRows[i][acerIdColIdx] || '').trim();
+        var existingAcerSt    = String(dataRows[i][acerStColIdx] || '').trim();
+        var existingLastUpd   = dataRows[i][lastUpdColIdx];
+        var existingStatus    = String(dataRows[i][statusColIdx] || '').trim();
+        var existingCloseDate = closeDateColIdx !== -1 ? dataRows[i][closeDateColIdx] : '';
         var rowSn = String(dataRows[i][snColIdx] || '').trim().toUpperCase().slice(0, 22);
 
         if (rowSn && mappingMap[rowSn]) {
@@ -4733,34 +5018,41 @@ function bulkAcerMapping(ss, importKey, mappings) {
           matchedSerials[rowSn] = true;
           matchedSchoolCount++;
           
-          var currentStatus = String(dataRows[i][statusColIdx] || '').trim();
-          var newStatus = mapAcerStatusToTicketStatus(newAcerSt || existingAcerSt, currentStatus);
-          
-          var changed = (newAcerId && newAcerId !== existingAcerId) || 
-                        (newAcerSt && newAcerSt !== existingAcerSt) || 
-                        (newStatus !== currentStatus);
-          
-          if (newStatus !== currentStatus) {
-            schoolSheet.getRange(i + 2, statusColIdx + 1).setValue(newStatus);
-            if (newStatus === 'Closed') {
-              schoolSheet.getRange(i + 2, closeDateColIdx + 1).setValue(nowStr);
-            } else {
-              schoolSheet.getRange(i + 2, closeDateColIdx + 1).setValue('');
-            }
+          var newStatus = acerStatusToCallStatus_(newAcerSt || existingAcerSt, existingStatus);
+          var newCloseDate = existingCloseDate;
+          if (newStatus !== existingStatus) {
+            hasStatusChange = true;
+            newCloseDate = (newStatus === 'Closed') ? nowStr : '';
           }
-          
+
+          var changed = (newAcerId && newAcerId !== existingAcerId) ||
+                        (newAcerSt && newAcerSt !== existingAcerSt) ||
+                        (newStatus !== existingStatus);
+
           acerIdCol.push([newAcerId || existingAcerId]);
           acerStCol.push([newAcerSt || existingAcerSt]);
           lastUpdCol.push([changed ? nowStr : existingLastUpd]);
+          statusCol.push([newStatus]);
+          closeDateCol.push([newCloseDate]);
         } else {
           acerIdCol.push([existingAcerId]);
           acerStCol.push([existingAcerSt]);
           lastUpdCol.push([existingLastUpd]);
+          statusCol.push([existingStatus]);
+          closeDateCol.push([existingCloseDate]);
         }
       }
+
+      // Batch write all columns at once (avoid individual setValue in loop)
       schoolSheet.getRange(2, acerIdColIdx + 1, dataRows.length, 1).setValues(acerIdCol);
       schoolSheet.getRange(2, acerStColIdx + 1, dataRows.length, 1).setValues(acerStCol);
       schoolSheet.getRange(2, lastUpdColIdx + 1, dataRows.length, 1).setValues(lastUpdCol);
+      if (hasStatusChange) {
+        schoolSheet.getRange(2, statusColIdx + 1, dataRows.length, 1).setValues(statusCol);
+        if (closeDateColIdx !== -1) {
+          schoolSheet.getRange(2, closeDateColIdx + 1, dataRows.length, 1).setValues(closeDateCol);
+        }
+      }
     }
   }
 
@@ -4776,11 +5068,11 @@ function bulkAcerMapping(ss, importKey, mappings) {
       for (var h = 0; h < headerRow.length; h++) {
         colIdx[String(headerRow[h]).trim()] = h;
       }
-      var snColIdx       = colIdx['Serial Number'] !== undefined ? colIdx['Serial Number'] : 17;
-      var acerIdColIdx   = colIdx['AcerCaseId'] !== undefined ? colIdx['AcerCaseId'] : 37;
-      var acerStColIdx   = colIdx['AcerCaseStatus'] !== undefined ? colIdx['AcerCaseStatus'] : 38;
-      var lastUpdColIdx  = colIdx['LastUpdatedDate'] !== undefined ? colIdx['LastUpdatedDate'] : 39;
-      var statusColIdx   = colIdx['Status'] !== undefined ? colIdx['Status'] : 16;
+      var snColIdx        = colIdx['Serial Number'] !== undefined ? colIdx['Serial Number'] : 17;
+      var acerIdColIdx    = colIdx['AcerCaseId'] !== undefined ? colIdx['AcerCaseId'] : 37;
+      var acerStColIdx    = colIdx['AcerCaseStatus'] !== undefined ? colIdx['AcerCaseStatus'] : 38;
+      var lastUpdColIdx   = colIdx['LastUpdatedDate'] !== undefined ? colIdx['LastUpdatedDate'] : 39;
+      var statusColIdx    = colIdx['Status'] !== undefined ? colIdx['Status'] : 16;
       var closeDateColIdx = colIdx['CloseDate'] !== undefined ? colIdx['CloseDate'] : (colIdx['Close Date'] !== undefined ? colIdx['Close Date'] : -1);
 
       // Ensure Acer columns exist in header
@@ -4803,8 +5095,8 @@ function bulkAcerMapping(ss, importKey, mappings) {
       var dataRows = complaintsSheet.getRange(2, 1, lastRow - 1, numCols).getValues();
       var acerIdCol = [], acerStCol = [], lastUpdCol = [];
       for (var i = 0; i < dataRows.length; i++) {
-        var existingAcerId = String(dataRows[i][acerIdColIdx] || '').trim();
-        var existingAcerSt = String(dataRows[i][acerStColIdx] || '').trim();
+        var existingAcerId  = String(dataRows[i][acerIdColIdx] || '').trim();
+        var existingAcerSt  = String(dataRows[i][acerStColIdx] || '').trim();
         var existingLastUpd = dataRows[i][lastUpdColIdx];
         var rowSn = String(dataRows[i][snColIdx] || '').trim().toUpperCase().slice(0, 22);
 
@@ -4815,23 +5107,8 @@ function bulkAcerMapping(ss, importKey, mappings) {
           matchedSerials[rowSn] = true;
           matchedComplaintsCount++;
           
-          var currentStatus = String(dataRows[i][statusColIdx] || '').trim();
-          var newStatus = mapAcerStatusToTicketStatus(newAcerSt || existingAcerSt, currentStatus);
-          
           var changed = (newAcerId && newAcerId !== existingAcerId) || 
-                        (newAcerSt && newAcerSt !== existingAcerSt) || 
-                        (newStatus !== currentStatus);
-          
-          if (newStatus !== currentStatus) {
-            complaintsSheet.getRange(i + 2, statusColIdx + 1).setValue(newStatus);
-            if (closeDateColIdx !== -1) {
-              if (newStatus === 'Closed') {
-                complaintsSheet.getRange(i + 2, closeDateColIdx + 1).setValue(nowStr);
-              } else {
-                complaintsSheet.getRange(i + 2, closeDateColIdx + 1).setValue('');
-              }
-            }
-          }
+                        (newAcerSt && newAcerSt !== existingAcerSt);
           
           acerIdCol.push([newAcerId || existingAcerId]);
           acerStCol.push([newAcerSt || existingAcerSt]);
@@ -4860,9 +5137,9 @@ function bulkAcerMapping(ss, importKey, mappings) {
       for (var h = 0; h < headerRow.length; h++) {
         colIdx[String(headerRow[h]).trim()] = h;
       }
-      var snColIdx       = colIdx['SerialNumber'] !== undefined ? colIdx['SerialNumber'] : 13;
-      var acerIdColIdx   = colIdx['AcerCaseId'] !== undefined ? colIdx['AcerCaseId'] : 17;
-      var acerStColIdx   = colIdx['AcerCaseStatus'] !== undefined ? colIdx['AcerCaseStatus'] : 18;
+      var snColIdx     = colIdx['SerialNumber'] !== undefined ? colIdx['SerialNumber'] : 13;
+      var acerIdColIdx = colIdx['AcerCaseId'] !== undefined ? colIdx['AcerCaseId'] : 17;
+      var acerStColIdx = colIdx['AcerCaseStatus'] !== undefined ? colIdx['AcerCaseStatus'] : 18;
 
       if (acerIdColIdx >= numCols) {
         acerIdColIdx = numCols;
@@ -4900,10 +5177,14 @@ function bulkAcerMapping(ss, importKey, mappings) {
     }
   }
 
-  // Serials in the upload that matched no row in the portal
+  // Serials in the upload that matched no row in the portal (cap sample size to 200 for fast response)
   var unmatchedSerials = [];
+  var unmatchedTotal = 0;
   for (var sKey in mappingMap) {
-    if (!matchedSerials[sKey]) unmatchedSerials.push(sKey);
+    if (!matchedSerials[sKey]) {
+      unmatchedTotal++;
+      if (unmatchedSerials.length < 200) unmatchedSerials.push(sKey);
+    }
   }
 
   return {
@@ -4913,10 +5194,10 @@ function bulkAcerMapping(ss, importKey, mappings) {
     matchedSchoolCount: matchedSchoolCount,
     matchedComplaintsCount: matchedComplaintsCount,
     matchedDeptCount: matchedDeptCount,
-    unmatchedCount: unmatchedSerials.length,
-    unmatchedSerials: unmatchedSerials.slice(0, 500),
-    duplicateSerials: dupSerials.slice(0, 500),
-    duplicateAcerIds: dupAcerIds.slice(0, 500)
+    unmatchedCount: unmatchedTotal,
+    unmatchedSerials: unmatchedSerials,
+    duplicateSerials: dupSerials.slice(0, 200),
+    duplicateAcerIds: dupAcerIds.slice(0, 200)
   };
 }
 
@@ -4943,9 +5224,11 @@ function getSchoolMaster(ss) {
 }
 
 function importSchoolMaster(ss, data) {
-  if (data.importKey !== 'armee123') {
-    return { status: 'error', message: 'Invalid importKey' };
-  }
+  // This wipes the School Master sheet (sheet.clear()) before rewriting it, so it
+  // must be key-protected. It previously accepted only the hardcoded literal
+  // 'armee123', which meant anyone who knew that word could clear the sheet.
+  var schoolKeyError = requireImportKey(data);
+  if (schoolKeyError) return schoolKeyError;
   var sheet = ss.getSheetByName(SCHOOL_MASTER_TAB_NAME);
   if (!sheet) {
     sheet = ss.insertSheet(SCHOOL_MASTER_TAB_NAME);

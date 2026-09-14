@@ -404,6 +404,7 @@ tr:hover td { background: #f8fafc; }
   <div class="nav-group">Overview</div>
   <button class="tab-btn active" id="btn-tab-dash" onclick="switchTab('dash')">📊 Dashboard</button>
   <button class="tab-btn" id="btn-tab-schooldash" onclick="switchTab('schooldash')">📈 School Dash</button>
+  <button class="tab-btn" id="btn-tab-unified" onclick="switchTab('unified')">🎯 All Calls (Consolidated)</button>
   <div class="nav-group">Operations</div>
   <button class="tab-btn" id="btn-tab-complaints" onclick="switchTab('complaints')">📋 Complaints &amp; Reports</button>
   <button class="tab-btn" id="btn-tab-dept" onclick="switchTab('dept')">🏛️ Dept Complaints</button>
@@ -1399,6 +1400,7 @@ tr:hover td { background: #f8fafc; }
               <th>School Name</th>
               <th>Serial Number</th>
               <th id="schoolStatusHeaderCol" style="text-align:center;">Status</th>
+              <th>Part Requested</th>
               <th>Branch</th>
               <th>District</th>
               <th>Log Date</th>
@@ -1413,6 +1415,74 @@ tr:hover td { background: #f8fafc; }
       </div>
     </div>
 
+  </div>
+
+  <!-- ================= TAB: CONSOLIDATED (ALL CALLS) ================= -->
+  <div class="tab-content" id="tab-unified">
+    <div class="card" style="margin-bottom:20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <div class="card-title" style="margin-bottom:0;">🎯 All Calls — Consolidated</div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button class="btn btn-ghost btn-sm" onclick="loadUnifiedDashboard()">🔄 Refresh</button>
+          <button class="btn btn-success btn-sm" onclick="exportUnifiedCSV()">📥 Export CSV</button>
+        </div>
+      </div>
+      <p style="color:var(--muted); font-size:0.8rem; margin:8px 0 4px;">
+        Every call from all three systems in one place — School, Department and Advance —
+        each tagged with a single common status. Click any tag to filter the list below.
+      </p>
+      <p style="color:var(--muted); font-size:0.74rem; margin:0 0 14px;">
+        <b>Pending</b> = not yet worked &nbsp;·&nbsp; <b>Attended</b> = visited/in progress (incl. awaiting OTP)
+        &nbsp;·&nbsp; <b>Part Request</b> = blocked awaiting a spare &nbsp;·&nbsp; <b>Closed</b> = finished
+        &nbsp;·&nbsp; <b>Not Set</b> = no status recorded
+      </p>
+      <div id="unifiedTagCards" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px;">
+        <div style="grid-column:1/-1; text-align:center; color:var(--muted); padding:14px;">Loading…</div>
+      </div>
+      <div id="unifiedPendingCallout" style="margin-top:14px;"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-title">📊 Breakdown by System</div>
+      <div class="table-responsive">
+        <table>
+          <thead><tr><th>System</th><th style="text-align:center;">Pending</th><th style="text-align:center;">Attended</th><th style="text-align:center;">Part Request</th><th style="text-align:center;">Closed</th><th style="text-align:center;">Not Set</th><th style="text-align:center;">Total</th><th style="text-align:center;">Still to work</th></tr></thead>
+          <tbody id="unifiedBySystemBody"><tr><td colspan="8" style="text-align:center;color:var(--muted);">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-title">🏢 Breakdown by Branch</div>
+      <div class="table-responsive">
+        <table>
+          <thead><tr><th>Branch</th><th style="text-align:center;">Pending</th><th style="text-align:center;">Attended</th><th style="text-align:center;">Part Request</th><th style="text-align:center;">Closed</th><th style="text-align:center;">Not Set</th><th style="text-align:center;">Still to work</th></tr></thead>
+          <tbody id="unifiedByBranchBody"><tr><td colspan="7" style="text-align:center;color:var(--muted);">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <div class="card-title" style="margin-bottom:0;">📋 All Calls <span id="unifiedListLabel" style="font-size:0.76rem;color:var(--primary);font-weight:700;"></span></div>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <select id="unifiedSourceFilter" onchange="renderUnifiedList()" style="padding:5px 8px; font-size:0.78rem;">
+            <option value="">All systems</option>
+            <option value="School">School</option>
+            <option value="Department">Department</option>
+            <option value="Advance">Advance</option>
+          </select>
+          <input type="text" id="unifiedSearch" placeholder="Search school / serial / district…" oninput="renderUnifiedList()" style="padding:5px 8px; font-size:0.78rem; min-width:200px;" />
+          <button class="btn btn-ghost btn-sm" id="unifiedClearBtn" style="display:none;" onclick="clearUnifiedFilter()">✖ Clear tag filter</button>
+        </div>
+      </div>
+      <div class="table-responsive" style="margin-top:12px;">
+        <table>
+          <thead><tr><th>System</th><th>Reference</th><th>School</th><th>Serial</th><th>Tag</th><th>Raw status</th><th>Part</th><th>Branch</th><th>District</th></tr></thead>
+          <tbody id="unifiedListBody"><tr><td colspan="9" style="text-align:center;color:var(--muted);">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <!-- ================= TAB: BRANCH MANAGEMENT ================= -->
@@ -2013,6 +2083,26 @@ tr:hover td { background: #f8fafc; }
 </div>
 
 <!-- SECURE ADMIN LOGIN MODAL -->
+<!-- SUSPECTED PART PICKER (required when setting status to Part Request) -->
+<div class="modal-bg" id="partRequestModal">
+  <div class="modal">
+    <h3>🔧 Which part is required?</h3>
+    <p style="color:var(--muted); font-size:0.8rem; margin-bottom:12px;" id="partRequestSubtitle"></p>
+    <div class="field">
+      <label for="partRequestSelect">Suspected Part *</label>
+      <select id="partRequestSelect"></select>
+    </div>
+    <div class="field" id="partRequestOtherWrap" style="display:none;">
+      <label for="partRequestOther">Specify the part *</label>
+      <input type="text" id="partRequestOther" placeholder="e.g. HDMI CABLE" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="resolvePartRequest(null)">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmPartRequest()">Save Part Request</button>
+    </div>
+  </div>
+</div>
+
 <!-- DISTRICT OFFICE ADD/EDIT MODAL -->
 <div class="modal-bg" id="doEditModal">
   <div class="modal">
@@ -2269,9 +2359,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     loadSchoolList(),
     ensureBranchDataLoaded()
   ]);
-  if (typeof autoHealSchoolDiseCodes === 'function') {
-    await autoHealSchoolDiseCodes();
-  }
   startAutoRefresh();
 });
 
@@ -2482,9 +2569,6 @@ async function loadComplaints() {
           if (Array.isArray(schoolData)) {
             window.parentSchoolComplaintsList = schoolData;
             logToDebug(`Loaded ${schoolData.length} school master complaints for dashboard.`, 'success');
-            if (typeof autoHealSchoolDiseCodes === 'function') {
-              autoHealSchoolDiseCodes();
-            }
           }
         }
       } catch (schoolErr) {
@@ -2719,7 +2803,7 @@ function checkTabAccess(tabId) {
   if (!currentUser) return tabId === 'dash';
   if (currentUser.role === 'super_admin') return true;
   // Non-super admin (district_admin, viewer) can access dash, complaints, dept, schooldash, and acer mapping
-  const allowedTabs = ['dash', 'complaints', 'dept', 'schooldash', 'acer'];
+  const allowedTabs = ['dash', 'complaints', 'dept', 'schooldash', 'acer', 'unified'];
   return allowedTabs.includes(tabId);
 }
 
@@ -2735,6 +2819,7 @@ function renderNavigationMenu() {
     'schoolupload': document.getElementById('btn-tab-schoolupload'),
     'acer': document.getElementById('btn-tab-acer'),
     'schooldash': document.getElementById('btn-tab-schooldash'),
+    'unified': document.getElementById('btn-tab-unified'),
     'branch': document.getElementById('btn-tab-branch'),
     'branchemails': document.getElementById('btn-tab-branchemails'),
     'archive': document.getElementById('btn-tab-archive'),
@@ -2768,6 +2853,8 @@ function applyUrlModule() {
       'schoolupload': 'schoolupload',
       'acer': 'acer',
       'schooldash': 'schooldash',
+    'unified': 'unified',
+      'unified': 'unified',
       'branchmanagement': 'branch',
       'archive': 'archive'
     };
@@ -2842,7 +2929,13 @@ function sdGetList() {
       lastUpdatedDate: c.lastUpdatedDate || '',
       closeDate: c.closeDate || '',
       acerCaseId: c.acerCaseId || '',
-      acerCaseStatus: c.acerCaseStatus || ''
+      acerCaseStatus: c.acerCaseStatus || '',
+      // Which spare part was asked for. The backend already returned this
+      // (SchoolComplaintMaster col 18) but it was dropped here, so a "Part Request"
+      // row gave no way to tell WHAT part was needed — on screen or in the export.
+      suspectedPart: c.suspectedPart || '',
+      equipment: c.equipment || '',
+      natureOfComplaint: c.natureOfComplaint || ''
     };
   });
   // Hierarchy: district admins / viewers only see their assigned districts
@@ -3065,7 +3158,9 @@ function renderSchoolDash() {
       String(r.project || '').toLowerCase().includes(q) ||
       String(r.principal || '').toLowerCase().includes(q) ||
       String(r.mobile || '').toLowerCase().includes(q) ||
-      String(r.address || '').toLowerCase().includes(q)
+      String(r.address || '').toLowerCase().includes(q) ||
+      String(r.suspectedPart || '').toLowerCase().includes(q) ||
+      String(r.equipment || '').toLowerCase().includes(q)
     );
   }
 
@@ -3088,6 +3183,16 @@ function renderSchoolDash() {
     const lastUpdated = r.lastUpdatedDate ? new Date(r.lastUpdatedDate).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'}) : (r.status === 'Closed' ? logDate : '—');
     const closeDate = r.closeDate ? new Date(r.closeDate).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'}) : '—';
 
+    // Which part was asked for. Engineers can raise a Part Request without picking
+    // a part (the field is optional in the form), so flag that case explicitly
+    // rather than showing a bare dash that reads like "no data loaded".
+    const isPartReq = String(r.status || '').toLowerCase() === 'part request';
+    const partCell = r.suspectedPart
+      ? `<span class="sd-chip" style="font-size:0.7rem; background:#f3e8ff; color:#6d28d9; font-weight:700;">🔧 ${sdEsc(r.suspectedPart)}</span>`
+      : (isPartReq
+          ? '<span style="color:var(--danger); font-size:0.7rem; font-weight:600;" title="This complaint is a Part Request but no part was selected in the form">⚠️ not specified</span>'
+          : '<span style="color:var(--muted)">—</span>');
+
     dHtml += `<tr>
       <td style="text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" class="school-select-chk" data-sr-no="${r.srNo}" onchange="updateSchoolSelectionUI()" style="transform: scale(1.2); cursor: pointer;" /></td>
       <td onclick="promptUpdateDiseCode(${r.srNo}, '${sdEsc(r.diseCode)}', '${escName}')" style="cursor: pointer; text-decoration: underline; color: var(--primary);" title="Click to link/update DISE code">
@@ -3102,6 +3207,7 @@ function renderSchoolDash() {
           <option value="Closed" ${r.status === 'Closed' ? 'selected' : ''}>✅ Closed</option>
         </select>
       </td>
+      <td>${partCell}</td>
       <td>${sdEsc(r.branch)}</td>
       <td>${sdEsc(r.district)}</td>
       <td>${logDate}</td>
@@ -3111,7 +3217,7 @@ function renderSchoolDash() {
       <td>${r.acerCaseStatus ? `<span class="sd-chip ${sdEsc(r.acerCaseStatus).toLowerCase().replace(/\s+/g,'')}" style="font-size:0.7rem;">${sdEsc(r.acerCaseStatus)}</span>` : '<span style="color:var(--muted)">—</span>'}</td>
     </tr>`;
   });
-  if (!drillList.length) dHtml = '<tr><td colspan="12" style="text-align:center; color:var(--muted); padding:20px;">No records match the current filters.</td></tr>';
+  if (!drillList.length) dHtml = '<tr><td colspan="13" style="text-align:center; color:var(--muted); padding:20px;">No records match the current filters.</td></tr>';
   document.getElementById('sdDrillTable').innerHTML = dHtml;
 }
 
@@ -3136,6 +3242,7 @@ function switchTab(tabId) {
   currentTab = tabId;
 
   if (tabId === 'schooldash') renderSchoolDash();
+  if (tabId === 'unified') loadUnifiedDashboard();
   
   // Update URL parameter without reloading to match current module
   const moduleMapInv = {
@@ -3170,6 +3277,8 @@ function switchTab(tabId) {
     loadDeptDashboard();
   } else if (tabId === 'branchemails') {
     loadBranchEmails();
+  } else if (tabId === 'acer') {
+    if (typeof ensureAcerDataLoaded === 'function') ensureAcerDataLoaded();
   }
 }
 
@@ -3212,9 +3321,19 @@ async function bulkUpdateSchoolStatus(status) {
   if (chks.length === 0) return;
   
   const srNos = Array.from(chks).map(chk => chk.getAttribute('data-sr-no'));
-  const confirmMsg = `Are you sure you want to update the status of ${srNos.length} selected school complaint(s) to "${status.toUpperCase()}"?`;
+
+  // Part Request must name the part (one part applies to the whole selection).
+  let chosenPartBulk = '';
+  if (status === 'Part Request') {
+    chosenPartBulk = await askSuspectedPart(
+      srNos.length + ' complaint(s) selected — this part will be recorded on all of them.');
+    if (!chosenPartBulk) return; // cancelled — nothing changes
+  }
+
+  const confirmMsg = `Are you sure you want to update the status of ${srNos.length} selected school complaint(s) to "${status.toUpperCase()}"?` +
+    (chosenPartBulk ? `\n\nPart required: ${chosenPartBulk}` : '');
   if (!confirm(confirmMsg)) return;
-  
+
   const headerCol = document.getElementById('schoolStatusHeaderCol');
   if (headerCol) {
     headerCol.innerHTML = `<span style="font-size:0.7rem; color:var(--primary); font-weight:bold;">⏳ Updating...</span>`;
@@ -3230,6 +3349,7 @@ async function bulkUpdateSchoolStatus(status) {
         action: 'update_school_complaint_status',
         srNos: srNos,
         status: status,
+        suspectedPart: chosenPartBulk,
         authToken: token
       })
     });
@@ -3249,14 +3369,67 @@ async function bulkUpdateSchoolStatus(status) {
   await loadComplaints();
 }
 
+/* ── Suspected Part picker ──────────────────────────────────────────────
+   A Part Request with no part recorded is useless to whoever has to order the
+   spare — that is how ~half the existing Part Requests ended up blank. The
+   engineer's form already requires a part; these admin paths did not, so they
+   now ask for one and refuse to proceed without it. */
+let _partRequestResolver = null;
+
+function askSuspectedPart(subtitle) {
+  return new Promise(resolve => {
+    _partRequestResolver = resolve;
+    const sel = document.getElementById('partRequestSelect');
+    const parts = (masterData.suspectedParts || [])
+      .filter(p => !p.status || p.status === 'active')
+      .map(p => p.name).filter(Boolean).sort();
+    sel.innerHTML = '<option value="">— select a part —</option>' +
+      parts.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('') +
+      '<option value="__OTHER__">Other (type it in)…</option>';
+    sel.onchange = () => {
+      document.getElementById('partRequestOtherWrap').style.display =
+        sel.value === '__OTHER__' ? '' : 'none';
+    };
+    sel.value = '';
+    document.getElementById('partRequestOther').value = '';
+    document.getElementById('partRequestOtherWrap').style.display = 'none';
+    document.getElementById('partRequestSubtitle').textContent = subtitle || '';
+    document.getElementById('partRequestModal').classList.add('show');
+  });
+}
+
+function confirmPartRequest() {
+  const sel = document.getElementById('partRequestSelect');
+  let val = sel.value;
+  if (val === '__OTHER__') val = document.getElementById('partRequestOther').value.trim();
+  if (!val) { showToast('⚠️ Please choose the part that is required.', 'warn'); return; }
+  resolvePartRequest(val);
+}
+
+function resolvePartRequest(value) {
+  document.getElementById('partRequestModal').classList.remove('show');
+  const r = _partRequestResolver;
+  _partRequestResolver = null;
+  if (r) r(value);
+}
+
 async function updateSingleSchoolStatus(srNo, status) {
   if (!status) return;
-  const confirmMsg = `Are you sure you want to update the status of this school complaint to "${status.toUpperCase()}"?`;
+
+  // Part Request must name the part.
+  let chosenPart = '';
+  if (status === 'Part Request') {
+    chosenPart = await askSuspectedPart('Complaint Sr No. ' + srNo);
+    if (!chosenPart) { renderSchoolDash(); return; } // cancelled — leave status untouched
+  }
+
+  const confirmMsg = `Are you sure you want to update the status of this school complaint to "${status.toUpperCase()}"?` +
+    (chosenPart ? `\n\nPart required: ${chosenPart}` : '');
   if (!confirm(confirmMsg)) {
     renderSchoolDash();
     return;
   }
-  
+
   const token = typeof adminAuthToken === 'function' ? adminAuthToken() : '';
   try {
     const res = await fetch(GOOGLE_SCRIPT_URL, {
@@ -3266,6 +3439,7 @@ async function updateSingleSchoolStatus(srNo, status) {
         action: 'update_school_complaint_status',
         srNos: [srNo],
         status: status,
+        suspectedPart: chosenPart,
         authToken: token
       })
     });
@@ -3335,19 +3509,39 @@ async function promptUpdateDiseCode(srNo, currentDise, schoolName) {
 async function autoHealSchoolDiseCodes() {
   if (!schoolDataRaw || Object.keys(schoolDataRaw).length === 0) return;
 
-  // Build schoolName -> dise map from school_data.json
+  const schoolList = Array.isArray(window.parentSchoolComplaintsList) ? window.parentSchoolComplaintsList : [];
+  if (!schoolList.length) return;
+
+  // Check if any complaints actually have missing/blank DISE codes
+  const missingDiseSchools = new Set();
+  schoolList.forEach(c => {
+    const dise = String(c.diseCode || c.dise || '').trim();
+    const sName = String(c.schoolName || c.school || '').trim();
+    if (!dise && sName) {
+      missingDiseSchools.add(sName);
+    }
+  });
+
+  // Fast exit: if no complaints have blank DISE codes, do nothing!
+  if (missingDiseSchools.size === 0) {
+    return;
+  }
+
+  // Build targeted schoolName -> dise map ONLY for schools with blank DISE
   const nameMap = {};
   for (const [dise, entries] of Object.entries(schoolDataRaw)) {
     const arr = Array.isArray(entries) ? entries : [entries];
     arr.forEach(entry => {
       const name = String(entry.school || '').trim();
-      if (name) nameMap[name] = dise;
+      if (name && missingDiseSchools.has(name)) {
+        nameMap[name] = dise;
+      }
     });
   }
 
   if (Object.keys(nameMap).length === 0) return;
 
-  console.log(`[AUTO-HEAL] Sending ${Object.keys(nameMap).length} school name→DISE mappings to backend for bulk heal...`);
+  console.log(`[AUTO-HEAL] Sending ${Object.keys(nameMap).length} targeted school name→DISE mappings to backend...`);
   try {
     const res = await fetch(GOOGLE_SCRIPT_URL, {
       method: 'POST',
@@ -3363,8 +3557,6 @@ async function autoHealSchoolDiseCodes() {
       if (out.updatedCount > 0) {
         logToDebug(`[AUTO-HEAL] Healed ${out.updatedCount} blank DISE codes in Google Sheet!`, 'success');
         showToast(`✅ Auto-healed ${out.updatedCount} blank DISE codes in Google Sheet`, 'success');
-        // Reload so the dashboard reflects updated DISE codes
-        await loadComplaints();
       } else {
         logToDebug(`[AUTO-HEAL] No blank DISE codes found to heal.`, 'info');
       }
@@ -3409,7 +3601,8 @@ function exportSchoolComplaintsCSV() {
   
   const csvHeaders = [
     'Sr No', 'Project', 'DISE Code', 'School Name', 'Principal Name', 'Contact Number', 'Address', 'Pincode',
-    'Serial Number', 'Status', 'Branch', 'District', 'Complaint Date', 'Last Updated Date', 'Close Date', 'Acer Case ID', 'Acer Case Status'
+    'Serial Number', 'Status', 'Equipment', 'Nature of Complaint', 'Part Requested',
+    'Branch', 'District', 'Complaint Date', 'Last Updated Date', 'Close Date', 'Acer Case ID', 'Acer Case Status'
   ];
   
   const csvRows = list.map(r => [
@@ -3423,6 +3616,11 @@ function exportSchoolComplaintsCSV() {
     r.pincode || '',
     r.serial || '',
     r.status || 'Open',
+    r.equipment || '',
+    r.natureOfComplaint || '',
+    // Blank on a Part Request means the engineer never picked a part — say so in the
+    // export too, otherwise an empty cell is indistinguishable from missing data.
+    r.suspectedPart || (String(r.status || '').toLowerCase() === 'part request' ? 'NOT SPECIFIED' : ''),
     r.branch || '',
     r.district || '',
     r.date ? String(r.date).slice(0, 10) : '',
@@ -6628,19 +6826,53 @@ async function runSchoolUpload() {
 /* ─────────────── ACER CASE MAPPING ─────────────── */
 let acerParsedRows = [];
 
-function handleAcerFileSelect() {
+async function ensureAcerDataLoaded() {
+  const promises = [];
+  const needsComplaints = !Array.isArray(window.parentSchoolComplaintsList) || !window.parentSchoolComplaintsList.length ||
+                          !Array.isArray(window.parentComplaintsList) || !window.parentComplaintsList.length;
+  if (needsComplaints) {
+    promises.push(loadComplaints());
+  }
+  if (!Array.isArray(deptList) || !deptList.length) {
+    promises.push(loadDeptDashboard());
+  }
+  if (promises.length > 0) {
+    try {
+      await Promise.all(promises);
+    } catch (e) {
+      console.warn('ensureAcerDataLoaded: Some complaint data could not be loaded:', e);
+    }
+  }
+}
+
+async function handleAcerFileSelect() {
   const fileInput = document.getElementById('acerFile');
   const btn = document.getElementById('acerUploadBtn');
   const preview = document.getElementById('acerPreview');
   const result = document.getElementById('acerResult');
 
   btn.disabled = true;
-  preview.style.display = 'none';
   result.style.display = 'none';
   acerParsedRows = [];
 
   const file = fileInput.files[0];
-  if (!file) return;
+  if (!file) {
+    preview.style.display = 'none';
+    return;
+  }
+
+  // Visual indication that complaint lists are being synchronized
+  preview.style.display = 'block';
+  preview.style.background = '#eff6ff';
+  preview.style.border = '1px solid #bfdbfe';
+  preview.style.color = '#1e40af';
+  preview.innerHTML = `⏳ <strong>Checking database records...</strong> Synchronizing School, Department, and Portal complaints for serial matching...`;
+
+  try {
+    await ensureAcerDataLoaded();
+  } catch (e) {
+    console.warn('Complaints sync warning:', e);
+  }
 
   const reader = new FileReader();
   reader.onload = function(e) {
@@ -6655,25 +6887,65 @@ function handleAcerFileSelect() {
         throw new Error('Excel/CSV sheet is empty.');
       }
 
-      // Detect headers dynamically
+      // Detect headers dynamically with high precision
       const headers = Object.keys(rows[0]);
       let snCol = '', caseIdCol = '', statusCol = '';
 
-      headers.forEach(h => {
-        const clean = h.toLowerCase().replace(/[^a-z0-9]/g, '');
-        if (clean.includes('status')) {
-          statusCol = h;
-        } else if (clean.includes('serial') || clean === 'sn' || clean === 'srno') {
-          snCol = h;
-        } else if (clean.includes('caseid') || clean.includes('case') || clean === 'id' || clean.includes('ticket')) {
-          caseIdCol = h;
-        }
-      });
+      // Clean string helper
+      const cleanHeader = h => String(h || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
-      // Secondary fallbacks if exact match fails
-      if (!snCol) snCol = headers.find(h => { const c = h.toLowerCase(); return c.includes('serial') || c.includes('s/n'); }) || headers[0];
-      if (!statusCol) statusCol = headers.find(h => h.toLowerCase().includes('status')) || headers[2];
-      if (!caseIdCol) caseIdCol = headers.find(h => { const c = h.toLowerCase(); return (c.includes('case') || c.includes('id') || c.includes('ticket')) && !c.includes('status'); }) || headers[1];
+      // 1. High-confidence match for Serial Number
+      snCol = headers.find(h => {
+        const c = cleanHeader(h);
+        return c === 'serialnumber' || c === 'serialno' || c === 'serial' || c === 'sn' || c === 'unitserialnumber' || c === 'deviceserialnumber';
+      }) || '';
+
+      if (!snCol) {
+        snCol = headers.find(h => {
+          const l = String(h || '').toLowerCase();
+          return (l.includes('serial') || l.includes('s/n')) && !l.includes('sr.') && !l.includes('sr ') && !l.includes('sr_');
+        }) || '';
+      }
+
+      // Check sample rows to avoid picking row index columns (1, 2, 3...)
+      if (!snCol) {
+        for (const h of headers) {
+          const sample = String(rows[0][h] || '').trim();
+          if (sample.length >= 8 && /[A-Za-z]/.test(sample) && /[0-9]/.test(sample)) {
+            snCol = h;
+            break;
+          }
+        }
+      }
+      if (!snCol) snCol = headers[0];
+
+      // 2. High-confidence match for Case ID
+      caseIdCol = headers.find(h => {
+        const c = cleanHeader(h);
+        return c === 'acercaseid' || c === 'caseid' || c === 'acercase' || c === 'casenumber' || c === 'caseno' || c === 'ticketid' || c === 'ticketno';
+      }) || '';
+
+      if (!caseIdCol) {
+        caseIdCol = headers.find(h => {
+          const l = String(h || '').toLowerCase();
+          return (l.includes('case') || l.includes('ticket')) && !l.includes('status');
+        }) || '';
+      }
+      if (!caseIdCol && headers.length > 1) caseIdCol = headers[1];
+
+      // 3. High-confidence match for Case Status
+      statusCol = headers.find(h => {
+        const c = cleanHeader(h);
+        return c === 'acercasestatus' || c === 'casestatus' || c === 'acerstatus' || c === 'status';
+      }) || '';
+
+      if (!statusCol) {
+        statusCol = headers.find(h => String(h || '').toLowerCase().includes('status')) || '';
+      }
+      if (!statusCol && headers.length > 2) statusCol = headers[2];
+
+      // Clean Serial Number helper: removes whitespace, zero-width chars
+      const cleanSn = s => String(s || '').trim().toUpperCase().replace(/[\s\u200B-\u200D\uFEFF]/g, '');
 
       // Parse records
       let matchedSchool = 0;
@@ -6688,21 +6960,21 @@ function handleAcerFileSelect() {
       // Get serials from parentSchoolComplaintsList
       const schoolSerials = {};
       (window.parentSchoolComplaintsList || []).forEach(c => {
-        const sn = String(c.serialNumber || '').trim().toUpperCase();
+        const sn = cleanSn(c.serialNumber);
         if (sn) schoolSerials[sn] = c.status || 'Open';
       });
 
       // Get serials from deptList
       const deptSerials = {};
       (deptList || []).forEach(c => {
-        const sn = String(c.serialNumber || '').trim().toUpperCase();
+        const sn = cleanSn(c.serialNumber);
         if (sn) deptSerials[sn] = c.internalStatus || c.ticketStatus || 'Pending';
       });
 
       // Get serials from parentComplaintsList
       const portalSerials = {};
       (window.parentComplaintsList || []).forEach(c => {
-        const sn = String(c.serialNumber || '').trim().toUpperCase();
+        const sn = cleanSn(c.serialNumber);
         if (sn) portalSerials[sn] = c.status || 'Open';
       });
 
@@ -6712,7 +6984,7 @@ function handleAcerFileSelect() {
         const rawStatus = String(r[statusCol] || '').trim();
 
         if (rawSn) {
-          const snUpper = rawSn.toUpperCase();
+          const snUpper = cleanSn(rawSn);
           let matchedAny = false;
 
           if (schoolSerials[snUpper]) {
@@ -6747,7 +7019,7 @@ function handleAcerFileSelect() {
       });
 
       if (!acerParsedRows.length) {
-        throw new Error('No valid rows found containing a Serial Number.');
+        throw new Error('No valid rows found containing a Serial Number in column "' + snCol + '".');
       }
 
       function formatStatusCounts(counts) {
@@ -6761,7 +7033,7 @@ function handleAcerFileSelect() {
       preview.style.color = '#166534';
       preview.innerHTML = `
         <strong>📊 Excel Preview Summary:</strong><br>
-        • Total Rows parsed: <strong>${acerParsedRows.length}</strong><br>
+        • Total Rows parsed: <strong>${acerParsedRows.length}</strong> (Columns used: <em>${snCol}</em>, <em>${caseIdCol}</em>, <em>${statusCol}</em>)<br>
         • School Complaints matched: <strong style="color:#15803d;">${matchedSchool}</strong> ${formatStatusCounts(schoolStatusCounts)}<br>
         • Department Complaints matched: <strong style="color:#15803d;">${matchedDept}</strong> ${formatStatusCounts(deptStatusCounts)}<br>
         • Portal/Advance Complaints matched: <strong style="color:#15803d;">${matchedPortal}</strong> ${formatStatusCounts(portalStatusCounts)}<br>
@@ -6848,7 +7120,7 @@ function downloadAcerErrorReport() {
     return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
   };
   const csv = rows.map(r => r.map(esc).join(',')).join('\r\n');
-  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
@@ -6885,28 +7157,79 @@ async function runAcerMapping() {
   result.style.background = '#eff6ff';
   result.style.color = '#1e40af';
   result.style.border = '1.5px solid #bfdbfe';
-  result.textContent = `⏳ Mapping Acer cases in sheets…`;
+
+  // Batch chunking (500 rows per batch to ensure fast execution and no gateway timeouts)
+  const BATCH_SIZE = 500;
+  const totalRows = acerParsedRows.length;
+  const totalBatches = Math.ceil(totalRows / BATCH_SIZE);
+
+  let combinedResult = {
+    status: 'ok',
+    totalUploaded: totalRows,
+    matchedCount: 0,
+    matchedSchoolCount: 0,
+    matchedComplaintsCount: 0,
+    matchedDeptCount: 0,
+    unmatchedCount: 0,
+    unmatchedSerials: [],
+    duplicateSerials: [],
+    duplicateAcerIds: []
+  };
 
   try {
-    const res = await fetch(GOOGLE_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({
-        action: 'bulk_acer_mapping',
-        importKey: importKey,
-        mappings: acerParsedRows
-      }),
-    });
-    const out = await res.json();
-    if (out.status !== 'ok') throw new Error(out.message || 'Server rejected the mapping');
+    for (let b = 0; b < totalBatches; b++) {
+      const start = b * BATCH_SIZE;
+      const end = Math.min(start + BATCH_SIZE, totalRows);
+      const chunk = acerParsedRows.slice(start, end);
+
+      result.innerHTML = `
+        <div style="font-weight:700;margin-bottom:6px;">⏳ Mapping Acer cases: Processing Batch ${b + 1} of ${totalBatches} (${start + 1}–${end} of ${totalRows} rows)...</div>
+        <div style="background:#dbeafe;height:8px;border-radius:4px;overflow:hidden;">
+          <div style="background:#2563eb;height:100%;width:${Math.round(((b + 1) / totalBatches) * 100)}%;transition:width 0.3s ease;"></div>
+        </div>
+        <div style="font-size:0.75rem;margin-top:6px;color:#1e40af;">Updated so far: <b>${combinedResult.matchedCount}</b> matched</div>
+      `;
+
+      const res = await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          action: 'bulk_acer_mapping',
+          importKey: importKey,
+          mappings: chunk
+        }),
+      });
+
+      const text = await res.text();
+      let out;
+      try {
+        out = JSON.parse(text);
+      } catch (jsonErr) {
+        throw new Error(`Batch ${b + 1} returned invalid response (${text.slice(0, 80)}...). Check internet connection or sheet limits.`);
+      }
+
+      if (out.status !== 'ok') {
+        throw new Error(`Batch ${b + 1} error: ` + (out.message || 'Server rejected the mapping'));
+      }
+
+      combinedResult.matchedCount += (out.matchedCount || 0);
+      combinedResult.matchedSchoolCount += (out.matchedSchoolCount || 0);
+      combinedResult.matchedComplaintsCount += (out.matchedComplaintsCount || 0);
+      combinedResult.matchedDeptCount += (out.matchedDeptCount || 0);
+      combinedResult.unmatchedCount += (out.unmatchedCount || 0);
+      if (out.unmatchedSerials) combinedResult.unmatchedSerials.push(...out.unmatchedSerials);
+      if (out.duplicateSerials) combinedResult.duplicateSerials.push(...out.duplicateSerials);
+      if (out.duplicateAcerIds) combinedResult.duplicateAcerIds.push(...out.duplicateAcerIds);
+    }
 
     localStorage.setItem(SCHOOL_IMPORT_KEY_LS, importKey);
-    window.__lastAcerResult = out; // used by the error-report download
-    renderAcerSummary(out);
-    showToast('✅ Acer case mapping processed successfully!', 'success');
+    window.__lastAcerResult = combinedResult;
+    renderAcerSummary(combinedResult);
+    showToast('✅ Acer case mapping processed successfully across all batches!', 'success');
 
-    // Reload complaints data to reflect updates in the School Dashboard!
+    // Reload complaints data to reflect updates in the School Dashboard & Central Complaints!
     await loadData();
+    await loadComplaints();
   } catch (err) {
     result.style.background = '#fef2f2';
     result.style.color = '#b91c1c';
@@ -6916,6 +7239,264 @@ async function runAcerMapping() {
   } finally {
     btn.disabled = false;
   }
+}
+
+/* ─────────────── CONSOLIDATED VIEW (all three systems, one tag set) ───────────────
+   The three systems spell the same state differently ("Part Request" vs "PartRequest",
+   "Pending OTP" vs "PendingOTP") and school rows can be blank entirely, so grouping on
+   the raw text silently undercounts. Everything is normalised to ONE tag set here. */
+const UNIFIED_TAGS = ['Pending', 'Attended', 'Part Request', 'Closed', 'Not Set'];
+const UNIFIED_TAG_STYLE = {
+  'Pending':      ['#fef2f2', '#b91c1c'],
+  'Attended':     ['#fefce8', '#a16207'],
+  'Part Request': ['#f5f3ff', '#6d28d9'],
+  'Closed':       ['#f0fdf4', '#15803d'],
+  'Not Set':      ['#f1f5f9', '#475569']
+};
+let unifiedRows = [];
+let unifiedTagFilter = null;
+
+// Collapse every spelling variant onto one tag.
+function unifiedTag(rawStatus) {
+  const s = String(rawStatus || '').trim().toLowerCase().replace(/[\s_-]/g, '');
+  if (!s) return 'Not Set';
+  if (s === 'closed' || s === 'resolved' || s === 'complete' || s === 'completed') return 'Closed';
+  if (s === 'partrequest' || s === 'partrequested') return 'Part Request';
+  if (s === 'inprogress' || s === 'pendingotp' || s === 'attended') return 'Attended';
+  if (s === 'open' || s === 'pending') return 'Pending';
+  return 'Not Set'; // unknown value — surfaced rather than hidden in another bucket
+}
+
+// "Still to work" = anything that is not finished and not unknown.
+function unifiedIsOutstanding(tag) {
+  return tag === 'Pending' || tag === 'Attended' || tag === 'Part Request';
+}
+
+async function loadUnifiedDashboard() {
+  const setLoading = (id, cols) => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = `<tr><td colspan="${cols}" style="text-align:center;color:var(--muted);">Loading…</td></tr>`;
+  };
+  setLoading('unifiedBySystemBody', 8); setLoading('unifiedByBranchBody', 7); setLoading('unifiedListBody', 9);
+
+  try {
+    // Fetch ANY dataset that isn't in memory. This must not assume loadComplaints()
+    // has already run and succeeded — if it hadn't (tab opened early) or it failed
+    // (the backend intermittently returns an error page), the consolidated view
+    // silently showed Department only, which is exactly the wrong answer to
+    // "how many calls are pending".
+    const need = {
+      School:     !Array.isArray(window.parentSchoolComplaintsList) || !window.parentSchoolComplaintsList.length,
+      Advance:    !Array.isArray(complaintsList) || !complaintsList.length,
+      Department: !Array.isArray(deptList) || !deptList.length
+    };
+    const failed = [];
+    const jobs = [];
+    if (need.School) jobs.push(
+      fetchJsonWithRetry(GOOGLE_SCRIPT_URL + '?action=get_all_school_complaints', 3)
+        .then(d => { window.parentSchoolComplaintsList = Array.isArray(d) ? d : []; })
+        .catch(() => { failed.push('School'); window.parentSchoolComplaintsList = window.parentSchoolComplaintsList || []; }));
+    if (need.Advance) jobs.push(
+      fetchJsonWithRetry(GOOGLE_SCRIPT_URL, 3)
+        .then(d => { complaintsList = normalizeComplaintStatuses(Array.isArray(d) ? d : []); })
+        .catch(() => { failed.push('Advance'); complaintsList = complaintsList || []; }));
+    if (need.Department) jobs.push(
+      fetchJsonWithRetry(GOOGLE_SCRIPT_URL + '?action=get_department_complaints_list', 3)
+        .then(d => { deptList = Array.isArray(d) ? filterByUserDistricts(d) : []; })
+        .catch(() => { failed.push('Department'); deptList = deptList || []; }));
+    if (jobs.length) await Promise.all(jobs);
+
+    const dept = deptList;
+    window._unifiedFailedSources = failed;
+
+    const rows = [];
+
+    (window.parentSchoolComplaintsList || []).forEach(c => {
+      rows.push({
+        source: 'School', ref: 'SR ' + (c.srNo || ''), school: c.school || '',
+        serial: c.serialNumber || '', raw: c.status || '', tag: unifiedTag(c.status),
+        part: c.suspectedPart || '', branch: sdResolveBranch(c) || 'Unmapped',
+        district: String(c.district || '').toUpperCase()
+      });
+    });
+
+    (dept || []).forEach(t => {
+      rows.push({
+        source: 'Department', ref: t.ticketId || '', school: t.school || '',
+        serial: '', raw: t.internalStatus || '', tag: unifiedTag(t.internalStatus),
+        part: '', branch: t.branchName || 'Unmapped',
+        district: String(t.district || '').toUpperCase()
+      });
+    });
+
+    (complaintsList || []).forEach(c => {
+      if (String(c.archived || '').trim() === 'YES') return;
+      rows.push({
+        source: 'Advance', ref: c.caseId || '', school: c.school || '',
+        serial: c.serialNumber || '', raw: c.status || '', tag: unifiedTag(c.status),
+        part: c.suspectedPart || c.medium || '', branch: sdResolveBranch(c) || 'Unmapped',
+        district: String(c.district || '').toUpperCase()
+      });
+    });
+
+    unifiedRows = rows;
+    renderUnifiedCards(); renderUnifiedBySystem(); renderUnifiedByBranch(); renderUnifiedList();
+  } catch (e) {
+    const msg = '⚠️ Could not load consolidated data: ' + e.message +
+      ' <button class="btn btn-primary btn-sm" style="margin-left:8px;" onclick="loadUnifiedDashboard()">🔄 Retry</button>';
+    document.getElementById('unifiedTagCards').innerHTML =
+      `<div style="grid-column:1/-1;text-align:center;color:#b91c1c;padding:14px;">${msg}</div>`;
+    ['unifiedBySystemBody','unifiedByBranchBody','unifiedListBody'].forEach((id,i) => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = `<tr><td colspan="${[8,7,9][i]}" style="text-align:center;color:#b91c1c;">${msg}</td></tr>`;
+    });
+  }
+}
+
+function unifiedCounts(rows) {
+  const c = { total: rows.length, outstanding: 0 };
+  UNIFIED_TAGS.forEach(t => c[t] = 0);
+  rows.forEach(r => { c[r.tag]++; if (unifiedIsOutstanding(r.tag)) c.outstanding++; });
+  return c;
+}
+
+function renderUnifiedCards() {
+  const c = unifiedCounts(unifiedRows);
+  document.getElementById('unifiedTagCards').innerHTML = UNIFIED_TAGS.map(t => {
+    const [bg, fg] = UNIFIED_TAG_STYLE[t];
+    const active = unifiedTagFilter === t;
+    return `<div onclick="filterUnifiedByTag('${t}')" title="Click to filter the list below"
+      style="cursor:pointer;background:${bg};border-radius:12px;padding:14px 10px;text-align:center;
+      border:2px solid ${active ? fg : 'transparent'};">
+      <div style="font-size:1.6rem;font-weight:800;color:${fg};">${c[t]}</div>
+      <div style="font-size:0.7rem;font-weight:700;color:${fg};text-transform:uppercase;">${t}</div></div>`;
+  }).join('');
+
+  // Per-source counts, always visible. If a system contributes 0 rows the numbers
+  // above are incomplete, and that must be obvious rather than silently wrong.
+  const bySource = { School: 0, Department: 0, Advance: 0 };
+  unifiedRows.forEach(r => { bySource[r.source] = (bySource[r.source] || 0) + 1; });
+  const failed = window._unifiedFailedSources || [];
+  const srcBits = Object.keys(bySource).map(k => {
+    const n = bySource[k], bad = n === 0;
+    return `<span style="color:${bad ? '#b91c1c' : '#166534'};font-weight:700;">${bad ? '⚠️' : '✓'} ${k}: ${n}</span>`;
+  }).join(' &nbsp;·&nbsp; ');
+  const anyMissing = Object.values(bySource).some(n => n === 0);
+
+  document.getElementById('unifiedPendingCallout').innerHTML =
+    `<div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;padding:12px 16px;
+      display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+      <div style="font-size:0.86rem;color:#1e40af;">
+        <b style="font-size:1.15rem;">${c.outstanding}</b> call(s) still to work
+        <span style="color:var(--muted);font-size:0.76rem;"> — Pending + Attended + Part Request, across all three systems</span>
+      </div>
+      <div style="font-size:0.78rem;color:var(--muted);">${c.Closed} closed · ${c.total} total</div>
+    </div>
+    <div style="margin-top:8px;font-size:0.76rem;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span style="color:var(--muted);">Data loaded:</span> ${srcBits}
+      ${anyMissing ? `<span style="color:#b91c1c;font-weight:700;">— totals are INCOMPLETE${failed.length ? ' (' + failed.join(', ') + ' failed to load)' : ''}</span>
+        <button class="btn btn-primary btn-sm" onclick="loadUnifiedDashboard()">🔄 Reload</button>` : ''}
+    </div>`;
+}
+
+function unifiedGroupRows(bodyId, keyFn, cols) {
+  const groups = {};
+  unifiedRows.forEach(r => {
+    const k = keyFn(r) || '—';
+    if (!groups[k]) groups[k] = [];
+    groups[k].push(r);
+  });
+  const entries = Object.keys(groups).map(k => [k, unifiedCounts(groups[k])])
+    .sort((a, b) => b[1].outstanding - a[1].outstanding || b[1].total - a[1].total);
+
+  const cell = (v, warn) => `<td style="text-align:center;${v > 0 && warn ? 'color:#b91c1c;font-weight:700;' : v === 0 ? 'color:#cbd5e1;' : ''}">${v}</td>`;
+  const tot = unifiedCounts(unifiedRows);
+
+  document.getElementById(bodyId).innerHTML = entries.map(([k, c]) =>
+    `<tr><td><b>${esc(k)}</b></td>` +
+    cell(c['Pending'], true) + cell(c['Attended'], false) + cell(c['Part Request'], false) +
+    cell(c['Closed'], false) + cell(c['Not Set'], false) +
+    (cols === 8 ? `<td style="text-align:center;">${c.total}</td>` : '') +
+    `<td style="text-align:center;font-weight:800;color:#1e40af;">${c.outstanding}</td></tr>`
+  ).join('') +
+  `<tr style="background:#f8faff;font-weight:800;"><td>TOTAL</td>` +
+  cell(tot['Pending'], true) + cell(tot['Attended'], false) + cell(tot['Part Request'], false) +
+  cell(tot['Closed'], false) + cell(tot['Not Set'], false) +
+  (cols === 8 ? `<td style="text-align:center;">${tot.total}</td>` : '') +
+  `<td style="text-align:center;color:#1e40af;">${tot.outstanding}</td></tr>`;
+}
+
+function renderUnifiedBySystem() { unifiedGroupRows('unifiedBySystemBody', r => r.source, 8); }
+function renderUnifiedByBranch() { unifiedGroupRows('unifiedByBranchBody', r => r.branch, 7); }
+
+function filterUnifiedByTag(tag) {
+  unifiedTagFilter = (unifiedTagFilter === tag) ? null : tag;
+  renderUnifiedCards(); renderUnifiedList();
+  document.getElementById('unifiedListBody').closest('.card').scrollIntoView({ behavior: 'smooth' });
+}
+function clearUnifiedFilter() { unifiedTagFilter = null; renderUnifiedCards(); renderUnifiedList(); }
+
+function getUnifiedFiltered() {
+  const src = document.getElementById('unifiedSourceFilter');
+  const q = (document.getElementById('unifiedSearch') || {}).value || '';
+  const ql = q.trim().toLowerCase();
+  return unifiedRows.filter(r => {
+    if (unifiedTagFilter && r.tag !== unifiedTagFilter) return false;
+    if (src && src.value && r.source !== src.value) return false;
+    if (ql && !(String(r.school).toLowerCase().includes(ql) ||
+                String(r.serial).toLowerCase().includes(ql) ||
+                String(r.district).toLowerCase().includes(ql) ||
+                String(r.ref).toLowerCase().includes(ql) ||
+                String(r.branch).toLowerCase().includes(ql) ||
+                String(r.part).toLowerCase().includes(ql))) return false;
+    return true;
+  });
+}
+
+function renderUnifiedList() {
+  const rows = getUnifiedFiltered();
+  document.getElementById('unifiedListLabel').textContent =
+    (unifiedTagFilter ? '— ' + unifiedTagFilter + ' ' : '— ') + rows.length + ' call(s)';
+  document.getElementById('unifiedClearBtn').style.display = unifiedTagFilter ? '' : 'none';
+
+  const body = document.getElementById('unifiedListBody');
+  if (!rows.length) { body.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--muted);">No calls match.</td></tr>'; return; }
+
+  body.innerHTML = rows.slice(0, 500).map(r => {
+    const [bg, fg] = UNIFIED_TAG_STYLE[r.tag];
+    return `<tr>
+      <td><span style="font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;background:#eef2ff;color:#3730a3;">${esc(r.source)}</span></td>
+      <td style="font-family:monospace;font-size:0.74rem;">${esc(r.ref)}</td>
+      <td>${esc(r.school)}</td>
+      <td style="font-family:monospace;font-size:0.72rem;">${esc(r.serial) || '—'}</td>
+      <td><span style="font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;background:${bg};color:${fg};">${esc(r.tag)}</span></td>
+      <td style="font-size:0.74rem;color:var(--muted);">${esc(r.raw) || '(blank)'}</td>
+      <td style="font-size:0.74rem;">${esc(r.part) || '—'}</td>
+      <td>${esc(r.branch)}</td>
+      <td>${esc(r.district)}</td>
+    </tr>`;
+  }).join('') + (rows.length > 500
+    ? `<tr><td colspan="9" style="text-align:center;color:var(--muted);">…and ${rows.length - 500} more — narrow the filter or use Export CSV for the full set.</td></tr>`
+    : '');
+}
+
+function exportUnifiedCSV() {
+  const rows = getUnifiedFiltered();
+  if (!rows.length) { showToast('⚠️ No calls to export.', 'warn'); return; }
+  const headers = ['System', 'Reference', 'School', 'Serial Number', 'Tag', 'Raw Status', 'Part Requested', 'Branch', 'District', 'Still To Work'];
+  const esc2 = v => {
+    let s = String(v === null || v === undefined ? '' : v).replace(/"/g, '""');
+    return /[",\n\r]/.test(s) ? `"${s}"` : s;
+  };
+  const csv = '﻿' + headers.map(esc2).join(',') + '\n' +
+    rows.map(r => [r.source, r.ref, r.school, r.serial, r.tag, r.raw, r.part, r.branch, r.district,
+                   unifiedIsOutstanding(r.tag) ? 'YES' : 'NO'].map(esc2).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = 'all_calls_consolidated_' + new Date().toISOString().slice(0, 10) + '.csv';
+  link.click();
+  showToast(`📥 Exported ${rows.length} call(s).`, 'success');
 }
 
 /* ─────────────── DEPARTMENT DASHBOARD (pendency + branch aging) ─────────────── */
