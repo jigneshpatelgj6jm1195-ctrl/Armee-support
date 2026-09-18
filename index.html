@@ -3064,6 +3064,11 @@ async function proceedWithSubmission() {
   }
   const complaint = {
     action:            isSchool ? 'resolve_school_complaint_from_portal' : 'submit_complaint',
+    // Stable id generated ONCE per complaint and reused by every retry (it travels
+    // with the object into offlineQueue/localStorage). The backend records it and
+    // ignores a repeat, so a reply lost in transit can no longer create a second
+    // row when the queue re-sends the same complaint.
+    submissionId:      newSubmissionId(),
     srNo:              isSchool ? r?.srNo : undefined,
     submittedAt:       new Date().toISOString(),
     complainantName:   user.name  || '',
@@ -3105,7 +3110,8 @@ async function proceedWithSubmission() {
   btn.disabled = true; btn.textContent = '⏳ Submitting…';
 
   let submitted = false;
-  
+  let fatalError = false; // server rejected it outright — must not show a success screen
+
   // Submit to local server complaints.json
   try {
     await fetch('/submit_complaint', {
@@ -3133,8 +3139,14 @@ async function proceedWithSubmission() {
           console.warn("Server is busy/locked. Caching for background retry.");
           submitted = false;
         } else {
+          // Fatal (non-retryable) server error. Retrying forever would spin, but
+          // silently marking it submitted destroyed the complaint — the engineer
+          // saw a success screen for something that was never saved. Keep it and
+          // tell them instead.
           console.error("Backend error submitting complaint:", result ? result.message : 'Unknown');
-          submitted = true; // Mark as submitted to avoid infinite retry of fatal errors
+          recordFailedSubmission(complaint, result ? result.message : 'Server rejected the complaint');
+          fatalError = true;
+          submitted = true; // keeps it out of the auto-retry queue; it is preserved above
         }
       } else {
         submitted = false; // 429/503/500 errors go to offlineQueue
@@ -3180,6 +3192,17 @@ async function proceedWithSubmission() {
       document.getElementById('successNewBtn').style.display = '';
       complaintGroup = null;
     }
+  } else if (fatalError) {
+    // The server refused this complaint. Never claim success — the engineer must
+    // know it was not filed, and it is kept in failedSubmissions for a retry.
+    document.getElementById('successIcon').textContent = '⚠️';
+    document.getElementById('successTitle').textContent = 'NOT Submitted';
+    document.getElementById('successMsg').textContent =
+      `The server rejected this complaint for ${r?.school}.\n` +
+      `It has been saved on this phone — use "Retry now" at the bottom of the screen.\n` +
+      `Please inform the office if it keeps failing.`;
+    document.getElementById('successNextBtn').style.display = 'none';
+    document.getElementById('successNewBtn').style.display = '';
   } else {
     // Single-item success
     document.getElementById('successIcon').textContent = '✓';
@@ -3301,6 +3324,83 @@ function resetAll() {
   loadMasterData();
 }
 
+/* ─────────────── SUBMISSION IDENTITY & FAILED SUBMISSIONS ─────────────── */
+// Unique per complaint, stable across retries. crypto.randomUUID isn't available
+// on every older Android WebView the engineers use, so fall back to a random +
+// timestamp string, which is unique enough for de-duplicating one device's queue.
+function newSubmissionId() {
+  try {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+      return 'SUB-' + window.crypto.randomUUID();
+    }
+  } catch (_) {}
+  return 'SUB-' + Date.now().toString(36) + '-' +
+         Math.random().toString(36).slice(2, 10) +
+         Math.random().toString(36).slice(2, 10);
+}
+
+// A complaint the server rejected outright. Previously these were marked as
+// "submitted" and silently dropped, so the engineer believed the complaint was
+// filed when nothing had been saved. Now they are kept, surfaced, and can be
+// retried by hand.
+let failedSubmissions = [];
+try {
+  failedSubmissions = JSON.parse(localStorage.getItem('failedSubmissions') || '[]');
+} catch (_) { failedSubmissions = []; }
+
+function recordFailedSubmission(complaint, reason) {
+  try {
+    const already = failedSubmissions.some(f => f.submissionId === complaint.submissionId);
+    if (!already) {
+      failedSubmissions.push(Object.assign({}, complaint, {
+        failureReason: String(reason || 'Unknown error'),
+        failedAt: new Date().toISOString()
+      }));
+      localStorage.setItem('failedSubmissions', JSON.stringify(failedSubmissions));
+    }
+  } catch (e) {
+    console.error('Could not store failed submission:', e);
+  }
+  updateFailedBanner();
+}
+
+function updateFailedBanner() {
+  let el = document.getElementById('failedSubmitBanner');
+  if (!failedSubmissions.length) { if (el) el.remove(); return; }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'failedSubmitBanner';
+    el.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:9999;background:#b91c1c;' +
+      'color:#fff;padding:10px 14px;font-size:0.82rem;font-weight:600;display:flex;' +
+      'align-items:center;justify-content:space-between;gap:10px;box-shadow:0 -2px 10px rgba(0,0,0,.25)';
+    document.body.appendChild(el);
+  }
+  el.innerHTML =
+    '<span>⚠️ ' + failedSubmissions.length + ' complaint(s) were NOT saved to the server.</span>' +
+    '<button onclick="retryFailedSubmissions()" style="background:#fff;color:#b91c1c;border:none;' +
+    'border-radius:8px;padding:6px 12px;font-weight:700;cursor:pointer;">Retry now</button>';
+}
+
+// Move failed items back into the normal offline queue and let it drain. Their
+// submissionId is unchanged, so if one of them actually did reach the server the
+// backend recognises it and will not create a duplicate.
+function retryFailedSubmissions() {
+  if (!failedSubmissions.length) return;
+  const items = failedSubmissions.slice();
+  failedSubmissions = [];
+  localStorage.setItem('failedSubmissions', JSON.stringify(failedSubmissions));
+  items.forEach(it => {
+    delete it.failureReason; delete it.failedAt;
+    offlineQueue.push(it);
+  });
+  localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
+  updateFailedBanner();
+  showToast('Retrying ' + items.length + ' complaint(s)…');
+  retryQueue();
+}
+
+document.addEventListener('DOMContentLoaded', updateFailedBanner);
+
 /* ─────────────── OFFLINE QUEUE ─────────────── */
 let isRetrying = false;
 async function retryQueue() {
@@ -3341,7 +3441,12 @@ async function retryQueue() {
               syncedRemote = false;
               break; // Stop processing, wait for next trigger
             } else {
-              syncedRemote = true; // Avoid infinite retry loop for fatal validation errors
+              // Same trap as the first-attempt path: dropping the item avoids an
+              // endless retry loop but destroys the complaint. Preserve it in
+              // failedSubmissions and surface it instead of discarding silently.
+              console.error('Server rejected queued complaint:', result ? result.message : 'Unknown');
+              recordFailedSubmission(item, result ? result.message : 'Server rejected the complaint');
+              syncedRemote = true; // removes it from the auto-retry queue; preserved above
             }
           } else {
             syncedRemote = false;

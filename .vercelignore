@@ -6,3 +6,20 @@ __pycache__
 google_apps_script_backend.js
 export_and_launch.py
 School complaint format 23.6.25.xlsx
+
+# Complaint exports carry personal data (complainant + principal names, phone
+# numbers, addresses, GPS). They were being served publicly at
+# support.armee.online/complaints.json — 3297 records, no authentication.
+# They are only ever used as a stale offline fallback, so blocking them costs
+# nothing at runtime. school_data.json and master_data.json stay published:
+# the field app fetches school_data.json at runtime (and the service worker
+# precaches it), and master_data.json no longer contains any passwords.
+complaints.json
+school_complaint_data.json
+server_backups
+*.xlsx
+test_captcha_img.png
+live_index.html
+live_admin.html
+live_admin_check.html
+live2.html

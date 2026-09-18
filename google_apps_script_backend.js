@@ -863,6 +863,16 @@ function doGet(e) {
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
+    if (action === 'health' || action === 'health_check') {
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'ok',
+        service: 'Armee Complaint Management Backend',
+        version: '1.2.0',
+        timestamp: new Date().toISOString(),
+        deptCacheWarm: !!cacheGetLarge(DEPT_LIST_CACHE_KEY)
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     // Default: return complaints list
     var complaints = getComplaintsList(ss);
     return ContentService.createTextOutput(JSON.stringify(complaints))
@@ -3579,31 +3589,30 @@ function getDepartmentComplaintsList(ss) {
     var res = resolutions[ticketId] || { internalStatus: 'Pending', closureType: '', owningDistrictAdmin: '' };
     var hit = resolveBranchId(s, [res.owningDistrictAdmin, row[0]]);
     var br = hit ? s.branchById[hit.branchId] : null;
-    out.push({
+    var item = {
       ticketId: ticketId, district: row[0], block: row[2], school: row[8], schoolId: row[7],
       assetType: row[11], deviceType: row[12], issueType: row[13], issueDetails: row[14],
       contactName: row[16], phoneNumber: row[17], ticketStatus: row[19],
       createdDate: row[21], businessDays: countBusinessDaysExcludingSundays(row[21], now),
       internalStatus: res.internalStatus, closureType: res.closureType,
-      branchId: hit ? hit.branchId : '', branchName: br ? br.name : 'Unmapped',
-      
-      // Resolution details
-      otpValue: res.otpValue || '',
-      resolvedBy: res.resolvedBy || '',
-      technicianName: res.technicianName || '',
-      diagnosisNotes: res.diagnosisNotes || '',
-      resolvedAt: res.resolvedAt || '',
-      equipment: res.equipment || '',
-      natureOfComplaint: res.natureOfComplaint || '',
-      quantity: res.quantity || '',
-      resolutionDate: res.resolutionDate || '',
-      serialNumber: res.serialNumber || '',
-      serialPhotoUrl: res.serialPhotoUrl || '',
-      suspectedPart: res.suspectedPart || '',
-      suspectedPartPhotoUrl: res.suspectedPartPhotoUrl || '',
-      acerCaseId: res.acerCaseId || '',
-      acerCaseStatus: res.acerCaseStatus || ''
-    });
+      branchId: hit ? hit.branchId : '', branchName: br ? br.name : 'Unmapped'
+    };
+    if (res.otpValue) item.otpValue = res.otpValue;
+    if (res.resolvedBy) item.resolvedBy = res.resolvedBy;
+    if (res.technicianName) item.technicianName = res.technicianName;
+    if (res.diagnosisNotes) item.diagnosisNotes = res.diagnosisNotes;
+    if (res.resolvedAt) item.resolvedAt = res.resolvedAt;
+    if (res.equipment) item.equipment = res.equipment;
+    if (res.natureOfComplaint) item.natureOfComplaint = res.natureOfComplaint;
+    if (res.quantity) item.quantity = res.quantity;
+    if (res.resolutionDate) item.resolutionDate = res.resolutionDate;
+    if (res.serialNumber) item.serialNumber = res.serialNumber;
+    if (res.serialPhotoUrl) item.serialPhotoUrl = res.serialPhotoUrl;
+    if (res.suspectedPart) item.suspectedPart = res.suspectedPart;
+    if (res.suspectedPartPhotoUrl) item.suspectedPartPhotoUrl = res.suspectedPartPhotoUrl;
+    if (res.acerCaseId) item.acerCaseId = res.acerCaseId;
+    if (res.acerCaseStatus) item.acerCaseStatus = res.acerCaseStatus;
+    out.push(item);
   }
   return out;
 }

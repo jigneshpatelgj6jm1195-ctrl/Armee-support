@@ -365,6 +365,77 @@ tr:hover td { background: #f8fafc; }
 .add-nature-row input { flex: 1; padding: 7px 10px; border: 2px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 0.8rem; outline: none; }
 .add-nature-row input:focus { border-color: var(--primary); }
 
+/* ═══════════════ SKELETON LOADERS & PAGINATION ═══════════════ */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton-box {
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+}
+.skeleton-row td {
+  padding: 12px 10px;
+}
+.skeleton-line {
+  height: 14px;
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+.dept-pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #f8fafc;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 10px 10px;
+  font-size: 0.8rem;
+}
+.dept-page-btns {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dept-page-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  background: white;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.dept-page-btn:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.dept-page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.sortable-th {
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+.sortable-th:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+.sort-indicator {
+  display: inline-block;
+  margin-left: 4px;
+  font-size: 0.7rem;
+  color: var(--primary);
+}
+
 /* ═══════════════ FOOTER ═══════════════ */
 .footer {
   background: white; border-top: 1px solid var(--border);
@@ -1167,15 +1238,52 @@ tr:hover td { background: #f8fafc; }
           <button class="btn btn-secondary btn-sm" onclick="downloadDeptReport()" style="display:flex; align-items:center; gap:6px;">📥 Export Excel</button>
         </div>
       </div>
-      <div style="margin-top:12px; margin-bottom:12px; max-width:320px;">
-        <label style="font-size:0.75rem; font-weight:700; color:var(--text); margin-bottom:4px; display:block;">Search text (School/DISE/SN)</label>
-        <input type="text" id="deptFilterText" placeholder="Type to search..." oninput="renderDeptList()" style="width:100%; padding:6px 12px; font-size:0.8rem; border:1px solid var(--border); border-radius:8px;" />
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-top:12px;margin-bottom:12px;">
+        <div style="flex:1;min-width:240px;max-width:360px;">
+          <label style="font-size:0.75rem; font-weight:700; color:var(--text); margin-bottom:4px; display:block;">Search text (School/DISE/SN/District/Branch)</label>
+          <input type="text" id="deptFilterText" placeholder="Type to search..." oninput="onDeptSearchInput()" style="width:100%; padding:6px 12px; font-size:0.8rem; border:1px solid var(--border); border-radius:8px;" />
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:0.78rem;color:var(--muted);font-weight:600;">Page size:</span>
+          <select id="deptPageSizeSelect" onchange="changeDeptPageSize(this.value)" style="padding:4px 8px;font-size:0.8rem;border:1px solid var(--border);border-radius:6px;background:white;cursor:pointer;">
+            <option value="25">25</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+            <option value="-1">All</option>
+          </select>
+        </div>
       </div>
       <div class="table-responsive" style="margin-top:12px;">
         <table>
-          <thead><tr><th style="width:40px; text-align:center;"><input type="checkbox" id="selectAllDept" onclick="toggleSelectAllDept(this)" style="transform: scale(1.25); cursor: pointer;" /></th><th>Ticket</th><th>School</th><th>District</th><th>Branch</th><th>Issue</th><th>Age (BD)</th><th>Log Date</th><th>Last Updated</th><th>Close Date</th><th>Acer Case ID</th><th>Acer Status</th><th id="deptStatusHeaderCol" style="min-width: 140px;">Status</th></tr></thead>
+          <thead>
+            <tr>
+              <th style="width:40px; text-align:center;"><input type="checkbox" id="selectAllDept" onclick="toggleSelectAllDept(this)" style="transform: scale(1.25); cursor: pointer;" /></th>
+              <th class="sortable-th" onclick="setDeptSort('ticketId')">Ticket <span id="sort-ticketId" class="sort-indicator"></span></th>
+              <th class="sortable-th" onclick="setDeptSort('school')">School <span id="sort-school" class="sort-indicator"></span></th>
+              <th class="sortable-th" onclick="setDeptSort('district')">District <span id="sort-district" class="sort-indicator"></span></th>
+              <th class="sortable-th" onclick="setDeptSort('branchName')">Branch <span id="sort-branchName" class="sort-indicator"></span></th>
+              <th class="sortable-th" onclick="setDeptSort('issueType')">Issue <span id="sort-issueType" class="sort-indicator"></span></th>
+              <th class="sortable-th" onclick="setDeptSort('businessDays')">Age (BD) <span id="sort-businessDays" class="sort-indicator"></span></th>
+              <th class="sortable-th" onclick="setDeptSort('createdDate')">Log Date <span id="sort-createdDate" class="sort-indicator"></span></th>
+              <th class="sortable-th" onclick="setDeptSort('resolvedAt')">Last Updated <span id="sort-resolvedAt" class="sort-indicator"></span></th>
+              <th class="sortable-th" onclick="setDeptSort('resolutionDate')">Close Date <span id="sort-resolutionDate" class="sort-indicator"></span></th>
+              <th class="sortable-th" onclick="setDeptSort('acerCaseId')">Acer Case ID <span id="sort-acerCaseId" class="sort-indicator"></span></th>
+              <th class="sortable-th" onclick="setDeptSort('acerCaseStatus')">Acer Status <span id="sort-acerCaseStatus" class="sort-indicator"></span></th>
+              <th id="deptStatusHeaderCol" class="sortable-th" onclick="setDeptSort('internalStatus')" style="min-width: 140px;">Status <span id="sort-internalStatus" class="sort-indicator"></span></th>
+            </tr>
+          </thead>
           <tbody id="deptListBody"><tr><td colspan="13" style="text-align:center;color:var(--muted);">Loading…</td></tr></tbody>
         </table>
+      </div>
+      <div id="deptPaginationBar" class="dept-pagination-bar" style="display:none;">
+        <div id="deptPageInfo" style="color:var(--muted);font-weight:600;">Showing 0 of 0 tickets</div>
+        <div class="dept-page-btns">
+          <button class="dept-page-btn" id="btnDeptFirst" onclick="changeDeptPage('first')">« First</button>
+          <button class="dept-page-btn" id="btnDeptPrev" onclick="changeDeptPage('prev')">‹ Prev</button>
+          <span id="deptPageIndicator" style="padding:0 8px;font-weight:700;">1 / 1</span>
+          <button class="dept-page-btn" id="btnDeptNext" onclick="changeDeptPage('next')">Next ›</button>
+          <button class="dept-page-btn" id="btnDeptLast" onclick="changeDeptPage('last')">Last »</button>
+        </div>
       </div>
     </div>
 
@@ -2354,11 +2462,29 @@ window.addEventListener('DOMContentLoaded', async () => {
   updateUserProfileUI(session);
   renderNavigationMenu();
   applyUrlModule();
-  await Promise.all([
-    loadComplaints(),
-    loadSchoolList(),
-    ensureBranchDataLoaded()
-  ]);
+
+  // Sequence data loading to prevent saturation of Google Apps Script concurrency quotas
+  const isDeptActive = currentTab === 'dept';
+  if (isDeptActive) {
+    // School data is fast local JSON; complaints and branches are deferred to avoid competing with dept live sync
+    await loadSchoolList();
+    setTimeout(async () => {
+      try {
+        await Promise.all([
+          loadComplaints(),
+          ensureBranchDataLoaded()
+        ]);
+      } catch (e) {
+        console.warn('Background sync deferred error:', e);
+      }
+    }, 500);
+  } else {
+    await Promise.all([
+      loadComplaints(),
+      loadSchoolList(),
+      ensureBranchDataLoaded()
+    ]);
+  }
   startAutoRefresh();
 });
 
@@ -7301,8 +7427,7 @@ async function loadUnifiedDashboard() {
         .then(d => { complaintsList = normalizeComplaintStatuses(Array.isArray(d) ? d : []); })
         .catch(() => { failed.push('Advance'); complaintsList = complaintsList || []; }));
     if (need.Department) jobs.push(
-      fetchJsonWithRetry(GOOGLE_SCRIPT_URL + '?action=get_department_complaints_list', 3)
-        .then(d => { deptList = Array.isArray(d) ? filterByUserDistricts(d) : []; })
+      departmentApi.fetchDepartmentComplaints()
         .catch(() => { failed.push('Department'); deptList = deptList || []; }));
     if (jobs.length) await Promise.all(jobs);
 
@@ -7499,58 +7624,273 @@ function exportUnifiedCSV() {
   showToast(`📥 Exported ${rows.length} call(s).`, 'success');
 }
 
-/* ─────────────── DEPARTMENT DASHBOARD (pendency + branch aging) ─────────────── */
-let deptDash = null, deptList = [], deptDrillFilter = null;
+/* ─────────────── CENTRALIZED API CLIENT & DEDUPLICATION LAYER ─────────────── */
+class ArmeeApiClient {
+  constructor() {
+    this.inFlight = new Map(); // url -> Promise
+  }
 
-// Apps Script intermittently returns an HTML error page instead of JSON. Retry a
-// few times with backoff before giving up, and never leave the panels showing a
-// permanent "Loading…" — a failure must be visible and retryable.
+  generateRequestId(prefix = 'REQ') {
+    const d = new Date();
+    const ymd = d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+    const rand = Math.random().toString(36).substring(2, 7).toUpperCase();
+    return `${prefix}-${ymd}-${rand}`;
+  }
+
+  async request(url, options = {}) {
+    const {
+      timeoutMs = 25000,
+      attempts = 3,
+      dedup = true,
+      cacheKey = null,
+      prefix = 'DEP'
+    } = options;
+
+    const dedupKey = cacheKey || url.split('?t=')[0].split('&t=')[0];
+
+    if (dedup && this.inFlight.has(dedupKey)) {
+      logToDebug(`[Deduplication] Sharing in-flight request for ${dedupKey}`, 'info');
+      return this.inFlight.get(dedupKey);
+    }
+
+    const promise = (async () => {
+      let lastErr;
+      const reqId = this.generateRequestId(prefix);
+      const startTime = performance.now();
+
+      for (let attempt = 1; attempt <= attempts; attempt++) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+          controller.abort(new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s`));
+        }, timeoutMs);
+
+        try {
+          const reqUrl = url + (url.indexOf('?') === -1 ? '?' : '&') + 't=' + Date.now();
+          logToDebug(`[${reqId}] Fetch attempt ${attempt}/${attempts}: ${reqUrl.slice(0, 100)}...`, 'api');
+
+          const res = await fetch(reqUrl, {
+            signal: controller.signal,
+            redirect: 'follow'
+          });
+
+          clearTimeout(timeoutId);
+
+          if (!res.ok) {
+            // NEVER retry client errors (404 Not Found, 400, 401, 403)
+            const isFatal = res.status === 404 || res.status === 400 || res.status === 401 || res.status === 403;
+            const err = new Error(`server returned HTTP ${res.status}`);
+            err.status = res.status;
+            err.isFatal = isFatal;
+            err.requestId = reqId;
+
+            if (isFatal) {
+              logToDebug(`[${reqId}] Non-retryable HTTP ${res.status} received. Aborting retries immediately.`, 'error');
+              throw err;
+            }
+            throw err;
+          }
+
+          const text = await res.text();
+          const trimmed = text.trim();
+
+          // Google Apps Script HTML error page check
+          if (trimmed.charAt(0) === '<') {
+            throw new Error('server busy (returned an error page)');
+          }
+
+          const data = JSON.parse(trimmed);
+          const duration = Math.round(performance.now() - startTime);
+          logToDebug(`[${reqId}] Request succeeded in ${duration}ms (Payload: ${(text.length / 1024).toFixed(1)} KB)`, 'success');
+          return data;
+
+        } catch (e) {
+          clearTimeout(timeoutId);
+          lastErr = e;
+
+          // Non-retryable errors abort loop immediately
+          if (e.isFatal) {
+            break;
+          }
+
+          logToDebug(`[${reqId}] Attempt ${attempt} failed: ${e.message}`, 'warning');
+
+          if (attempt < attempts) {
+            // Exponential backoff with jitter: 1s, 2s, 4s...
+            const delay = Math.min(1000 * Math.pow(2, attempt - 1) + Math.random() * 500, 5000);
+            await new Promise(r => setTimeout(r, delay));
+          }
+        }
+      }
+
+      throw lastErr;
+    })();
+
+    if (dedup) {
+      this.inFlight.set(dedupKey, promise);
+      promise.catch(() => {}).finally(() => {
+        this.inFlight.delete(dedupKey);
+      });
+    }
+
+    return promise;
+  }
+}
+
+const adminApi = new ArmeeApiClient();
+
+// Compatibility wrapper for callers of fetchJsonWithRetry
 async function fetchJsonWithRetry(url, attempts) {
-  attempts = attempts || 3;
-  let lastErr;
-  for (let i = 0; i < attempts; i++) {
+  return adminApi.request(url, { attempts: attempts || 3, dedup: true });
+}
+
+/* ─────────────── DEPARTMENT DASHBOARD SERVICE & SMART CACHING ─────────────── */
+let deptDash = null, deptList = [], deptDrillFilter = null;
+let deptPageSize = 50, deptCurrentPage = 1, deptSortKey = 'createdDate', deptSortOrder = 'desc';
+
+const DEPT_CACHE_STORAGE_KEY = 'armee_dept_cache_v2';
+
+const departmentApi = {
+  // Read cached data from localStorage if available
+  getLocalCache() {
     try {
-      const res = await fetch(url + (url.indexOf('?') === -1 ? '?' : '&') + 't=' + Date.now());
-      if (!res.ok) throw new Error('server returned HTTP ' + res.status);
-      const text = await res.text();
-      const trimmed = text.trim();
-      // A Google error page starts with '<' — treat it as a retryable failure
-      // rather than letting JSON.parse throw an unhelpful message.
-      if (trimmed.charAt(0) === '<') throw new Error('server busy (returned an error page)');
-      return JSON.parse(trimmed);
+      const raw = localStorage.getItem(DEPT_CACHE_STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.data) && parsed.data.length > 0) {
+        return parsed;
+      }
     } catch (e) {
-      lastErr = e;
-      if (i < attempts - 1) {
-        await new Promise(r => setTimeout(r, 1500 * Math.pow(2, i))); // 1.5s, 3s
+      console.warn('Could not read dept cache from localStorage:', e);
+    }
+    return null;
+  },
+
+  // Save successful list to localStorage
+  setLocalCache(data) {
+    try {
+      if (Array.isArray(data) && data.length > 0) {
+        localStorage.setItem(DEPT_CACHE_STORAGE_KEY, JSON.stringify({
+          timestamp: Date.now(),
+          data: data
+        }));
+      }
+    } catch (e) {
+      console.warn('Could not save dept cache to localStorage:', e);
+    }
+  },
+
+  // Centralized fetch with stale-while-revalidate
+  async fetchDepartmentComplaints(forceNetwork = false) {
+    // 1. Try local cache first if memory is empty
+    if (!deptList || !deptList.length) {
+      const cached = this.getLocalCache();
+      if (cached && Array.isArray(cached.data)) {
+        logToDebug(`[Department Cache] Hydrating ${cached.data.length} tickets from cache (${Math.round((Date.now() - cached.timestamp)/1000)}s old)`, 'info');
+        deptList = filterByUserDistricts(cached.data);
+        deptDash = computeClientDeptDashboard(deptList);
+        // Render cached data immediately so user sees UI instantly
+        renderAllDeptWidgets(false);
       }
     }
+
+    // 2. Fetch fresh live data from Google Apps Script with deduplication and timeout
+    const url = GOOGLE_SCRIPT_URL + '?action=get_department_complaints_list';
+    const list = await adminApi.request(url, {
+      timeoutMs: 30000,
+      attempts: 2, // 404 aborts immediately; transient 5xx retries once
+      dedup: true,
+      cacheKey: 'get_department_complaints_list',
+      prefix: 'DEP'
+    });
+
+    if (Array.isArray(list)) {
+      deptList = filterByUserDistricts(list);
+      deptDash = computeClientDeptDashboard(deptList);
+      this.setLocalCache(list);
+      return deptList;
+    }
+    throw new Error('Server returned invalid data format');
   }
-  throw lastErr;
+};
+
+/* ─────────────── INDEPENDENT WIDGET RENDERING & SKELETON LOADERS ─────────────── */
+function renderDeptSkeletons() {
+  const set = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+
+  // Pendency skeleton boxes
+  const boxSkeleton = Array(7).fill(0).map(() => 
+    '<div class="skeleton-box" style="height:74px;border-radius:12px;"></div>'
+  ).join('');
+  set('deptPendencyBoxes', boxSkeleton);
+
+  // Table skeleton rows
+  const tableSkeleton = (cols, rows = 4) => Array(rows).fill(0).map(() => 
+    `<tr class="skeleton-row">${Array(cols).fill(0).map(() => '<td><div class="skeleton-line"></div></td>').join('')}</tr>`
+  ).join('');
+
+  set('branchAgingBody', tableSkeleton(5, 4));
+  set('todayFlowBody', tableSkeleton(7, 4));
+  set('deptListBody', tableSkeleton(13, 5));
+}
+
+function showDeptWidgetError(containerId, msg, isTable = false, cols = 8) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+
+  const retryBtn = `<button class="btn btn-primary btn-sm" style="margin-top:6px;margin-left:8px;" onclick="loadDeptDashboard(true)">🔄 Retry</button>`;
+  
+  if (isTable) {
+    el.innerHTML = `<tr><td colspan="${cols}" style="text-align:center;padding:18px;color:#b91c1c;font-size:0.85rem;">` +
+      `⚠️ ${esc(msg)} ${retryBtn}</td></tr>`;
+  } else {
+    el.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:18px;color:#b91c1c;font-size:0.85rem;">` +
+      `⚠️ ${esc(msg)}<br>${retryBtn}</div>`;
+  }
 }
 
 function showDeptLoadError(msg) {
-  const note = '<div style="text-align:center;padding:18px;color:#b91c1c;font-size:0.85rem;">' +
-    '⚠️ ' + esc(msg) +
-    '<br><button class="btn btn-primary btn-sm" style="margin-top:10px;" onclick="loadDeptDashboard()">🔄 Retry</button></div>';
-  const cell = (cols) => '<tr><td colspan="' + cols + '" style="text-align:center;padding:18px;color:#b91c1c;font-size:0.85rem;">' +
-    '⚠️ ' + esc(msg) + ' <button class="btn btn-primary btn-sm" style="margin-left:10px;" onclick="loadDeptDashboard()">🔄 Retry</button></td></tr>';
-  const set = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
-  set('deptPendencyBoxes', note);
-  set('branchAgingBody', cell(9));
-  set('todayFlowBody', cell(7));
-  set('deptListBody', cell(8));
+  // If we already have data loaded in memory, don't blow away the UI!
+  if (deptList && deptList.length > 0) {
+    showToast(`⚠️ Background sync failed: ${msg}. Showing cached data.`, 'warn');
+    return;
+  }
+  showDeptWidgetError('deptPendencyBoxes', msg, false);
+  showDeptWidgetError('branchAgingBody', msg, true, 5);
+  showDeptWidgetError('todayFlowBody', msg, true, 7);
+  showDeptWidgetError('deptListBody', msg, true, 13);
 }
 
-async function loadDeptDashboard() {
+function renderAllDeptWidgets(isBackground = false) {
+  try { renderDeptPendency(); } catch (e) { console.error('Error rendering pendency:', e); }
+  try { renderBranchAging(); } catch (e) { console.error('Error rendering branch aging:', e); }
+  try { renderTodayFlow(); } catch (e) { console.error('Error rendering today flow:', e); }
+  try { renderDeptList(); } catch (e) { console.error('Error rendering dept list:', e); }
+  try { drawDeptTrendChart(deptList); } catch (e) { console.error('Error rendering trend chart:', e); }
+  try { renderUnifiedDailyFlow(); } catch (e) {}
+}
+
+async function loadDeptDashboard(forceRefresh = false) {
+  const hasExistingData = Array.isArray(deptList) && deptList.length > 0;
+  
+  // Only show full skeletons if we don't have any cached data rendered
+  if (!hasExistingData && !departmentApi.getLocalCache()) {
+    renderDeptSkeletons();
+  }
+
   try {
-    const list = await fetchJsonWithRetry(GOOGLE_SCRIPT_URL + '?action=get_department_complaints_list', 3);
-    deptList = Array.isArray(list) ? filterByUserDistricts(list) : [];
-    deptDash = computeClientDeptDashboard(deptList);
-    renderDeptPendency(); renderBranchAging(); renderTodayFlow(); renderDeptList(); drawDeptTrendChart(deptList);
-    renderUnifiedDailyFlow();
+    await departmentApi.fetchDepartmentComplaints(forceRefresh);
+    renderAllDeptWidgets(hasExistingData);
+    if (forceRefresh) {
+      showToast('📡 Department complaints updated live', 'success');
+    }
   } catch (e) {
-    showDeptLoadError('Could not load department data: ' + e.message);
-    showToast('❌ Could not load department dashboard: ' + e.message, 'danger');
+    logToDebug(`loadDeptDashboard failed: ${e.message}`, 'error');
+    if (!hasExistingData) {
+      showDeptLoadError(e.message);
+      showToast('❌ Could not load department dashboard: ' + e.message, 'danger');
+    } else {
+      showToast(`⚠️ Live sync failed (${e.message}). Retaining cached data.`, 'warn');
+    }
   }
 }
 
@@ -8019,6 +8359,46 @@ async function submitDeptStatusUpdate(action) {
   }
 }
 
+function setDeptSort(key) {
+  if (deptSortKey === key) {
+    deptSortOrder = deptSortOrder === 'asc' ? 'desc' : 'asc';
+  } else {
+    deptSortKey = key;
+    deptSortOrder = (key === 'businessDays' || key === 'createdDate' || key === 'resolvedAt' || key === 'resolutionDate') ? 'desc' : 'asc';
+  }
+  deptCurrentPage = 1;
+  renderDeptList();
+}
+
+function changeDeptPage(action) {
+  const rows = getFilteredDeptComplaints();
+  const total = rows.length;
+  const pageSize = deptPageSize === -1 ? total : deptPageSize;
+  const totalPages = Math.max(1, Math.ceil(total / (pageSize || 1)));
+
+  if (action === 'first') deptCurrentPage = 1;
+  else if (action === 'prev') deptCurrentPage = Math.max(1, deptCurrentPage - 1);
+  else if (action === 'next') deptCurrentPage = Math.min(totalPages, deptCurrentPage + 1);
+  else if (action === 'last') deptCurrentPage = totalPages;
+
+  renderDeptList();
+}
+
+function changeDeptPageSize(val) {
+  deptPageSize = parseInt(val, 10);
+  deptCurrentPage = 1;
+  renderDeptList();
+}
+
+let deptSearchTimer = null;
+function onDeptSearchInput() {
+  clearTimeout(deptSearchTimer);
+  deptSearchTimer = setTimeout(() => {
+    deptCurrentPage = 1;
+    renderDeptList();
+  }, 100);
+}
+
 function getFilteredDeptComplaints() {
   let rows = deptList.slice();
   if (!deptDrillFilter) {
@@ -8071,7 +8451,28 @@ function getFilteredDeptComplaints() {
     }
   }
 
-  rows.sort((a, b) => b.businessDays - a.businessDays);
+  // Dynamic column sorting
+  if (deptSortKey) {
+    rows.sort((a, b) => {
+      let valA = a[deptSortKey];
+      let valB = b[deptSortKey];
+
+      if (deptSortKey === 'businessDays') {
+        valA = Number(valA) || 0;
+        valB = Number(valB) || 0;
+        return deptSortOrder === 'asc' ? valA - valB : valB - valA;
+      }
+      if (deptSortKey === 'createdDate' || deptSortKey === 'resolvedAt' || deptSortKey === 'resolutionDate') {
+        const tA = valA ? new Date(valA).getTime() : 0;
+        const tB = valB ? new Date(valB).getTime() : 0;
+        return deptSortOrder === 'asc' ? tA - tB : tB - tA;
+      }
+      valA = String(valA || '').toLowerCase();
+      valB = String(valB || '').toLowerCase();
+      const comp = valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+      return deptSortOrder === 'asc' ? comp : -comp;
+    });
+  }
 
   const searchText = (document.getElementById('deptFilterText')?.value || '').toLowerCase().trim();
   if (searchText) {
@@ -8082,6 +8483,9 @@ function getFilteredDeptComplaints() {
       const ticketId = String(r.ticketId || '').toLowerCase();
       const district = String(r.district || '').toLowerCase();
       const block = String(r.block || '').toLowerCase();
+      const branchName = String(r.branchName || '').toLowerCase();
+      const deviceType = String(r.deviceType || '').toLowerCase();
+      const issueType = String(r.issueType || '').toLowerCase();
       const acerCaseId = String(r.acerCaseId || '').toLowerCase();
       const acerCaseStatus = String(r.acerCaseStatus || '').toLowerCase();
       return school.includes(searchText) || 
@@ -8090,6 +8494,9 @@ function getFilteredDeptComplaints() {
              ticketId.includes(searchText) ||
              district.includes(searchText) ||
              block.includes(searchText) ||
+             branchName.includes(searchText) ||
+             deviceType.includes(searchText) ||
+             issueType.includes(searchText) ||
              acerCaseId.includes(searchText) ||
              acerCaseStatus.includes(searchText);
     });
@@ -8102,7 +8509,7 @@ function renderDeptList() {
   const selectAll = document.getElementById('selectAllDept');
   if (selectAll) selectAll.checked = false;
   const headerCol = document.getElementById('deptStatusHeaderCol');
-  if (headerCol) headerCol.innerHTML = 'Status';
+  if (headerCol) headerCol.innerHTML = `Status <span id="sort-internalStatus" class="sort-indicator"></span>`;
 
   const body = document.getElementById('deptListBody');
   const label = document.getElementById('deptDrillLabel');
@@ -8119,7 +8526,7 @@ function renderDeptList() {
     } else if (f.type === 'branch') {
       if (f.val === 'UNMAPPED') labelText = '— Unmapped';
       else {
-        const b = (deptDash.branches || []).find(x => x.branchId === f.val);
+        const b = (deptDash && deptDash.branches || []).find(x => x.branchId === f.val);
         labelText = '— ' + (b ? b.branchName : f.val) + ' branch (open, oldest first)';
       }
     } else if (f.type === 'today_inflow') {
@@ -8157,15 +8564,58 @@ function renderDeptList() {
   }
 
   const rows = getFilteredDeptComplaints();
+  const totalRows = rows.length;
 
-  label.textContent = labelText + ' · ' + rows.length + ' ticket(s)';
+  label.textContent = labelText + ' · ' + totalRows.toLocaleString() + ' ticket(s)';
   clearBtn.style.display = deptDrillFilter ? '' : 'none';
 
-  if (!rows.length) {
-    body.innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--muted);">No tickets match.</td></tr>';
+  // Update sort indicators on headers
+  ['ticketId', 'school', 'district', 'branchName', 'issueType', 'businessDays', 'createdDate', 'resolvedAt', 'resolutionDate', 'acerCaseId', 'acerCaseStatus', 'internalStatus'].forEach(k => {
+    const el = document.getElementById('sort-' + k);
+    if (el) {
+      if (deptSortKey === k) {
+        el.textContent = deptSortOrder === 'asc' ? ' ▲' : ' ▼';
+      } else {
+        el.textContent = '';
+      }
+    }
+  });
+
+  const paginationBar = document.getElementById('deptPaginationBar');
+  const pageInfo = document.getElementById('deptPageInfo');
+  const pageIndicator = document.getElementById('deptPageIndicator');
+  const btnFirst = document.getElementById('btnDeptFirst');
+  const btnPrev = document.getElementById('btnDeptPrev');
+  const btnNext = document.getElementById('btnDeptNext');
+  const btnLast = document.getElementById('btnDeptLast');
+
+  if (!totalRows) {
+    body.innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:20px;">No tickets match the selected filter.</td></tr>';
+    if (paginationBar) paginationBar.style.display = 'none';
     return;
   }
-  body.innerHTML = rows.slice(0, 300).map(r => {
+
+  // Calculate pagination
+  const pageSize = deptPageSize === -1 ? totalRows : deptPageSize;
+  const totalPages = Math.max(1, Math.ceil(totalRows / (pageSize || 1)));
+  if (deptCurrentPage > totalPages) deptCurrentPage = totalPages;
+  if (deptCurrentPage < 1) deptCurrentPage = 1;
+
+  const startIdx = (deptCurrentPage - 1) * pageSize;
+  const endIdx = Math.min(startIdx + pageSize, totalRows);
+  const pagedRows = rows.slice(startIdx, endIdx);
+
+  if (paginationBar) {
+    paginationBar.style.display = 'flex';
+    if (pageInfo) pageInfo.textContent = `Showing ${startIdx + 1}–${endIdx} of ${totalRows.toLocaleString()} ticket(s)`;
+    if (pageIndicator) pageIndicator.textContent = `${deptCurrentPage} / ${totalPages}`;
+    if (btnFirst) btnFirst.disabled = (deptCurrentPage === 1);
+    if (btnPrev) btnPrev.disabled = (deptCurrentPage === 1);
+    if (btnNext) btnNext.disabled = (deptCurrentPage === totalPages);
+    if (btnLast) btnLast.disabled = (deptCurrentPage === totalPages);
+  }
+
+  body.innerHTML = pagedRows.map(r => {
     const logDate = r.createdDate ? new Date(r.createdDate).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'}) : '—';
     let closeDate = '—';
     let lastUpdated = '—';
@@ -8194,7 +8644,7 @@ function renderDeptList() {
           ? ' <button class="btn btn-primary btn-sm" title="Enter the OTP collected from the school to close this ticket" onclick="event.stopPropagation(); finalizePendingOtp(\'' + esc(r.ticketId) + '\')">📩 Enter OTP</button>'
           : '') +
       '</td></tr>';
-  }).join('') + (rows.length > 300 ? '<tr><td colspan="13" style="text-align:center;color:var(--muted);">…and ' + (rows.length - 300) + ' more (use a narrower filter)</td></tr>' : '');
+  }).join('');
 }
 
 /** Finalize a ticket the engineer closed on site without OTP. */
