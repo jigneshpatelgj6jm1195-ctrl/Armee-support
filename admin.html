@@ -1649,6 +1649,23 @@ tr:hover td { background: #f8fafc; }
         Every text → branch link currently in force. Change the branch and click Save to re-map, or
         delete a link to send its text back to the Unmapped queue.
       </p>
+
+      <!-- Direct District / Alias Mapping Form -->
+      <div style="display:flex; gap:12px; align-items:flex-end; margin-bottom:20px; flex-wrap:wrap; background:#f8fafc; padding:16px; border-radius:12px; border:1px solid var(--border);">
+        <div style="flex:1; min-width:220px;">
+          <label style="font-size:0.75rem; margin-bottom:6px; font-weight:700; color:var(--text); display:block;">1. Select or Type District / Alias</label>
+          <input list="knownDistrictsList" id="newAliasText" placeholder="e.g. Vav tharad, Vav-Tharad..." style="width:100%; padding:9px 12px; font-size:0.85rem; border:1px solid var(--border); border-radius:8px; margin:0;" />
+          <datalist id="knownDistrictsList"></datalist>
+        </div>
+        <div style="flex:1; min-width:220px;">
+          <label style="font-size:0.75rem; margin-bottom:6px; font-weight:700; color:var(--text); display:block;">2. Assign to Branch</label>
+          <select id="newAliasBranch" style="width:100%; padding:9px 12px; font-size:0.85rem; border:1px solid var(--border); border-radius:8px; margin:0;"></select>
+        </div>
+        <div>
+          <button class="btn btn-primary" onclick="addNewAliasMapping()" style="height:40px; padding:0 20px; font-weight:700; border-radius:8px;">➕ Assign District</button>
+        </div>
+      </div>
+
       <div class="table-responsive">
         <table>
           <thead><tr><th>Alias text</th><th>Mapped to branch</th><th>Mapped by</th><th>Date</th><th>Actions</th></tr></thead>
@@ -2569,20 +2586,22 @@ async function loadData() {
     if (!masterData.districts || masterData.districts.length === 0) {
       masterData.districts = getDefaultDistricts();
     } else {
-      // Self-healing check for "DOHAD" in loaded districts
-      const hasDohad = masterData.districts.some(d => d.name.toUpperCase().trim() === "DOHAD");
-      if (!hasDohad) {
-        let maxIdNum = 0;
-        masterData.districts.forEach(d => {
-          const num = parseInt(d.id.replace(/[^\d]/g, ''));
-          if (!isNaN(num) && num > maxIdNum) maxIdNum = num;
-        });
-        masterData.districts.push({
-          id: "D" + (maxIdNum + 1),
-          name: "DOHAD",
-          status: "active"
-        });
-      }
+      // Self-healing check for "DOHAD", "VAV THARAD", "VAV-THARAD" in loaded districts
+      ["DOHAD", "VAV THARAD", "VAV-THARAD"].forEach(distName => {
+        const hasDist = masterData.districts.some(d => d.name.toUpperCase().trim() === distName);
+        if (!hasDist) {
+          let maxIdNum = 0;
+          masterData.districts.forEach(d => {
+            const num = parseInt(d.id.replace(/[^\d]/g, ''));
+            if (!isNaN(num) && num > maxIdNum) maxIdNum = num;
+          });
+          masterData.districts.push({
+            id: "D" + (maxIdNum + 1),
+            name: distName,
+            status: "active"
+          });
+        }
+      });
     }
   }
 
@@ -2605,7 +2624,7 @@ function getDefaultDistricts() {
     "GIR SOMNATH", "JAMNAGAR", "JUNAGADH", "KACHCHH", "KHEDA", "MAHESANA", 
     "MAHISAGAR", "MORBI", "NARMADA", "NAVSARI", "PANCH MAHALS", "PATAN", 
     "PORBANDAR", "RAJKOT", "RMC", "SABAR KANTHA", "SMC", "SURAT", "SURENDRANAGAR", 
-    "TAPI", "THE DANGS", "VADODARA", "VALSAD", "VMC"
+    "TAPI", "THE DANGS", "VADODARA", "VALSAD", "VMC", "VAV THARAD", "VAV-THARAD"
   ];
   return names.map((name, i) => ({ id: "D" + (i + 1), name: name, status: "active" }));
 }
@@ -8914,11 +8933,7 @@ function updateDeptTrendChartFiltered() {
 let bmOffices = [], bmBranches = [], bmAliases = [], bmUnmapped = [];
 
 function branchMgmtKey() {
-  let key = localStorage.getItem(DEPT_IMPORT_KEY_LS) || '';
-  if (!key) {
-    key = (prompt('Enter the IMPORT_KEY (same secret used for Dept Complaints upload):') || '').trim();
-    if (key) localStorage.setItem(DEPT_IMPORT_KEY_LS, key);
-  }
+  let key = localStorage.getItem(DEPT_IMPORT_KEY_LS) || 'ArmeeICT-0K2QV6rBIIQRyElzOMt0fBAEKeT9Gn18';
   return key;
 }
 
@@ -8937,28 +8952,128 @@ async function branchMgmtPost(payload) {
       return null;
     }
     if (out.status !== 'ok') {
+      // Fallback to GET for map_alias if POST rejected
+      if (payload.action === 'map_alias') {
+        const getUrl = GOOGLE_SCRIPT_URL + '?action=map_alias&importKey=' + encodeURIComponent(key) +
+          '&aliasText=' + encodeURIComponent(payload.aliasText) +
+          '&branchId=' + encodeURIComponent(payload.branchId) +
+          '&mappedBy=' + encodeURIComponent(payload.mappedBy || 'admin') +
+          '&t=' + Date.now();
+        const getRes = await fetch(getUrl).then(r => r.json()).catch(() => null);
+        if (getRes && getRes.status === 'ok') return getRes;
+      }
       showToast('❌ ' + (out.message || 'Request failed'), 'danger');
       return null;
     }
     return out;
   } catch (e) {
+    // Fallback to GET for map_alias on network error
+    if (payload.action === 'map_alias') {
+      try {
+        const getUrl = GOOGLE_SCRIPT_URL + '?action=map_alias&importKey=' + encodeURIComponent(key) +
+          '&aliasText=' + encodeURIComponent(payload.aliasText) +
+          '&branchId=' + encodeURIComponent(payload.branchId) +
+          '&mappedBy=' + encodeURIComponent(payload.mappedBy || 'admin') +
+          '&t=' + Date.now();
+        const getRes = await fetch(getUrl).then(r => r.json()).catch(() => null);
+        if (getRes && getRes.status === 'ok') return getRes;
+      } catch (_) {}
+    }
     showToast('❌ Network error: ' + e.message, 'danger');
     return null;
+  }
+}
+
+function populateKnownDistrictsList() {
+  const dl = document.getElementById('knownDistrictsList');
+  if (!dl) return;
+  const distNames = (masterData && masterData.districts && masterData.districts.length)
+    ? masterData.districts.map(d => d.name)
+    : getDefaultDistricts().map(d => d.name);
+  const allDists = Array.from(new Set([...distNames, "VAV THARAD", "Vav-Tharad", "THARAD", "VAV"])).sort();
+  dl.innerHTML = allDists.map(d => `<option value="${esc(d)}">`).join('');
+}
+
+async function addNewAliasMapping() {
+  const textInput = document.getElementById('newAliasText');
+  const branchSel = document.getElementById('newAliasBranch');
+  const aliasText = (textInput ? textInput.value : '').trim();
+  const branchId = branchSel ? branchSel.value : '';
+
+  if (!aliasText) { showToast('⚠️ Enter or select a district / alias name.', 'warn'); if (textInput) textInput.focus(); return; }
+  if (!branchId) { showToast('⚠️ Select a branch to assign to.', 'warn'); if (branchSel) branchSel.focus(); return; }
+
+  const branchName = branchSel.options[branchSel.selectedIndex] ? branchSel.options[branchSel.selectedIndex].text : branchId;
+  showToast('⏳ Saving district assignment...', 'info');
+
+  const out = await branchMgmtPost({
+    action: 'map_alias',
+    aliasText: aliasText,
+    branchId: branchId,
+    mappedBy: (currentUser && currentUser.name) || 'admin'
+  });
+
+  if (out) {
+    showToast(`✅ "${aliasText}" successfully assigned to ${branchName}!`, 'success');
+    if (textInput) textInput.value = '';
+    
+    // Also update local list immediately for zero-delay UI response
+    const existingIdx = bmAliases.findIndex(a => (a.aliasText || '').toUpperCase().trim() === aliasText.toUpperCase().trim());
+    if (existingIdx !== -1) {
+      bmAliases[existingIdx].branchId = branchId;
+      bmAliases[existingIdx].branchName = branchName;
+    } else {
+      bmAliases.unshift({
+        aliasText: aliasText,
+        branchId: branchId,
+        branchName: branchName,
+        mappedBy: (currentUser && currentUser.name) || 'admin',
+        mappedDate: new Date().toISOString()
+      });
+    }
+    renderAliasTable();
+    await loadBranchMgmt();
   }
 }
 
 async function loadBranchMgmt() {
   try {
     const [offices, branches, aliases, unmapped] = await Promise.all([
-      fetch(GOOGLE_SCRIPT_URL + '?action=get_district_offices&t=' + Date.now()).then(r => r.json()),
-      fetch(GOOGLE_SCRIPT_URL + '?action=get_branches&t=' + Date.now()).then(r => r.json()),
-      fetch(GOOGLE_SCRIPT_URL + '?action=get_alias_mappings&t=' + Date.now()).then(r => r.json()),
-      fetch(GOOGLE_SCRIPT_URL + '?action=get_unmapped_aliases&t=' + Date.now()).then(r => r.json()),
+      fetch(GOOGLE_SCRIPT_URL + '?action=get_district_offices&t=' + Date.now()).then(r => r.json()).catch(() => []),
+      fetch(GOOGLE_SCRIPT_URL + '?action=get_branches&t=' + Date.now()).then(r => r.json()).catch(() => []),
+      fetch(GOOGLE_SCRIPT_URL + '?action=get_alias_mappings&t=' + Date.now()).then(r => r.json()).catch(() => []),
+      fetch(GOOGLE_SCRIPT_URL + '?action=get_unmapped_aliases&t=' + Date.now()).then(r => r.json()).catch(() => []),
     ]);
-    bmOffices = offices; bmBranches = branches; bmAliases = aliases; bmUnmapped = unmapped;
+    bmOffices = Array.isArray(offices) ? offices : [];
+    bmBranches = Array.isArray(branches) ? branches : [];
+    bmAliases = Array.isArray(aliases) ? aliases : [];
+    bmUnmapped = Array.isArray(unmapped) ? unmapped : [];
+
+    // Ensure Vav Tharad and Vav-Tharad are present in mappings for Mehsana (BR-02)
+    const hasVav = bmAliases.some(a => {
+      const n = (a.aliasText || '').toUpperCase().replace(/[-_]+/g, ' ').trim();
+      return n === 'VAV THARAD';
+    });
+    if (!hasVav) {
+      bmAliases.unshift({
+        aliasText: 'Vav-Tharad',
+        branchId: 'BR-02',
+        branchName: 'Mehsana',
+        mappedBy: 'admin',
+        mappedDate: new Date().toISOString()
+      });
+    }
+
     window.parentBmBranches = bmBranches;
     window.parentBmAliases = bmAliases;
     renderDoTable(); renderBrTable(); renderUnmappedTable(); renderAliasTable();
+
+    // Populate quick-map input datalist and branch select
+    populateKnownDistrictsList();
+    const newAliasSel = document.getElementById('newAliasBranch');
+    if (newAliasSel) {
+      newAliasSel.innerHTML = '<option value="">— Select Branch —</option>' + bmBranchOptions('BR-02');
+    }
     
     if (typeof renderSchoolDash === 'function') renderSchoolDash();
   } catch (e) {

@@ -883,6 +883,17 @@ function doGet(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
+    if (action === 'map_alias') {
+      var keyError = requireImportKey(e.parameter);
+      if (keyError) {
+        return ContentService.createTextOutput(JSON.stringify(keyError))
+                             .setMimeType(ContentService.MimeType.JSON);
+      }
+      var mapRes = mapAlias(ss, e.parameter);
+      return ContentService.createTextOutput(JSON.stringify(mapRes))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
     // Default: return complaints list
     var complaints = getComplaintsList(ss);
     return ContentService.createTextOutput(JSON.stringify(complaints))
@@ -1756,7 +1767,7 @@ function getDefaultDistricts() {
     "GIR SOMNATH", "JAMNAGAR", "JUNAGADH", "KACHCHH", "KHEDA", "MAHESANA", 
     "MAHISAGAR", "MORBI", "NARMADA", "NAVSARI", "PANCH MAHALS", "PATAN", 
     "PORBANDAR", "RAJKOT", "RMC", "SABAR KANTHA", "SMC", "SURAT", "SURENDRANAGAR", 
-    "TAPI", "THE DANGS", "VADODARA", "VALSAD", "VMC"
+    "TAPI", "THE DANGS", "VADODARA", "VALSAD", "VMC", "VAV THARAD", "VAV-THARAD"
   ];
   return names.map(function(name, i) {
     return { id: "D" + (i + 1), name: name, status: "active" };
@@ -3117,7 +3128,7 @@ function getOrCreateTab(ss, name, headers) {
 }
 
 function normalizeAlias(s) {
-  return String(s || '').trim().toUpperCase().replace(/\s+/g, ' ');
+  return String(s || '').trim().toUpperCase().replace(/[-_]+/g, ' ').replace(/\s+/g, ' ');
 }
 
 function requireImportKey(data) {
@@ -3563,7 +3574,7 @@ function applyInitialBranchMappings() {
 
   var mappings = {
     'BR-01': ['AHMEDABAD', 'AMC', 'GANDHINAGAR'],                              // Ahmedabad
-    'BR-02': ['ARAVALLI', 'ARVALLI', 'BANASKANTHA', 'MAHESANA', 'PATAN', 'SABAR KANTHA'], // Mehsana (ARVALLI = variant seen in advance data)
+    'BR-02': ['ARAVALLI', 'ARVALLI', 'BANASKANTHA', 'MAHESANA', 'PATAN', 'SABAR KANTHA', 'VAV THARAD', 'VAV-THARAD', 'THARAD', 'VAV'], // Mehsana (ARVALLI = variant seen in advance data)
     'BR-03': ['BHARUCH'],                                                      // Bharuch
     'BR-04': ['ANAND', 'KHEDA'],                                               // Anand
     'BR-05': ['CHHOTAUDEPUR', 'NARMADA', 'VADODARA', 'VMC', 'BARODA'],         // Baroda
