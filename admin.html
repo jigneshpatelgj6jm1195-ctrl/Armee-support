@@ -7815,7 +7815,7 @@ const departmentApi = {
     // 2. Fetch fresh live data from Google Apps Script with deduplication and timeout
     const url = GOOGLE_SCRIPT_URL + '?action=get_department_complaints_list';
     const list = await adminApi.request(url, {
-      timeoutMs: 30000,
+      timeoutMs: 45000,
       attempts: 2, // 404 aborts immediately; transient 5xx retries once
       dedup: true,
       cacheKey: 'get_department_complaints_list',
