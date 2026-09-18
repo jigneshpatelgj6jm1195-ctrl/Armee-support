@@ -334,7 +334,7 @@ function makeFolderContentsPublic(folder, counts) {
 // block, so a write is reflected on the next read. The TTL is only a backstop.
 
 var CACHE_CHUNK_SIZE = 50000;
-var CACHE_TTL_SECONDS = 300;
+var CACHE_TTL_SECONDS = 21600; // 6 hours (Google Apps Script max allowed cache TTL)
 var DEPT_LIST_CACHE_KEY = 'dept_complaints_list_v1';
 
 function cacheGetLarge(key) {
@@ -870,6 +870,16 @@ function doGet(e) {
         version: '1.2.0',
         timestamp: new Date().toISOString(),
         deptCacheWarm: !!cacheGetLarge(DEPT_LIST_CACHE_KEY)
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (action === 'warm_dept_cache') {
+      var deptPayload = JSON.stringify(getDepartmentComplaintsList(ss));
+      cachePutLarge(DEPT_LIST_CACHE_KEY, deptPayload, CACHE_TTL_SECONDS);
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'ok',
+        count: JSON.parse(deptPayload).length,
+        sizeKb: Math.round(deptPayload.length / 1024)
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -2923,6 +2933,19 @@ function resolveDepartmentComplaint(ss, data) {
   return { status: 'ok', internalStatus: internalStatus };
 }
 
+/** Fast business days computation using precomputed target midnight ms */
+function countBusinessDaysExcludingSundaysFast(fromDate, nowMidMs) {
+  var from = new Date(fromDate);
+  if (isNaN(from.getTime())) return 0;
+  var start = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  var totalDays = Math.round((nowMidMs - start.getTime()) / 86400000);
+  if (totalDays <= 0) return 0;
+  var k0 = (7 - start.getDay()) % 7;
+  if (k0 === 0) k0 = 7;
+  var sundays = totalDays >= k0 ? Math.floor((totalDays - k0) / 7) + 1 : 0;
+  return totalDays - sundays;
+}
+
 /** Whole calendar days between fromDate and toDate, excluding Sundays. */
 function countBusinessDaysExcludingSundays(fromDate, toDate) {
   var from = new Date(fromDate);
@@ -3577,23 +3600,45 @@ function getDepartmentComplaintsList(ss) {
   var s = loadBranchStructure(ss);
   var resolutions = getResolutionsMap(ss);
   var now = new Date();
+  var nowMid = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   var out = [];
   var deptSheet = ss.getSheetByName(DEPT_SHEET_TAB_NAME);
   if (!deptSheet || deptSheet.getLastRow() < 2) return out;
 
-  var rows = deptSheet.getRange(2, 1, deptSheet.getLastRow() - 1, DEPT_HEADERS.length).getValues();
+  var dateCache = {};
+  var branchResolveCache = {};
+
+  // Read only the 22 columns needed for department complaint items
+  var colCount = Math.min(22, DEPT_HEADERS.length);
+  var rows = deptSheet.getRange(2, 1, deptSheet.getLastRow() - 1, colCount).getValues();
   for (var i = 0; i < rows.length; i++) {
     var row = rows[i];
     var ticketId = String(row[9] || '').trim();
     if (!ticketId) continue;
     var res = resolutions[ticketId] || { internalStatus: 'Pending', closureType: '', owningDistrictAdmin: '' };
-    var hit = resolveBranchId(s, [res.owningDistrictAdmin, row[0]]);
+    
+    // Memoize branch resolution per candidate pair
+    var candKey = (res.owningDistrictAdmin || '') + '|' + (row[0] || '');
+    var hit = branchResolveCache[candKey];
+    if (hit === undefined) {
+      hit = resolveBranchId(s, [res.owningDistrictAdmin, row[0]]);
+      branchResolveCache[candKey] = hit;
+    }
     var br = hit ? s.branchById[hit.branchId] : null;
+
+    // Memoize business days calculation per distinct date string
+    var dateStr = String(row[21] || '');
+    var bizDays = dateCache[dateStr];
+    if (bizDays === undefined) {
+      bizDays = countBusinessDaysExcludingSundaysFast(dateStr, nowMid);
+      dateCache[dateStr] = bizDays;
+    }
+
     var item = {
       ticketId: ticketId, district: row[0], block: row[2], school: row[8], schoolId: row[7],
       assetType: row[11], deviceType: row[12], issueType: row[13], issueDetails: row[14],
       contactName: row[16], phoneNumber: row[17], ticketStatus: row[19],
-      createdDate: row[21], businessDays: countBusinessDaysExcludingSundays(row[21], now),
+      createdDate: row[21], businessDays: bizDays,
       internalStatus: res.internalStatus, closureType: res.closureType,
       branchId: hit ? hit.branchId : '', branchName: br ? br.name : 'Unmapped'
     };
