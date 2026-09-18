@@ -34,6 +34,8 @@ const SEND_EMAILS = (process.env.SEND_EMAILS || 'true').toLowerCase() !== 'false
 const HEADLESS = (process.env.HEADLESS || 'true').toLowerCase() !== 'false';
 const CHUNK_SIZE = 150;
 const LOGIN_ATTEMPTS = 10;
+const RUN_LOCK_FILE = path.join(__dirname, '.scraper-run.lock');
+const RUN_LOCK_STALE_MS = 4 * 60 * 60 * 1000;
 
 const EXPORT_COLUMNS = [
   'District', 'BlockId', 'Block', 'ClusterId', 'Cluster', 'VillageId', 'Village',
@@ -48,14 +50,57 @@ function log(msg) {
   console.log(new Date().toISOString().replace('T', ' ').substring(0, 19) + '  ' + msg);
 }
 
+function acquireRunLock() {
+  const create = () => {
+    const fd = fs.openSync(RUN_LOCK_FILE, 'wx');
+    fs.writeFileSync(fd, JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }));
+    fs.closeSync(fd);
+  };
+
+  try {
+    create();
+  } catch (err) {
+    if (!err || err.code !== 'EEXIST') throw err;
+    let stale = false;
+    try {
+      const existing = JSON.parse(fs.readFileSync(RUN_LOCK_FILE, 'utf8'));
+      stale = Date.now() - new Date(existing.startedAt).getTime() > RUN_LOCK_STALE_MS;
+    } catch (_) {
+      stale = true;
+    }
+    if (!stale) throw new Error('Another scraper run is already active.');
+    fs.unlinkSync(RUN_LOCK_FILE);
+    create();
+  }
+
+  return () => {
+    try { fs.unlinkSync(RUN_LOCK_FILE); } catch (_) {}
+  };
+}
+
 async function postJson(payload) {
-  const res = await fetch(SCRIPT_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-    redirect: 'follow',
-  });
-  return res.json();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 45000);
+  try {
+    const res = await fetch(SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      redirect: 'follow',
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`Backend returned HTTP ${res.status}`);
+    const out = await res.json();
+    if (!out || (out.status !== 'ok' && out.status !== 'success')) {
+      throw new Error((out && out.message) || 'Backend rejected the request');
+    }
+    return out;
+  } catch (err) {
+    if (err && err.name === 'AbortError') throw new Error('Backend request timed out after 45 seconds');
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Failure alert → backend emails the configured ALERT_EMAIL (or the sheet owner). */
@@ -69,7 +114,7 @@ async function sendAlert(message) {
 }
 
 /* ── Captcha OCR ── */
-const Jimp = require('jimp');
+const { Jimp, JimpMime, ResizeStrategy } = require('jimp');
 let ocrWorker = null;
 
 /**
@@ -85,8 +130,12 @@ async function preprocessCaptcha(pngBuffer) {
     const v = isRed ? 0 : 255;
     this.bitmap.data[idx] = v; this.bitmap.data[idx + 1] = v; this.bitmap.data[idx + 2] = v;
   });
-  img.scale(4, Jimp.RESIZE_NEAREST_NEIGHBOR);
-  return img.getBufferAsync(Jimp.MIME_PNG);
+  img.resize({
+    w: img.bitmap.width * 4,
+    h: img.bitmap.height * 4,
+    mode: ResizeStrategy.NEAREST_NEIGHBOR,
+  });
+  return img.getBuffer(JimpMime.png);
 }
 
 async function ocrCaptcha(pngBuffer) {
@@ -302,6 +351,7 @@ async function logScraperRun(status, duration, parsedCount, newCount, updatedCou
   try {
     const out = await postJson({
       action: 'log_scraper_run',
+      importKey: IMPORT_KEY,
       status: status,
       duration: duration,
       parsed: parsedCount,
@@ -374,7 +424,9 @@ async function main() {
     status = 'FAILED';
     errMsg = err.message;
     const duration = Math.round((Date.now() - startTime) / 1000);
-    await logScraperRun(status, duration, parsedCount, newCount, updatedCount, errMsg);
+    if (!args.includes('--dry-run')) {
+      await logScraperRun(status, duration, parsedCount, newCount, updatedCount, errMsg);
+    }
     throw err;
   } finally {
     await browser.close();
@@ -382,10 +434,23 @@ async function main() {
   }
 }
 
-main().catch(async (err) => {
-  log('FAILED: ' + err.message);
-  if (!process.argv.includes('--test-captcha') && !process.argv.includes('--dry-run')) {
-    await sendAlert('ICT scraper run failed at ' + new Date().toISOString() + '\n\n' + err.message);
+if (require.main === module) {
+  let releaseRunLock;
+  try {
+    releaseRunLock = acquireRunLock();
+  } catch (err) {
+    log('SKIPPED: ' + err.message);
+    process.exitCode = 2;
   }
-  process.exit(1);
-});
+  if (releaseRunLock) {
+    main().catch(async (err) => {
+      log('FAILED: ' + err.message);
+      if (!process.argv.includes('--test-captcha') && !process.argv.includes('--dry-run')) {
+        await sendAlert('ICT scraper run failed at ' + new Date().toISOString() + '\n\n' + err.message);
+      }
+      process.exitCode = 1;
+    }).finally(releaseRunLock);
+  }
+}
+
+module.exports = { acquireRunLock, preprocessCaptcha, parseExport, postJson };

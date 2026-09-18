@@ -10,6 +10,7 @@ Requirements:
 """
 
 import json
+import hmac
 import os
 import sys
 import threading
@@ -18,7 +19,7 @@ import subprocess
 import http.server
 import socketserver
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 SCRIPT_DIR  = Path(__file__).parent
 EXCEL_FILE  = SCRIPT_DIR / "School complaint format 23.6.25.xlsx"
@@ -26,6 +27,13 @@ JSON_FILE   = SCRIPT_DIR / "school_data.json"
 MASTER_FILE = SCRIPT_DIR / "master_data.json"
 HTML_FILE   = SCRIPT_DIR / "index.html"
 PORT        = 8765
+MAX_REQUEST_BYTES = 25 * 1024 * 1024
+PUBLIC_FILES = {
+    '/', '/index.html', '/admin.html', '/manifest.json', '/sw.js',
+    '/html5-qrcode.min.js', '/armee_logo.png', '/armee_logo_square.png',
+    '/school_data.json', '/master_data.json', '/school_complaint_data.json',
+    '/complaints.json', '/deptlist.json', '/dl.json', '/dash.json', '/dash2.json', '/reg.json',
+}
 
 
 # ─────────────────────────────────────────────
@@ -49,7 +57,7 @@ class FormHandler(http.server.SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
-        path = parsed.path
+        path = unquote(parsed.path)
         
         if path == '/check_duplicate':
             from urllib.parse import parse_qs
@@ -126,13 +134,28 @@ class FormHandler(http.server.SimpleHTTPRequestHandler):
             self._respond(200, {'active': active, 'archived': archived})
             return
             
+        if path not in PUBLIC_FILES:
+            self.send_error(404, 'Not found')
+            return
+        if path == '/':
+            self.path = '/index.html'
         super().do_GET()
 
     def do_POST(self):
         path = urlparse(self.path).path
 
+        origin = self.headers.get('Origin')
+        if origin:
+            origin_host = (urlparse(origin).hostname or '').lower()
+            if origin_host not in ('localhost', '127.0.0.1'):
+                self._respond(403, {'error': 'Cross-origin request rejected'})
+                return
+
         try:
             length = int(self.headers.get('Content-Length', 0))
+            if length < 0 or length > MAX_REQUEST_BYTES:
+                self._respond(413, {'error': 'Request body is too large'})
+                return
             body   = self.rfile.read(length)
         except Exception as e:
             self._respond(400, {'error': f'Bad request: {e}'})
@@ -148,7 +171,21 @@ class FormHandler(http.server.SimpleHTTPRequestHandler):
             self._respond(400, {'error': f'Bad request parsing JSON: {e}'})
             return
 
-        if path == '/update_school':
+        if path == '/local_login':
+            expected_email = os.environ.get('LOCAL_ADMIN_EMAIL', '').strip().lower()
+            expected_password = os.environ.get('LOCAL_ADMIN_PASSWORD', '')
+            supplied_email = str(data.get('email', '')).strip().lower()
+            supplied_password = str(data.get('password', ''))
+            if not expected_email or not expected_password:
+                self._respond(503, {'status': 'error', 'message': 'Local admin login is not configured.'})
+            elif hmac.compare_digest(supplied_email, expected_email) and hmac.compare_digest(supplied_password, expected_password):
+                self._respond(200, {'status': 'ok', 'user': {
+                    'id': 'LOCAL_ADMIN', 'name': 'Local Admin', 'email': expected_email,
+                    'role': 'super_admin', 'assignedDistricts': ['ALL'], 'status': 'active'
+                }})
+            else:
+                self._respond(401, {'status': 'error', 'message': 'Invalid local administrator credentials.'})
+        elif path == '/update_school':
             self._handle_update_school(data)
         elif path == '/update_master':
             self._handle_update_master(data)
@@ -365,16 +402,12 @@ class FormHandler(http.server.SimpleHTTPRequestHandler):
         self.send_response(code)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', len(body))
-        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Cache-Control', 'no-store')
         self.end_headers()
         self.wfile.write(body)
 
     def do_OPTIONS(self):
-        self.send_response(200)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        self.end_headers()
+        self.send_error(405, 'Cross-origin requests are not supported')
 
 
 # ─────────────────────────────────────────────
@@ -531,7 +564,7 @@ def launch_form():
     server = None
     for try_port in range(PORT, PORT + 20):
         try:
-            server = socketserver.TCPServer(("", try_port), FormHandler)
+            server = socketserver.ThreadingTCPServer(("127.0.0.1", try_port), FormHandler)
             server.allow_reuse_address = True
             PORT = try_port
             break

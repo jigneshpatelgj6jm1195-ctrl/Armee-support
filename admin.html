@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <style>
 /* ═══════════════ CSS RESET & VARIABLE SYSTEM ═══════════════ */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1301,10 +1301,6 @@ tr:hover td { background: #f8fafc; }
           <label>Excel file (.xlsx)</label>
           <input type="file" id="deptFile" accept=".xlsx,.xls" style="display:block;padding:8px;border:2px dashed var(--border);border-radius:8px;background:white;" onchange="handleDeptFileSelect()" />
         </div>
-        <div>
-          <label>Import key</label>
-          <input type="password" id="deptImportKey" placeholder="Paste the IMPORT_KEY" style="width:220px;" autocomplete="off" />
-        </div>
         <div style="display:flex;align-items:center;gap:6px;padding-bottom:8px;">
           <input type="checkbox" id="deptSendEmails" style="width:16px;height:16px;" />
           <label for="deptSendEmails" style="margin:0;font-size:0.8rem;">Email branch admins about new tickets</label>
@@ -1335,10 +1331,6 @@ tr:hover td { background: #f8fafc; }
           <label>Complaint Date Tag</label>
           <input type="date" id="schoolImportDate" style="width:160px;padding:8px;border:1.5px solid var(--border);border-radius:8px;" />
         </div>
-        <div>
-          <label>Import key</label>
-          <input type="password" id="schoolImportKey" placeholder="Paste the IMPORT_KEY" style="width:220px;" autocomplete="off" />
-        </div>
         <button class="btn btn-primary" id="schoolUploadBtn" onclick="runSchoolUpload()" disabled>⬆️ Upload &amp; Process</button>
       </div>
 
@@ -1367,10 +1359,6 @@ tr:hover td { background: #f8fafc; }
         <div>
           <label style="font-weight:700; font-size:0.75rem; margin-bottom:4px; display:block;">Select File (.xlsx, .xls, .csv)</label>
           <input type="file" id="acerFile" accept=".xlsx,.xls,.csv" style="display:block;padding:8px;border:2px dashed var(--border);border-radius:8px;background:white;" onchange="handleAcerFileSelect()" />
-        </div>
-        <div>
-          <label style="font-weight:700; font-size:0.75rem; margin-bottom:4px; display:block;">Import key</label>
-          <input type="password" id="acerImportKey" placeholder="Paste the IMPORT_KEY" style="width:220px; padding:8px 12px; border-radius:6px; border:1.5px solid var(--border);" autocomplete="off" />
         </div>
         <button class="btn btn-primary" id="acerUploadBtn" onclick="runAcerMapping()" style="height:38px;" disabled>⚙️ Process &amp; Map Acer Cases</button>
       </div>
@@ -1998,8 +1986,8 @@ tr:hover td { background: #f8fafc; }
       <input type="tel" id="accessUserPhone" placeholder="e.g. 9988776655" maxlength="10" />
     </div>
     <div class="field">
-      <label for="accessUserPassword">Password *</label>
-      <input type="password" id="accessUserPassword" placeholder="Enter password" />
+      <label for="accessUserPassword">Password (required for a new user)</label>
+      <input type="password" id="accessUserPassword" placeholder="Leave blank to keep the current password" autocomplete="new-password" />
     </div>
     <div class="field">
       <label for="accessUserRole">Role *</label>
@@ -2508,6 +2496,28 @@ window.addEventListener('DOMContentLoaded', async () => {
 const LS_MASTER_KEY = 'armeeAdmin_masterData';
 const LS_COMPLAINTS_KEY = 'armeeAdmin_complaints';
 
+function masterDataForBrowserCache(data) {
+  const clean = JSON.parse(JSON.stringify(data || {}));
+  ['users', 'accessUsers'].forEach(group => {
+    (clean[group] || []).forEach(user => {
+      delete user.password;
+      delete user.passwordHash;
+      delete user.passwordSalt;
+    });
+  });
+  return clean;
+}
+
+function clearMasterSecretsInPlace(data) {
+  ['users', 'accessUsers'].forEach(group => {
+    ((data && data[group]) || []).forEach(user => {
+      delete user.password;
+      delete user.passwordHash;
+      delete user.passwordSalt;
+    });
+  });
+}
+
 async function loadData() {
   const local = isLocal();
   let loaded = false;
@@ -2517,7 +2527,9 @@ async function loadData() {
   if (!local && GOOGLE_SCRIPT_URL && navigator.onLine) {
     try {
       logToDebug(`Fetching live master data from Google Apps Script...`, 'api');
-      const res = await fetch(GOOGLE_SCRIPT_URL + '?action=get_master&t=' + Date.now());
+      const masterToken = adminAuthToken();
+      const res = await fetch(GOOGLE_SCRIPT_URL + '?action=get_master' +
+        (masterToken ? '&authToken=' + encodeURIComponent(masterToken) : '') + '&t=' + Date.now());
       if (res.ok) {
         const text = await res.text();
         const bytes = new Blob([text]).size;
@@ -2527,7 +2539,7 @@ async function loadData() {
           masterData = data;
           if (!masterData.users) masterData.users = [];
           // Sync to localStorage so offline/reload works
-          try { localStorage.setItem(LS_MASTER_KEY, JSON.stringify(masterData)); } catch(_) {}
+          try { localStorage.setItem(LS_MASTER_KEY, JSON.stringify(masterDataForBrowserCache(masterData))); } catch(_) {}
           loaded = true;
           logToDebug(`Loaded master data successfully from Apps Script. ${masterData.equipment.length} equipment types.`, 'success');
         }
@@ -2552,6 +2564,7 @@ async function loadData() {
         const data = JSON.parse(cached);
         if (data && data.equipment && data.equipment.length > 0) {
           masterData = data;
+          clearMasterSecretsInPlace(masterData);
           if (!masterData.users) masterData.users = [];
           loaded = true;
           logToDebug(`Loaded master data from localStorage cache.`, 'success');
@@ -2681,8 +2694,8 @@ async function loadComplaints() {
     if (GOOGLE_SCRIPT_URL && !isLocalhost && navigator.onLine) {
       logToDebug(`Fetching live complaints and school complaints list from Google Apps Script...`, 'api');
       const [res, resSchool] = await Promise.all([
-        fetch(GOOGLE_SCRIPT_URL),
-        fetch(GOOGLE_SCRIPT_URL + '?action=get_all_school_complaints&t=' + Date.now())
+        fetch(GOOGLE_SCRIPT_URL + '?action=get_complaints&authToken=' + encodeURIComponent(adminAuthToken()) + '&t=' + Date.now()),
+        fetch(GOOGLE_SCRIPT_URL + '?action=get_all_school_complaints&authToken=' + encodeURIComponent(adminAuthToken()) + '&t=' + Date.now())
       ]);
 
       if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -2780,7 +2793,7 @@ async function loadSchoolList() {
     const isLocalhost = isLocal();
     if (GOOGLE_SCRIPT_URL && !isLocalhost && navigator.onLine) {
       try {
-        const resMaster = await fetch(GOOGLE_SCRIPT_URL + '?action=get_school_master');
+        const resMaster = await fetch(GOOGLE_SCRIPT_URL + '?action=get_school_master&authToken=' + encodeURIComponent(adminAuthToken()));
         if (resMaster.ok) {
           const liveMaster = await resMaster.json();
           if (Array.isArray(liveMaster) && liveMaster.length > 0) {
@@ -2867,54 +2880,43 @@ async function loadSchoolList() {
 async function saveAll() {
   const btn = document.getElementById('btnSave');
   btn.disabled = true; btn.textContent = '⏳ Saving…';
-  
-  const local = isLocal();
-  let masterSaved = false;
-  let complaintsSaved = false;
 
-  // ── 1. Save master data ──────────────────────────
-  // Stamp a version timestamp — the complaint form polls this to detect changes
+  const local = isLocal();
+  let masterCached = false;
+  let complaintsCached = false;
+  let masterSynced = false;
+  let complaintsSynced = false;
+  const syncErrors = [];
+
   masterData._v = Date.now().toString();
 
-  // Always save to localStorage first (instant, reliable, survives reloads)
   try {
-    localStorage.setItem(LS_MASTER_KEY, JSON.stringify(masterData));
-    masterSaved = true;
+    localStorage.setItem(LS_MASTER_KEY, JSON.stringify(masterDataForBrowserCache(masterData)));
+    masterCached = true;
   } catch (e) {
     showToast('⚠️ localStorage unavailable: ' + e.message, 'warn');
   }
 
-  if (local) {
-    // Also sync to local Python server
-    try {
-      const res = await fetch('/update_master', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(masterData),
-      });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-    } catch (e) {
-      showToast('⚠️ Local server sync failed: ' + e.message, 'warn');
-    }
-  } else if (GOOGLE_SCRIPT_URL && navigator.onLine) {
-    // Also sync to Google Apps Script (background, no-cors is fine since localStorage is the primary)
-    fetch(GOOGLE_SCRIPT_URL, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ action: 'update_master', masterData: masterData, authToken: adminAuthToken() }),
-    }).catch(() => {}); // fire and forget
-  }
-
-  // ── 2. Save complaints statuses ──────────────────
   try {
     localStorage.setItem(LS_COMPLAINTS_KEY, JSON.stringify(complaintsList));
-    complaintsSaved = true;
+    complaintsCached = true;
   } catch (e) {
     showToast('⚠️ Could not cache complaints: ' + e.message, 'warn');
   }
 
   if (local) {
+    try {
+      const res = await fetch('/update_master', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(masterDataForBrowserCache(masterData)),
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      masterSynced = true;
+      clearMasterSecretsInPlace(masterData);
+    } catch (e) {
+      syncErrors.push('master data: ' + e.message);
+    }
     try {
       const res = await fetch('/update_complaints', {
         method: 'POST',
@@ -2922,24 +2924,51 @@ async function saveAll() {
         body: JSON.stringify(complaintsList),
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
+      complaintsSynced = true;
     } catch (e) {
-      showToast('⚠️ Local server complaints sync failed: ' + e.message, 'warn');
+      syncErrors.push('complaints: ' + e.message);
     }
   } else if (GOOGLE_SCRIPT_URL && navigator.onLine) {
-    fetch(GOOGLE_SCRIPT_URL, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ action: 'update_complaints', complaints: complaintsList, authToken: adminAuthToken() }),
-    }).catch(() => {});
+    const postAndConfirm = async payload => {
+      const res = await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const out = await res.json();
+      if (!out || out.status !== 'ok') throw new Error((out && out.message) || 'Server rejected the save');
+      return out;
+    };
+
+    try {
+      await postAndConfirm({ action: 'update_master', masterData: masterData, authToken: adminAuthToken() });
+      masterSynced = true;
+      clearMasterSecretsInPlace(masterData);
+      localStorage.setItem(LS_MASTER_KEY, JSON.stringify(masterDataForBrowserCache(masterData)));
+    } catch (e) {
+      syncErrors.push('master data: ' + e.message);
+    }
+    try {
+      await postAndConfirm({ action: 'update_complaints', complaints: complaintsList, authToken: adminAuthToken() });
+      complaintsSynced = true;
+    } catch (e) {
+      syncErrors.push('complaints: ' + e.message);
+    }
   }
 
-  if (masterSaved) {
+  const fullySaved = masterCached && complaintsCached && masterSynced && complaintsSynced;
+  if (fullySaved) {
     isDirty = false;
     updateSaveBar();
-    showToast('✅ Changes saved! (persisted locally + synced online)', 'success');
+    showToast('✅ Changes saved locally and confirmed by the server.', 'success');
+  } else {
+    isDirty = true;
+    updateSaveBar();
+    const detail = syncErrors.length ? syncErrors.join('; ') : 'online sync is unavailable';
+    showToast('⚠️ Changes are cached on this device but not fully saved online: ' + detail, 'warn');
   }
-  
+
   btn.disabled = !isDirty; btn.textContent = '💾 Save Data';
 }
 
@@ -3818,6 +3847,14 @@ function renderChart(id, config) {
 }
 
 let branchLoadingPromise = null;
+async function fetchRequiredArray(url, label) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${label} returned HTTP ${res.status}`);
+  const data = await res.json();
+  if (!Array.isArray(data)) throw new Error((data && data.message) || `${label} returned invalid data`);
+  return data;
+}
+
 async function ensureBranchDataLoaded() {
   if (bmBranches.length > 0 && bmAliases.length > 0) return;
   if (branchLoadingPromise) return branchLoadingPromise;
@@ -3825,8 +3862,8 @@ async function ensureBranchDataLoaded() {
   branchLoadingPromise = (async () => {
     try {
       const [branches, aliases] = await Promise.all([
-        fetch(GOOGLE_SCRIPT_URL + '?action=get_branches&t=' + Date.now()).then(r => r.json()),
-        fetch(GOOGLE_SCRIPT_URL + '?action=get_alias_mappings&t=' + Date.now()).then(r => r.json())
+        fetchRequiredArray(GOOGLE_SCRIPT_URL + '?action=get_branches&authToken=' + encodeURIComponent(adminAuthToken()) + '&t=' + Date.now(), 'Branches'),
+        fetchRequiredArray(GOOGLE_SCRIPT_URL + '?action=get_alias_mappings&authToken=' + encodeURIComponent(adminAuthToken()) + '&t=' + Date.now(), 'Alias mappings')
       ]);
       bmBranches = Array.isArray(branches) ? branches : [];
       bmAliases = Array.isArray(aliases) ? aliases : [];
@@ -4862,7 +4899,7 @@ async function uploadSchoolExcel(event) {
           headers: { 'Content-Type': 'text/plain' },
           body: JSON.stringify({
             action: 'import_school_master',
-            importKey: 'ArmeeICT-0K2QV6rBIIQRyElzOMt0fBAEKeT9Gn18',
+            authToken: adminAuthToken(),
             schools: parsedSchools
           })
         });
@@ -5056,9 +5093,11 @@ async function deleteSchoolMaster(dise, project) {
     } else if (GOOGLE_SCRIPT_URL && navigator.onLine) {
       await fetch(GOOGLE_SCRIPT_URL, {
         method: 'POST',
-        mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({ action: 'update_school', dise, field: 'deleted', oldValue: project, project })
+        body: JSON.stringify({ action: 'update_school', dise, field: 'deleted', oldValue: project, project, authToken: adminAuthToken() })
+      }).then(async res => {
+        const out = await res.json();
+        if (!res.ok || out.status !== 'ok') throw new Error(out.message || 'Server rejected the deletion');
       });
     } else {
       throw new Error('No connection available');
@@ -5126,9 +5165,11 @@ async function submitSchoolModal() {
       } else if (GOOGLE_SCRIPT_URL && navigator.onLine) {
         await fetch(GOOGLE_SCRIPT_URL, {
           method: 'POST',
-          mode: 'no-cors',
           headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({ action: 'update_school', dise: origDise, field: 'deleted', oldValue: origProj, project: origProj })
+          body: JSON.stringify({ action: 'update_school', dise: origDise, field: 'deleted', oldValue: origProj, project: origProj, authToken: adminAuthToken() })
+        }).then(async res => {
+          const out = await res.json();
+          if (!res.ok || out.status !== 'ok') throw new Error(out.message || 'Server rejected the update');
         });
       }
     }
@@ -5143,9 +5184,11 @@ async function submitSchoolModal() {
     } else if (GOOGLE_SCRIPT_URL && navigator.onLine) {
       await fetch(GOOGLE_SCRIPT_URL, {
         method: 'POST',
-        mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({ action: 'update_school', dise, field: 'added', newValue: JSON.stringify(schoolObj), project })
+        body: JSON.stringify({ action: 'update_school', dise, field: 'added', newValue: JSON.stringify(schoolObj), project, authToken: adminAuthToken() })
+      }).then(async res => {
+        const out = await res.json();
+        if (!res.ok || out.status !== 'ok') throw new Error(out.message || 'Server rejected the save');
       });
     } else {
       throw new Error('No connection available');
@@ -5417,7 +5460,7 @@ function openEditAccessUser(idx) {
   document.getElementById('accessUserName').value = u.name || '';
   document.getElementById('accessUserEmail').value = u.email || '';
   document.getElementById('accessUserPhone').value = u.phone || '';
-  document.getElementById('accessUserPassword').value = u.password || '';
+  document.getElementById('accessUserPassword').value = '';
   document.getElementById('accessUserRole').value = u.role || 'viewer';
   
   const role = u.role || 'viewer';
@@ -5440,8 +5483,12 @@ function confirmAddAccessUser() {
   const password = document.getElementById('accessUserPassword').value;
   const role = document.getElementById('accessUserRole').value;
   
-  if (!name || !email || !password) {
-    showToast('⚠️ Name, Email and Password required', 'warn');
+  if (!name || !email || (editIdx === -1 && !password)) {
+    showToast('⚠️ Name and email are required. New users also need a password.', 'warn');
+    return;
+  }
+  if (password && password.length < 8) {
+    showToast('⚠️ Password must contain at least 8 characters', 'warn');
     return;
   }
   
@@ -5477,7 +5524,7 @@ function confirmAddAccessUser() {
     u.name = name;
     u.email = email;
     u.phone = phone;
-    u.password = password;
+    if (password) u.password = password;
     u.role = role;
     u.assignedDistricts = assignedDistricts;
     showToast(`✏️ Access user ${name} updated successfully!`, 'success');
@@ -5506,11 +5553,15 @@ function deleteAccessUser(idx) {
 function resetAccessUserPassword(idx) {
   const u = masterData.accessUsers[idx];
   if (!u) return;
-  const newPass = prompt(`Enter new password for ${u.name} (${u.email}):`, u.password || '');
+  const newPass = prompt(`Enter new password for ${u.name} (${u.email}):`, '');
   if (newPass === null) return; // cancelled
   const trimmed = newPass.trim();
   if (!trimmed) {
     showToast('⚠️ Password cannot be empty', 'warn');
+    return;
+  }
+  if (trimmed.length < 8) {
+    showToast('⚠️ Password must contain at least 8 characters', 'warn');
     return;
   }
   u.password = trimmed;
@@ -5529,7 +5580,7 @@ async function renderArchiveManager() {
   const local = isLocal();
   try {
     if (GOOGLE_SCRIPT_URL && !local && navigator.onLine) {
-      const res = await fetch(GOOGLE_SCRIPT_URL + '?action=get_archive_list');
+      const res = await fetch(GOOGLE_SCRIPT_URL + '?action=get_archive_list&authToken=' + encodeURIComponent(adminAuthToken()));
       if (res.ok) {
         archiveList = await res.json();
       }
@@ -5920,17 +5971,17 @@ function renderComplaintsTable() {
             <b>Acer Status:</b><br><span class="sd-chip ${esc(c.acerCaseStatus).toLowerCase().replace(/\s+/g,'')}" style="font-size:0.65rem; padding:1px 5px; display:inline-block; margin-top:2px;">${esc(c.acerCaseStatus)}</span>
           </div>` : ''}
           ${(() => {
-            const serialPhotoSrc = c.serialPhotoUrl || c.serialPhoto || '';
+            const serialPhotoSrc = safePhotoUrl(c.serialPhotoUrl || c.serialPhoto || '');
             return serialPhotoSrc 
-              ? `<div style="margin-top: 4px;"><img src="${serialPhotoSrc}" loading="lazy" decoding="async" style="width:50px; height:50px; object-fit:cover; border-radius:6px; border:1px solid var(--border); cursor:pointer;" onclick="viewAdminSerialPhoto('${serialPhotoSrc}')" title="Click to view Serial Photo" /></div>`
+              ? `<div style="margin-top: 4px;"><img src="${esc(serialPhotoSrc)}" loading="lazy" decoding="async" style="width:50px; height:50px; object-fit:cover; border-radius:6px; border:1px solid var(--border); cursor:pointer;" onclick="viewAdminSerialPhoto(this.src)" title="Click to view Serial Photo" /></div>`
               : '';
           })()}
         </td>
         <td>
           ${(() => {
-            const photoSrc = getComplaintPhoto(c);
+            const photoSrc = safePhotoUrl(getComplaintPhoto(c));
             return photoSrc 
-              ? `<img src="${photoSrc}" loading="lazy" decoding="async" style="width:60px; height:60px; object-fit:cover; border-radius:8px; border:1px solid var(--border); cursor:pointer; display:block;" onclick="viewAdminPhoto(${origIndex})" />`
+              ? `<img src="${esc(photoSrc)}" loading="lazy" decoding="async" style="width:60px; height:60px; object-fit:cover; border-radius:8px; border:1px solid var(--border); cursor:pointer; display:block;" onclick="viewAdminPhoto(${origIndex})" />`
               : '<span style="color:var(--muted); font-size:0.8rem;">❌ No Photo</span>';
           })()}
         </td>
@@ -6058,13 +6109,19 @@ async function submitAdminLogin() {
       return;
     }
   } else if (isLocal()) {
-    // Local development fallback only — the public site never accepts a
-    // client-side credential check (passwords are no longer shipped to browsers).
-    const accessUsers = masterData.accessUsers || [];
-    if (email.toLowerCase() === 'admin@armee.in' && pass === 'armee@2026') {
-      user = { id: 'USR100', name: 'Super Admin', email: 'admin@armee.in', role: 'super_admin', assignedDistricts: ['ALL'], status: 'active' };
-    } else {
-      user = accessUsers.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === pass && u.status === 'active');
+    try {
+      const res = await fetch('/local_login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password: pass })
+      });
+      const out = await res.json();
+      if (!res.ok || out.status !== 'ok' || !out.user) throw new Error(out.message || 'Local login failed');
+      user = out.user;
+    } catch (e) {
+      if (btnLogin) btnLogin.disabled = false;
+      showToast('❌ ' + e.message, 'danger');
+      return;
     }
   } else {
     showToast('❌ You appear to be offline. Admin login needs a connection.', 'danger');
@@ -6114,6 +6171,9 @@ function updateUserProfileUI(user) {
 
 function logout() {
   localStorage.removeItem(SESSION_KEY);
+  Object.keys(localStorage).forEach(key => {
+    if (key === 'armee_dept_cache_v2' || key.startsWith('armee_dept_cache_v3:')) localStorage.removeItem(key);
+  });
   currentUser = null;
   stopAutoRefresh();
   location.reload();
@@ -6190,6 +6250,17 @@ function esc(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+function safePhotoUrl(value) {
+  const raw = String(value || '').trim();
+  if (/^data:image\/(?:png|jpe?g|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(raw)) return raw;
+  try {
+    const parsed = new URL(raw, window.location.href);
+    return (parsed.protocol === 'https:' || parsed.protocol === 'http:') ? parsed.href : '';
+  } catch (_) {
+    return '';
+  }
+}
+
 function getComplaintPhoto(c) {
   if (c.photoUrl) return c.photoUrl;
   if (c.photos && c.photos.length > 0 && c.photos[0]) return c.photos[0];
@@ -6205,6 +6276,8 @@ function viewAdminSerialPhoto(src) {
   const img = document.getElementById('adminPhotoImg');
   const downloadBtn = document.getElementById('adminPhotoDownload');
   
+  src = safePhotoUrl(src);
+  if (!src) { showToast('⚠️ Invalid photo link', 'warn'); return; }
   img.src = src;
   
   let fileId = '';
@@ -6217,6 +6290,7 @@ function viewAdminSerialPhoto(src) {
       if (fileId && fileId.includes('/')) fileId = fileId.split('/')[0];
     }
   }
+  if (!/^[A-Za-z0-9_-]+$/.test(fileId)) fileId = '';
   
   if (fileId) {
     downloadBtn.style.display = 'block';
@@ -6230,7 +6304,8 @@ function viewAdminSerialPhoto(src) {
 
 function viewAdminPhoto(index) {
   const c = complaintsList[index];
-  const src = getComplaintPhoto(c);
+  const src = safePhotoUrl(getComplaintPhoto(c));
+  if (!src) { showToast('⚠️ Invalid photo link', 'warn'); return; }
   
   const modal = document.getElementById('adminPhotoModal');
   const img = document.getElementById('adminPhotoImg');
@@ -6247,6 +6322,7 @@ function viewAdminPhoto(index) {
       fileId = src.split('drive.google.com/file/d/')[1].split('/')[0];
     }
   }
+  if (!/^[A-Za-z0-9_-]+$/.test(fileId)) fileId = '';
   
   const existingDriveBtn = document.getElementById('adminPhotoDriveLink');
   if (existingDriveBtn) {
@@ -6708,7 +6784,6 @@ const DEPT_EXPORT_COLUMNS = [
   'Diagnosis_Notes_Agency','Schedule_Visit_Date','Technician_Name','Technician_Number',
   'Issue_Resolved_By','TotalDaysOfTicket'
 ];
-const DEPT_IMPORT_KEY_LS = 'armee_dept_import_key';
 const DEPT_UPLOAD_CHUNK = 150;
 let deptParsedRows = null;
 
@@ -6773,11 +6848,8 @@ function handleDeptFileSelect() {
 async function runDeptUpload() {
   const btn = document.getElementById('deptUploadBtn');
   const result = document.getElementById('deptResult');
-  const keyField = document.getElementById('deptImportKey');
   const sendEmails = document.getElementById('deptSendEmails').checked;
 
-  const importKey = keyField.value.trim() || localStorage.getItem(DEPT_IMPORT_KEY_LS) || '';
-  if (!importKey) { showToast('⚠️ Paste the import key first (ask your administrator).', 'warn'); keyField.focus(); return; }
   if (!deptParsedRows || !deptParsedRows.length) { showToast('⚠️ Select an export file first.', 'warn'); return; }
   if (!confirm(`Import ${deptParsedRows.length} open ticket(s) into the system?` + (sendEmails ? '\n\nBranch admins WILL receive notification emails.' : '\n\nNo notification emails will be sent.'))) return;
 
@@ -6795,7 +6867,7 @@ async function runDeptUpload() {
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify({
           action: 'import_department_complaints',
-          importKey: importKey,
+          authToken: adminAuthToken(),
           importSource: 'MANUAL_UPLOAD',
           sendEmails: sendEmails,
           rows: chunk
@@ -6805,7 +6877,6 @@ async function runDeptUpload() {
       if (out.status !== 'ok') throw new Error(out.message || 'Server rejected the upload');
       inserted += out.inserted; updated += out.updated;
     }
-    localStorage.setItem(DEPT_IMPORT_KEY_LS, importKey);
     result.style.background = '#f0fdf4'; result.style.color = '#166534'; result.style.border = '1.5px solid #bbf7d0';
     result.textContent = `✅ Done! New tickets added: ${inserted}, existing tickets updated: ${updated}.`;
     showToast('✅ Department complaints imported successfully!', 'success');
@@ -6818,26 +6889,12 @@ async function runDeptUpload() {
   }
 }
 
-// Pre-fill the saved import key when the page loads
 document.addEventListener('DOMContentLoaded', () => {
-  const defaultKey = 'ArmeeICT-0K2QV6rBIIQRyElzOMt0fBAEKeT9Gn18';
-  const saved = localStorage.getItem(DEPT_IMPORT_KEY_LS) || defaultKey;
-  const field = document.getElementById('deptImportKey');
-  if (field) field.value = saved;
-
-  const savedSchoolKey = localStorage.getItem(SCHOOL_IMPORT_KEY_LS) || defaultKey;
-  const schoolField = document.getElementById('schoolImportKey');
-  if (schoolField) schoolField.value = savedSchoolKey;
-
-  const acerField = document.getElementById('acerImportKey');
-  if (acerField) acerField.value = savedSchoolKey;
-
   const dateField = document.getElementById('schoolImportDate');
   if (dateField) dateField.value = new Date().toISOString().slice(0, 10);
 });
 
 /* ─────────────── SCHOOL COMPLAINTS BULK UPLOAD ─────────────── */
-const SCHOOL_IMPORT_KEY_LS = 'armee_school_import_key';
 let schoolParsedRows = null;
 
 function handleSchoolFileSelect() {
@@ -6898,7 +6955,7 @@ function handleSchoolFileSelect() {
       preview.innerHTML =
         `<b>📄 ${file.name}</b><br>` +
         `Total rows parsed: <b>${cleanRows.length}</b><br>` +
-        `<span style="color:var(--muted);">Review details, paste your Import Key, then click "Upload & Process".</span>`;
+        `<span style="color:var(--muted);">Review details, then click "Upload & Process".</span>`;
       btn.disabled = cleanRows.length === 0;
     } catch (err) {
       preview.style.display = 'none';
@@ -6925,13 +6982,10 @@ function findSchoolColumn(row, candidates) {
 async function runSchoolUpload() {
   const btn = document.getElementById('schoolUploadBtn');
   const result = document.getElementById('schoolResult');
-  const keyField = document.getElementById('schoolImportKey');
   const dateField = document.getElementById('schoolImportDate');
 
-  const importKey = keyField.value.trim() || localStorage.getItem(SCHOOL_IMPORT_KEY_LS) || '';
   const importDate = dateField ? dateField.value : '';
 
-  if (!importKey) { showToast('⚠️ Paste the import key first.', 'warn'); keyField.focus(); return; }
   if (!schoolParsedRows || !schoolParsedRows.length) { showToast('⚠️ Select an Excel file first.', 'warn'); return; }
 
   if (!confirm(`Process upload of ${schoolParsedRows.length} school complaint records?`)) return;
@@ -6947,7 +7001,7 @@ async function runSchoolUpload() {
       headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
         action: 'import_school_complaints',
-        importKey: importKey,
+        authToken: adminAuthToken(),
         importDate: importDate,
         records: schoolParsedRows
       }),
@@ -6955,7 +7009,6 @@ async function runSchoolUpload() {
     const out = await res.json();
     if (out.status !== 'ok') throw new Error(out.message || 'Server rejected the upload');
 
-    localStorage.setItem(SCHOOL_IMPORT_KEY_LS, importKey);
     result.style.background = '#f0fdf4'; result.style.color = '#166534'; result.style.border = '1.5px solid #bbf7d0';
     result.textContent = `✅ Success! Saved to Master: ${out.masterCount || 0}, New tickets created: ${out.importedCount || 0}, Skipped (within 30 days): ${out.skippedCount || 0}, Errors: ${out.exceptionCount || 0}. Check SchoolComplaintMaster, SchoolComplaintMatchLog tabs in Google Sheet.`;
     showToast('✅ School complaints processed successfully!', 'success');
@@ -7281,15 +7334,6 @@ function downloadAcerErrorReport() {
 async function runAcerMapping() {
   const btn = document.getElementById('acerUploadBtn');
   const result = document.getElementById('acerResult');
-  const keyField = document.getElementById('acerImportKey');
-
-  const importKey = keyField.value.trim() || localStorage.getItem(SCHOOL_IMPORT_KEY_LS) || '';
-
-  if (!importKey) {
-    showToast('⚠️ Paste the import key first.', 'warn');
-    keyField.focus();
-    return;
-  }
   if (!acerParsedRows || !acerParsedRows.length) {
     showToast('⚠️ Parse an Excel/CSV file first.', 'warn');
     return;
@@ -7345,7 +7389,7 @@ async function runAcerMapping() {
             headers: { 'Content-Type': 'text/plain' },
             body: JSON.stringify({
               action: 'bulk_acer_mapping',
-              importKey: importKey,
+              authToken: adminAuthToken(),
               mappings: chunk
             }),
           });
@@ -7381,7 +7425,6 @@ async function runAcerMapping() {
       if (out.duplicateAcerIds) combinedResult.duplicateAcerIds.push(...out.duplicateAcerIds);
     }
 
-    localStorage.setItem(SCHOOL_IMPORT_KEY_LS, importKey);
     window.__lastAcerResult = combinedResult;
     renderAcerSummary(combinedResult);
     showToast('✅ Acer case mapping processed successfully across all batches!', 'success');
@@ -7452,7 +7495,7 @@ async function loadUnifiedDashboard() {
     const failed = [];
     const jobs = [];
     if (need.School) jobs.push(
-      fetchJsonWithRetry(GOOGLE_SCRIPT_URL + '?action=get_all_school_complaints', 3)
+      fetchJsonWithRetry(GOOGLE_SCRIPT_URL + '?action=get_all_school_complaints&authToken=' + encodeURIComponent(adminAuthToken()), 3)
         .then(d => { window.parentSchoolComplaintsList = Array.isArray(d) ? d : []; })
         .catch(() => { failed.push('School'); window.parentSchoolComplaintsList = window.parentSchoolComplaintsList || []; }));
     if (need.Advance) jobs.push(
@@ -7699,14 +7742,13 @@ class ArmeeApiClient {
 
         try {
           const reqUrl = url + (url.indexOf('?') === -1 ? '?' : '&') + 't=' + Date.now();
-          logToDebug(`[${reqId}] Fetch attempt ${attempt}/${attempts}: ${reqUrl.slice(0, 100)}...`, 'api');
+          const safeReqUrl = reqUrl.replace(/([?&]authToken=)[^&]*/i, '$1[redacted]');
+          logToDebug(`[${reqId}] Fetch attempt ${attempt}/${attempts}: ${safeReqUrl.slice(0, 140)}...`, 'api');
 
           const res = await fetch(reqUrl, {
             signal: controller.signal,
             redirect: 'follow'
           });
-
-          clearTimeout(timeoutId);
 
           if (!res.ok) {
             // NEVER retry client errors (404 Not Found, 400, 401, 403)
@@ -7732,6 +7774,7 @@ class ArmeeApiClient {
           }
 
           const data = JSON.parse(trimmed);
+          clearTimeout(timeoutId);
           const duration = Math.round(performance.now() - startTime);
           logToDebug(`[${reqId}] Request succeeded in ${duration}ms (Payload: ${(text.length / 1024).toFixed(1)} KB)`, 'success');
           return data;
@@ -7780,16 +7823,29 @@ async function fetchJsonWithRetry(url, attempts) {
 let deptDash = null, deptList = [], deptDrillFilter = null;
 let deptPageSize = 50, deptCurrentPage = 1, deptSortKey = 'createdDate', deptSortOrder = 'desc';
 
-const DEPT_CACHE_STORAGE_KEY = 'armee_dept_cache_v2';
+const DEPT_CACHE_STORAGE_PREFIX = 'armee_dept_cache_v3:';
+const DEPT_CACHE_MAX_AGE_MS = 15 * 60 * 1000;
+
+function deptCacheStorageKey() {
+  const identity = currentUser && currentUser.email
+    ? String(currentUser.email).trim().toLowerCase() : 'anonymous';
+  return DEPT_CACHE_STORAGE_PREFIX + encodeURIComponent(identity);
+}
 
 const departmentApi = {
   // Read cached data from localStorage if available
   getLocalCache() {
     try {
-      const raw = localStorage.getItem(DEPT_CACHE_STORAGE_KEY);
+      const key = deptCacheStorageKey();
+      const raw = localStorage.getItem(key);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
-      if (parsed && Array.isArray(parsed.data) && parsed.data.length > 0) {
+      const age = Date.now() - Number(parsed && parsed.timestamp);
+      if (!Number.isFinite(age) || age < 0 || age > DEPT_CACHE_MAX_AGE_MS) {
+        localStorage.removeItem(key);
+        return null;
+      }
+      if (parsed && Array.isArray(parsed.data)) {
         return parsed;
       }
     } catch (e) {
@@ -7801,8 +7857,8 @@ const departmentApi = {
   // Save successful list to localStorage
   setLocalCache(data) {
     try {
-      if (Array.isArray(data) && data.length > 0) {
-        localStorage.setItem(DEPT_CACHE_STORAGE_KEY, JSON.stringify({
+      if (Array.isArray(data)) {
+        localStorage.setItem(deptCacheStorageKey(), JSON.stringify({
           timestamp: Date.now(),
           data: data
         }));
@@ -7827,7 +7883,7 @@ const departmentApi = {
     }
 
     // 2. Fetch fresh live data from Google Apps Script with deduplication and timeout
-    const url = GOOGLE_SCRIPT_URL + '?action=get_department_complaints_list';
+    const url = GOOGLE_SCRIPT_URL + '?action=get_department_complaints_list&authToken=' + encodeURIComponent(adminAuthToken());
     const list = await adminApi.request(url, {
       timeoutMs: 45000,
       attempts: 2, // 404 aborts immediately; transient 5xx retries once
@@ -8288,7 +8344,8 @@ async function bulkUpdateDeptStatus(action) {
           ticketId: ticketId,
           resolutionAction: action,
           resolvedBy: (currentUser && currentUser.name) || 'admin',
-          source: 'admin_portal'
+          source: 'admin_portal',
+          authToken: adminAuthToken()
         })
       });
       const out = await res.json();
@@ -8376,7 +8433,8 @@ async function submitDeptStatusUpdate(action) {
         serialNumber: serial,
         otp: otp,
         suspectedPart: suspectedPart,
-        source: 'admin_portal'
+        source: 'admin_portal',
+        authToken: adminAuthToken()
       })
     });
     const out = await res.json();
@@ -8946,19 +9004,12 @@ function updateDeptTrendChartFiltered() {
 /* ─────────────── BRANCH MANAGEMENT ─────────────── */
 let bmOffices = [], bmBranches = [], bmAliases = [], bmUnmapped = [];
 
-function branchMgmtKey() {
-  let key = localStorage.getItem(DEPT_IMPORT_KEY_LS) || 'ArmeeICT-0K2QV6rBIIQRyElzOMt0fBAEKeT9Gn18';
-  return key;
-}
-
 async function branchMgmtPost(payload) {
-  const key = branchMgmtKey();
-  if (!key) { showToast('⚠️ Import key is required for changes.', 'warn'); return null; }
   try {
     const res = await fetch(GOOGLE_SCRIPT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify(Object.assign({ importKey: key }, payload)),
+      body: JSON.stringify(Object.assign({ authToken: adminAuthToken() }, payload)),
     });
     const out = await res.json();
     if (out.status === 'blocked') {
@@ -8966,33 +9017,11 @@ async function branchMgmtPost(payload) {
       return null;
     }
     if (out.status !== 'ok') {
-      // Fallback to GET for map_alias if POST rejected
-      if (payload.action === 'map_alias') {
-        const getUrl = GOOGLE_SCRIPT_URL + '?action=map_alias&importKey=' + encodeURIComponent(key) +
-          '&aliasText=' + encodeURIComponent(payload.aliasText) +
-          '&branchId=' + encodeURIComponent(payload.branchId) +
-          '&mappedBy=' + encodeURIComponent(payload.mappedBy || 'admin') +
-          '&t=' + Date.now();
-        const getRes = await fetch(getUrl).then(r => r.json()).catch(() => null);
-        if (getRes && getRes.status === 'ok') return getRes;
-      }
       showToast('❌ ' + (out.message || 'Request failed'), 'danger');
       return null;
     }
     return out;
   } catch (e) {
-    // Fallback to GET for map_alias on network error
-    if (payload.action === 'map_alias') {
-      try {
-        const getUrl = GOOGLE_SCRIPT_URL + '?action=map_alias&importKey=' + encodeURIComponent(key) +
-          '&aliasText=' + encodeURIComponent(payload.aliasText) +
-          '&branchId=' + encodeURIComponent(payload.branchId) +
-          '&mappedBy=' + encodeURIComponent(payload.mappedBy || 'admin') +
-          '&t=' + Date.now();
-        const getRes = await fetch(getUrl).then(r => r.json()).catch(() => null);
-        if (getRes && getRes.status === 'ok') return getRes;
-      } catch (_) {}
-    }
     showToast('❌ Network error: ' + e.message, 'danger');
     return null;
   }
@@ -9053,10 +9082,10 @@ async function addNewAliasMapping() {
 async function loadBranchMgmt() {
   try {
     const [offices, branches, aliases, unmapped] = await Promise.all([
-      fetch(GOOGLE_SCRIPT_URL + '?action=get_district_offices&t=' + Date.now()).then(r => r.json()).catch(() => []),
-      fetch(GOOGLE_SCRIPT_URL + '?action=get_branches&t=' + Date.now()).then(r => r.json()).catch(() => []),
-      fetch(GOOGLE_SCRIPT_URL + '?action=get_alias_mappings&t=' + Date.now()).then(r => r.json()).catch(() => []),
-      fetch(GOOGLE_SCRIPT_URL + '?action=get_unmapped_aliases&t=' + Date.now()).then(r => r.json()).catch(() => []),
+      fetchRequiredArray(GOOGLE_SCRIPT_URL + '?action=get_district_offices&authToken=' + encodeURIComponent(adminAuthToken()) + '&t=' + Date.now(), 'District offices'),
+      fetchRequiredArray(GOOGLE_SCRIPT_URL + '?action=get_branches&authToken=' + encodeURIComponent(adminAuthToken()) + '&t=' + Date.now(), 'Branches'),
+      fetchRequiredArray(GOOGLE_SCRIPT_URL + '?action=get_alias_mappings&authToken=' + encodeURIComponent(adminAuthToken()) + '&t=' + Date.now(), 'Alias mappings'),
+      fetchRequiredArray(GOOGLE_SCRIPT_URL + '?action=get_unmapped_aliases&authToken=' + encodeURIComponent(adminAuthToken()) + '&t=' + Date.now(), 'Unmapped aliases'),
     ]);
     bmOffices = Array.isArray(offices) ? offices : [];
     bmBranches = Array.isArray(branches) ? branches : [];
@@ -9111,9 +9140,11 @@ async function loadBranchEmails() {
   tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);">Loading branch emails…</td></tr>';
 
   try {
-    const res = await fetch(GOOGLE_SCRIPT_URL + '?action=get_branch_emails&t=' + Date.now());
+    const res = await fetch(GOOGLE_SCRIPT_URL + '?action=get_branch_emails&authToken=' + encodeURIComponent(adminAuthToken()) + '&t=' + Date.now());
+    if (!res.ok) throw new Error('Server returned HTTP ' + res.status);
     const data = await res.json();
-    branchEmailsList = Array.isArray(data) ? data : [];
+    if (!Array.isArray(data)) throw new Error((data && data.message) || 'Server returned invalid data');
+    branchEmailsList = data;
     
     if (branchEmailsList.length === 0) {
       tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);">No emails configured yet. Use the form above to add branch emails.</td></tr>';
@@ -9186,7 +9217,8 @@ async function addBranchEmail() {
         branchId: branchId,
         branchName: branchName,
         email: emails.join(','),
-        type: type
+        type: type,
+        authToken: adminAuthToken()
       })
     });
     const out = await res.json();
@@ -9211,7 +9243,8 @@ async function deleteBranchEmail(rowNumber) {
       headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
         action: 'delete_branch_email',
-        rowNumber: rowNumber
+        rowNumber: rowNumber,
+        authToken: adminAuthToken()
       })
     });
     const out = await res.json();

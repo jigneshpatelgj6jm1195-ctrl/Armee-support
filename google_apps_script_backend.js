@@ -334,7 +334,7 @@ function makeFolderContentsPublic(folder, counts) {
 // block, so a write is reflected on the next read. The TTL is only a backstop.
 
 var CACHE_CHUNK_SIZE = 50000;
-var CACHE_TTL_SECONDS = 21600; // 6 hours (Google Apps Script max allowed cache TTL)
+var CACHE_TTL_SECONDS = 900; // 15 minutes; writes still invalidate immediately
 var DEPT_LIST_CACHE_KEY = 'dept_complaints_list_v1';
 
 function cacheGetLarge(key) {
@@ -342,16 +342,26 @@ function cacheGetLarge(key) {
     var cache = CacheService.getScriptCache();
     var meta = cache.get(key + '__meta');
     if (!meta) return null;
-    var count = parseInt(meta, 10);
+    var count;
+    var generation = '';
+    try {
+      var parsedMeta = JSON.parse(meta);
+      count = parseInt(parsedMeta.count, 10);
+      generation = String(parsedMeta.generation || '');
+    } catch (legacyMetaError) {
+      // Backward compatibility while an older numeric cache entry expires.
+      count = parseInt(meta, 10);
+    }
     if (!count || count < 1) return null;
 
     var keys = [];
-    for (var i = 0; i < count; i++) keys.push(key + '__' + i);
+    var chunkPrefix = generation ? key + '__' + generation + '__' : key + '__';
+    for (var i = 0; i < count; i++) keys.push(chunkPrefix + i);
     var parts = cache.getAll(keys);
 
     var out = '';
     for (var j = 0; j < count; j++) {
-      var piece = parts[key + '__' + j];
+      var piece = parts[chunkPrefix + j];
       // If any chunk expired we must not serve a truncated payload.
       if (piece === null || piece === undefined) return null;
       out += piece;
@@ -378,11 +388,16 @@ function cachePutLarge(key, value, ttlSeconds) {
     }
     if (pieces.length === 0 || pieces.length > 200) return;
 
+    // Chunks from different writes must never share names. Readers keep using
+    // the previous generation until the new metadata is published last.
+    var generation = new Date().getTime().toString(36) + '_' + Utilities.getUuid().replace(/-/g, '');
+    var chunkPrefix = key + '__' + generation + '__';
+
     for (var p = 0; p < pieces.length; p++) {
-      cache.put(key + '__' + p, pieces[p], ttl);
+      cache.put(chunkPrefix + p, pieces[p], ttl);
     }
     // Write meta LAST so a partially-written cache is never considered valid.
-    cache.put(key + '__meta', String(pieces.length), ttl);
+    cache.put(key + '__meta', JSON.stringify({ generation: generation, count: pieces.length }), ttl);
   } catch (e) {
     // Best effort only — a failed put just means the next read recomputes.
   }
@@ -393,9 +408,18 @@ function cacheInvalidate(key) {
     var cache = CacheService.getScriptCache();
     var meta = cache.get(key + '__meta');
     if (!meta) return;
-    var count = parseInt(meta, 10) || 0;
+    var count = 0;
+    var generation = '';
+    try {
+      var parsedMeta = JSON.parse(meta);
+      count = parseInt(parsedMeta.count, 10) || 0;
+      generation = String(parsedMeta.generation || '');
+    } catch (legacyMetaError) {
+      count = parseInt(meta, 10) || 0;
+    }
     var keys = [key + '__meta'];
-    for (var i = 0; i < count; i++) keys.push(key + '__' + i);
+    var chunkPrefix = generation ? key + '__' + generation + '__' : key + '__';
+    for (var i = 0; i < count; i++) keys.push(chunkPrefix + i);
     cache.removeAll(keys);
   } catch (e) {}
 }
@@ -438,12 +462,18 @@ function doPost(e) {
       var authErrC = requireAdminAuth_(data, false); // any logged-in admin
       if (authErrC) return ContentService.createTextOutput(JSON.stringify(authErrC))
                                          .setMimeType(ContentService.MimeType.JSON);
-      var count = updateComplaintsStatus(ss, data.complaints);
+      // Scope by the district stored on the server. A client-supplied district
+      // must never be enough to authorize an update to another district's case.
+      var scopedComplaints = filterComplaintUpdatesForAdmin_(ss, data.complaints || [], data.authToken);
+      var count = updateComplaintsStatus(ss, scopedComplaints);
       return ContentService.createTextOutput(JSON.stringify({ status: 'ok', updatedCount: count }))
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
     if (data.action === 'update_school') {
+      var authErrSchool = requireAdminAuth_(data, true);
+      if (authErrSchool) return ContentService.createTextOutput(JSON.stringify(authErrSchool))
+                                               .setMimeType(ContentService.MimeType.JSON);
       updateSchoolField(ss, data);
       return ContentService.createTextOutput(JSON.stringify({ status: 'ok' }))
                            .setMimeType(ContentService.MimeType.JSON);
@@ -453,28 +483,38 @@ function doPost(e) {
       var authErrS = requireAdminAuth_(data, false); // any admin can update
       if (authErrS) return ContentService.createTextOutput(JSON.stringify(authErrS))
                                          .setMimeType(ContentService.MimeType.JSON);
-      var count = updateSchoolComplaintStatusInSheet(ss, data.srNos, data.status, data.suspectedPart);
+      var scopedSrNos = filterSchoolSrNosForAdmin_(ss, data.srNos, data.authToken);
+      var count = updateSchoolComplaintStatusInSheet(ss, scopedSrNos, data.status, data.suspectedPart);
       return ContentService.createTextOutput(JSON.stringify({ status: 'ok', updatedCount: count }))
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
     if (data.action === 'update_school_complaint_dise_bulk') {
-      // Intentionally unauthenticated: the engineer portal (not logged in) calls
-      // this to auto-heal blank DISE codes from a validated lookup. Scoped, benign
-      // write (only fills blank DISE by srNo); no credential or bulk-delete surface.
-      var count = updateSchoolComplaintDiseBulkInSheet(ss, data.updates);
+      var authErrDise = requireAdminAuth_(data, false);
+      if (authErrDise) return ContentService.createTextOutput(JSON.stringify(authErrDise))
+                                             .setMimeType(ContentService.MimeType.JSON);
+      var diseSrNos = (data.updates || []).map(function(update) { return update && update.srNo; });
+      var allowedDiseSrNos = filterSchoolSrNosForAdmin_(ss, diseSrNos, data.authToken);
+      var allowedDiseMap = {};
+      for (var ad = 0; ad < allowedDiseSrNos.length; ad++) allowedDiseMap[String(allowedDiseSrNos[ad])] = true;
+      var scopedDiseUpdates = (data.updates || []).filter(function(update) {
+        return update && allowedDiseMap[String(update.srNo)];
+      });
+      var count = updateSchoolComplaintDiseBulkInSheet(ss, scopedDiseUpdates);
       return ContentService.createTextOutput(JSON.stringify({ status: 'ok', updatedCount: count }))
                            .setMimeType(ContentService.MimeType.JSON);
     }
  
     if (data.action === 'resolve_school_complaint_from_portal') {
-      var count = resolveSchoolComplaintFromPortal(ss, data);
-      return ContentService.createTextOutput(JSON.stringify({ status: 'ok', updatedCount: count }))
+      var portalResult = resolveSchoolComplaintFromPortal(ss, data);
+      var portalResponse = (portalResult && typeof portalResult === 'object')
+        ? portalResult : { status: 'ok', updatedCount: portalResult };
+      return ContentService.createTextOutput(JSON.stringify(portalResponse))
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
     if (data.action === 'heal_school_dise_by_name') {
-      var authErrH = requireAdminAuth_(data, false); // any logged-in admin
+      var authErrH = requireAdminAuth_(data, true);
       if (authErrH) return ContentService.createTextOutput(JSON.stringify(authErrH))
                                          .setMimeType(ContentService.MimeType.JSON);
       // Accepts { nameMap: { "school name": "dise_code", ... } }
@@ -486,7 +526,7 @@ function doPost(e) {
     }
 
     if (data.action === 'fix_school_project_by_equipment') {
-      var authErrF = requireAdminAuth_(data, false); // any logged-in admin
+      var authErrF = requireAdminAuth_(data, true);
       if (authErrF) return ContentService.createTextOutput(JSON.stringify(authErrF))
                                          .setMimeType(ContentService.MimeType.JSON);
       var fixed = fixSchoolProjectByEquipment(ss);
@@ -540,7 +580,7 @@ function doPost(e) {
     }
 
     if (data.action === 'bulk_acer_mapping') {
-      var bulkResult = bulkAcerMapping(ss, data.importKey, data.mappings);
+      var bulkResult = bulkAcerMapping(ss, data.importKey, data.mappings, data.authToken);
       return ContentService.createTextOutput(JSON.stringify(bulkResult))
                            .setMimeType(ContentService.MimeType.JSON);
     }
@@ -554,12 +594,18 @@ function doPost(e) {
     }
 
     if (data.action === 'resolve_department_complaint') {
+      var authErrDept = requireDepartmentTicketAuth_(ss, data);
+      if (authErrDept) return ContentService.createTextOutput(JSON.stringify(authErrDept))
+                                             .setMimeType(ContentService.MimeType.JSON);
       var resolveResult = resolveDepartmentComplaint(ss, data);
       return ContentService.createTextOutput(JSON.stringify(resolveResult))
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
     if (data.action === 'add_branch_email') {
+      var authErrBranchEmail = requireAdminAuth_(data, true);
+      if (authErrBranchEmail) return ContentService.createTextOutput(JSON.stringify(authErrBranchEmail))
+                                                    .setMimeType(ContentService.MimeType.JSON);
       var sheet = getOrCreateBranchEmailsSheet(ss);
       var bid = String(data.branchId || '').trim();
       var bname = String(data.branchName || '').trim();
@@ -603,6 +649,9 @@ function doPost(e) {
     }
 
     if (data.action === 'send_test_email') {
+      var authErrTestEmail = requireAdminAuth_(data, true);
+      if (authErrTestEmail) return ContentService.createTextOutput(JSON.stringify(authErrTestEmail))
+                                                  .setMimeType(ContentService.MimeType.JSON);
       var recipient = String(data.email || 'jignesh.patel@armeeinfotech.com').trim();
       try {
         MailApp.sendEmail({
@@ -619,6 +668,9 @@ function doPost(e) {
     }
 
     if (data.action === 'log_scraper_run') {
+      var scraperLogKeyError = requireImportKey(data);
+      if (scraperLogKeyError) return ContentService.createTextOutput(JSON.stringify(scraperLogKeyError))
+                                                    .setMimeType(ContentService.MimeType.JSON);
       var sheet = getOrCreateScraperLogSheet(ss);
       var status = String(data.status || 'UNKNOWN').trim().toUpperCase();
       var duration = Number(data.duration || 0);
@@ -633,6 +685,9 @@ function doPost(e) {
     }
 
     if (data.action === 'delete_branch_email') {
+      var authErrDeleteBranchEmail = requireAdminAuth_(data, true);
+      if (authErrDeleteBranchEmail) return ContentService.createTextOutput(JSON.stringify(authErrDeleteBranchEmail))
+                                                          .setMimeType(ContentService.MimeType.JSON);
       var sheet = getOrCreateBranchEmailsSheet(ss);
       var rowNum = Number(data.rowNumber);
       if (!rowNum || rowNum < 2 || rowNum > sheet.getLastRow()) {
@@ -663,8 +718,16 @@ function doPost(e) {
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
-    // Branch/district-office management: all mutations require the shared key,
-    // since the Web App URL itself is unauthenticated.
+    if (data.action === 'make_photos_public') {
+      var authErrPhotos = requireAdminAuth_(data, true);
+      if (authErrPhotos) return ContentService.createTextOutput(JSON.stringify(authErrPhotos))
+                                              .setMimeType(ContentService.MimeType.JSON);
+      var photoResult = makeAllPhotosPublic();
+      return ContentService.createTextOutput(JSON.stringify({ status: 'ok', message: photoResult }))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // Branch/district-office management is restricted to the signed-in super admin.
     var branchActions = {
       'create_district_office': createDistrictOffice,
       'update_district_office': updateDistrictOffice,
@@ -676,8 +739,8 @@ function doPost(e) {
       'delete_alias_mapping': deleteAliasMapping
     };
     if (branchActions[data.action]) {
-      var keyError = requireImportKey(data);
-      var branchResult = keyError || branchActions[data.action](ss, data);
+      var branchAuthError = requireAdminAuth_(data, true);
+      var branchResult = branchAuthError || branchActions[data.action](ss, data);
       return ContentService.createTextOutput(JSON.stringify(branchResult))
                            .setMimeType(ContentService.MimeType.JSON);
     }
@@ -695,10 +758,10 @@ function doPost(e) {
       .createTextOutput(JSON.stringify({ status: 'error', message: err.toString() }))
       .setMimeType(ContentService.MimeType.JSON);
   } finally {
-    // Every doPost action is a mutation, so drop the cached read payloads while
-    // still holding the lock. This runs on success AND failure, so the cache can
-    // never survive a write that changed the underlying sheets.
-    cacheInvalidate(DEPT_LIST_CACHE_KEY);
+    // Authentication, email and scraper-log calls do not change department
+    // ticket data. Preserve the expensive department cache for those actions.
+    var nonDeptActions = { login: true, send_test_email: true, log_scraper_run: true, scraper_alert: true };
+    if (!data || !nonDeptActions[data.action]) cacheInvalidate(DEPT_LIST_CACHE_KEY);
     lock.releaseLock();
   }
 }
@@ -713,7 +776,12 @@ function doGet(e) {
       // SECURITY (QA finding C1): never ship passwords to the client. Auth is
       // done server-side via the 'login' action; the client only needs the
       // non-secret fields to render the Access Control list.
-      return ContentService.createTextOutput(JSON.stringify(sanitizeMasterForClient(masterData)))
+      var masterForClient = sanitizeMasterForClient(masterData);
+      if (!verifyAuthToken_(e.parameter.authToken)) {
+        masterForClient.users = [];
+        masterForClient.accessUsers = [];
+      }
+      return ContentService.createTextOutput(JSON.stringify(masterForClient))
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -730,8 +798,20 @@ function doGet(e) {
     }
 
     if (action === 'get_school_master') {
+      var schoolMasterAuth = requireAdminAuth_(e.parameter, false);
+      if (schoolMasterAuth) return ContentService.createTextOutput(JSON.stringify(schoolMasterAuth))
+                                               .setMimeType(ContentService.MimeType.JSON);
       var schoolMaster = getSchoolMaster(ss);
       return ContentService.createTextOutput(JSON.stringify(schoolMaster))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (action === 'get_complaints') {
+      var complaintsAuth = requireAdminAuth_(e.parameter, false);
+      if (complaintsAuth) return ContentService.createTextOutput(JSON.stringify(complaintsAuth))
+                                              .setMimeType(ContentService.MimeType.JSON);
+      var complaints = filterRowsForAdminDistricts_(ss, getComplaintsList(ss), e.parameter.authToken);
+      return ContentService.createTextOutput(JSON.stringify(complaints))
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -742,12 +822,10 @@ function doGet(e) {
     }
 
     if (action === 'get_all_school_complaints') {
-      try {
-        healSchoolComplaintMasterColumns(ss);
-      } catch (he) {
-        Logger.log("Error in healSchoolComplaintMasterColumns: " + he.toString());
-      }
-      var list = getAllSchoolComplaints(ss);
+      var allSchoolAuth = requireAdminAuth_(e.parameter, false);
+      if (allSchoolAuth) return ContentService.createTextOutput(JSON.stringify(allSchoolAuth))
+                                               .setMimeType(ContentService.MimeType.JSON);
+      var list = filterRowsForAdminDistricts_(ss, getAllSchoolComplaints(ss), e.parameter.authToken);
       return ContentService.createTextOutput(JSON.stringify(list))
                            .setMimeType(ContentService.MimeType.JSON);
     }
@@ -759,11 +837,17 @@ function doGet(e) {
     }
 
     if (action === 'get_archive_list') {
+      var archiveAuth = requireAdminAuth_(e.parameter, true);
+      if (archiveAuth) return ContentService.createTextOutput(JSON.stringify(archiveAuth))
+                                             .setMimeType(ContentService.MimeType.JSON);
       var list = getArchiveList(ss);
       return ContentService.createTextOutput(JSON.stringify(list)).setMimeType(ContentService.MimeType.JSON);
     }
 
     if (action === 'get_complaints_with_archive') {
+      var archiveDataAuth = requireAdminAuth_(e.parameter, true);
+      if (archiveDataAuth) return ContentService.createTextOutput(JSON.stringify(archiveDataAuth))
+                                                 .setMimeType(ContentService.MimeType.JSON);
       var data = getComplaintsWithArchive(ss);
       return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON);
     }
@@ -775,16 +859,25 @@ function doGet(e) {
     }
 
     if (action === 'get_department_dashboard') {
+      var dashboardAuth = requireAdminAuth_(e.parameter, true);
+      if (dashboardAuth) return ContentService.createTextOutput(JSON.stringify(dashboardAuth))
+                                               .setMimeType(ContentService.MimeType.JSON);
       var dashboard = getDepartmentDashboard(ss);
       return ContentService.createTextOutput(JSON.stringify(dashboard)).setMimeType(ContentService.MimeType.JSON);
     }
 
     if (action === 'get_district_offices') {
+      var officeAuth = requireAdminAuth_(e.parameter, false);
+      if (officeAuth) return ContentService.createTextOutput(JSON.stringify(officeAuth))
+                                      .setMimeType(ContentService.MimeType.JSON);
       return ContentService.createTextOutput(JSON.stringify(loadBranchStructure(ss).offices))
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
     if (action === 'get_branches') {
+      var branchesAuth = requireAdminAuth_(e.parameter, false);
+      if (branchesAuth) return ContentService.createTextOutput(JSON.stringify(branchesAuth))
+                                        .setMimeType(ContentService.MimeType.JSON);
       var struct = loadBranchStructure(ss);
       var branchList = struct.branches.map(function(b) {
         var office = struct.officeById[b.districtOfficeId];
@@ -799,6 +892,9 @@ function doGet(e) {
     }
 
     if (action === 'get_alias_mappings') {
+      var aliasesAuth = requireAdminAuth_(e.parameter, false);
+      if (aliasesAuth) return ContentService.createTextOutput(JSON.stringify(aliasesAuth))
+                                       .setMimeType(ContentService.MimeType.JSON);
       var struct2 = loadBranchStructure(ss);
       var aliasList = struct2.aliases.map(function(a) {
         var br = struct2.branchById[a.branchId];
@@ -812,14 +908,20 @@ function doGet(e) {
     }
 
     if (action === 'get_unmapped_aliases') {
+      var unmappedAuth = requireAdminAuth_(e.parameter, true);
+      if (unmappedAuth) return ContentService.createTextOutput(JSON.stringify(unmappedAuth))
+                                        .setMimeType(ContentService.MimeType.JSON);
       return ContentService.createTextOutput(JSON.stringify(getUnmappedAliases(ss)))
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
     if (action === 'get_branch_emails') {
-      var sheet = getOrCreateBranchEmailsSheet(ss);
+      var branchEmailAuth = requireAdminAuth_(e.parameter, true);
+      if (branchEmailAuth) return ContentService.createTextOutput(JSON.stringify(branchEmailAuth))
+                                                 .setMimeType(ContentService.MimeType.JSON);
+      var sheet = ss.getSheetByName('BranchEmails');
       var list = [];
-      if (sheet.getLastRow() > 1) {
+      if (sheet && sheet.getLastRow() > 1) {
         var lastCol = Math.max(3, sheet.getLastColumn());
         var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, lastCol).getValues();
         for (var i = 0; i < rows.length; i++) {
@@ -837,30 +939,39 @@ function doGet(e) {
     }
 
     if (action === 'get_department_complaints_list') {
+      var deptListAuth = requireAdminAuth_(e.parameter, false);
+      if (deptListAuth) return ContentService.createTextOutput(JSON.stringify(deptListAuth))
+                                              .setMimeType(ContentService.MimeType.JSON);
       // Rebuilding this list touches several sheets and is the slowest read in
       // the admin panel, so serve it from cache when possible. Any write clears
       // the cache (see doPost), so cached data is never stale after a change.
       var deptCached = cacheGetLarge(DEPT_LIST_CACHE_KEY);
       if (deptCached) {
-        return ContentService.createTextOutput(deptCached)
+        var cachedDeptRows = filterRowsForAdminDistricts_(ss, JSON.parse(deptCached), e.parameter.authToken);
+        return ContentService.createTextOutput(JSON.stringify(cachedDeptRows))
                              .setMimeType(ContentService.MimeType.JSON);
       }
-      var deptPayload = JSON.stringify(getDepartmentComplaintsList(ss));
+      var allDeptRows = getDepartmentComplaintsList(ss);
+      var deptPayload = JSON.stringify(allDeptRows);
       cachePutLarge(DEPT_LIST_CACHE_KEY, deptPayload, CACHE_TTL_SECONDS);
-      return ContentService.createTextOutput(deptPayload)
+      var authorizedDeptRows = filterRowsForAdminDistricts_(ss, allDeptRows, e.parameter.authToken);
+      return ContentService.createTextOutput(JSON.stringify(authorizedDeptRows))
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
     if (action === 'get_branch_complaints') {
+      var branchComplaintsAuth = requireAdminAuth_(e.parameter, true);
+      if (branchComplaintsAuth) return ContentService.createTextOutput(JSON.stringify(branchComplaintsAuth))
+                                                .setMimeType(ContentService.MimeType.JSON);
       var branchComplaints = getBranchComplaints(ss, String(e.parameter.branchId || '').trim());
       return ContentService.createTextOutput(JSON.stringify(branchComplaints))
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
     if (action === 'make_photos_public') {
-      var result = makeAllPhotosPublic();
-      return ContentService.createTextOutput(JSON.stringify({ status: 'ok', message: result }))
-                           .setMimeType(ContentService.MimeType.JSON);
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'error', code: 'method_not_allowed', message: 'Use authenticated POST for this action.'
+      })).setMimeType(ContentService.MimeType.JSON);
     }
 
     if (action === 'health' || action === 'health_check') {
@@ -874,6 +985,9 @@ function doGet(e) {
     }
 
     if (action === 'warm_dept_cache') {
+      var warmCacheAuth = requireAdminAuth_(e.parameter, true);
+      if (warmCacheAuth) return ContentService.createTextOutput(JSON.stringify(warmCacheAuth))
+                                               .setMimeType(ContentService.MimeType.JSON);
       var deptPayload = JSON.stringify(getDepartmentComplaintsList(ss));
       cachePutLarge(DEPT_LIST_CACHE_KEY, deptPayload, CACHE_TTL_SECONDS);
       return ContentService.createTextOutput(JSON.stringify({
@@ -883,21 +997,15 @@ function doGet(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    if (action === 'map_alias') {
-      var keyError = requireImportKey(e.parameter);
-      if (keyError) {
-        return ContentService.createTextOutput(JSON.stringify(keyError))
-                             .setMimeType(ContentService.MimeType.JSON);
-      }
-      var mapRes = mapAlias(ss, e.parameter);
-      return ContentService.createTextOutput(JSON.stringify(mapRes))
-                           .setMimeType(ContentService.MimeType.JSON);
+    if (!action) {
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'error', code: 'action_required', message: 'An API action is required.'
+      })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // Default: return complaints list
-    var complaints = getComplaintsList(ss);
-    return ContentService.createTextOutput(JSON.stringify(complaints))
-                         .setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({
+      status: 'error', code: 'unknown_action', message: 'Unknown action: ' + action
+    })).setMimeType(ContentService.MimeType.JSON);
 
   } catch (err) {
     return ContentService
@@ -1145,21 +1253,6 @@ function migrateInvalidAcerCaseIds(ss) {
 function getComplaintsList(ss) {
   var sheet = ss.getSheetByName(SHEET_TAB_NAME);
   if (!sheet) return [];
-  
-  // Run migration check dynamically
-  try {
-    var lastCol = sheet.getLastColumn();
-    if (lastCol < 32) {
-      migrateSheetTo32Columns(sheet);
-      lastCol = sheet.getLastColumn();
-    }
-    if (lastCol < HEADERS.length) {
-      sheet.insertColumnsAfter(lastCol, HEADERS.length - lastCol);
-      setupHeaders(sheet);
-    }
-  } catch (e) {
-    Logger.log("Migration error: " + e.toString());
-  }
 
   var rows = sheet.getDataRange().getValues();
   var formulas = sheet.getDataRange().getFormulas();
@@ -1391,6 +1484,29 @@ function isInvalidSerialNumber(serial) {
 var SUBMISSION_LOG_TAB = 'SubmissionLog';
 var SUBMISSION_LOG_HEADERS = ['SubmissionID', 'CaseID', 'SR No.', 'RecordedAt'];
 
+function stableCaseIdForSubmission_(submissionId) {
+  var id = String(submissionId || '').trim();
+  if (!id) return '';
+  var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, id, Utilities.Charset.UTF_8);
+  var hex = bytes.map(function(b) {
+    return ('0' + ((b + 256) % 256).toString(16)).slice(-2);
+  }).join('');
+  return 'CASE-' + hex.substring(0, 24).toUpperCase();
+}
+
+function findComplaintByCaseId_(ss, caseId) {
+  if (!caseId) return null;
+  var sheet = ss.getSheetByName(SHEET_TAB_NAME);
+  if (!sheet || sheet.getLastRow() < 2) return null;
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 25).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i][24] || '').trim() === caseId) {
+      return { caseId: caseId, srNo: rows[i][0] };
+    }
+  }
+  return null;
+}
+
 function findLoggedSubmission_(ss, submissionId) {
   if (!submissionId) return null;
   var sheet = ss.getSheetByName(SUBMISSION_LOG_TAB);
@@ -1432,6 +1548,18 @@ function handleSubmitComplaint(ss, data) {
       duplicateIgnored: true,
       srNo: priorSubmission.srNo,
       caseId: priorSubmission.caseId
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // A deterministic Case ID closes the append/log failure window. If the row
+  // was appended but SubmissionLog failed, a retry finds the existing row.
+  var stableCaseId = stableCaseIdForSubmission_(data.submissionId);
+  var existingComplaint = findComplaintByCaseId_(ss, stableCaseId);
+  if (existingComplaint) {
+    logSubmission_(ss, data.submissionId, existingComplaint.caseId, existingComplaint.srNo);
+    return ContentService.createTextOutput(JSON.stringify({
+      status: 'ok', duplicateIgnored: true,
+      srNo: existingComplaint.srNo, caseId: existingComplaint.caseId
     })).setMimeType(ContentService.MimeType.JSON);
   }
 
@@ -1500,7 +1628,7 @@ function handleSubmitComplaint(ss, data) {
     }
   }
 
-  const caseId = 'CASE-' + Date.now();
+  var caseId = stableCaseId || ('CASE-' + Date.now());
 
   // Updated row with 35 columns matching HEADERS
   var row = [
@@ -1565,9 +1693,6 @@ function handleSubmitComplaint(ss, data) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-// Fallback super admin. Verified server-side ONLY — never sent to any client.
-var SUPER_ADMIN = { email: 'admin@armee.in', password: 'fdJr-nJq5-QJJX' };
-
 /**
  * Server-side login (QA finding C1). Verifies credentials against MasterData and
  * returns the user WITHOUT the password. This replaces the old client-side
@@ -1578,19 +1703,23 @@ function handleLogin(ss, data) {
   var pass  = String(data.password || '');
   if (!email || !pass) return { status: 'error', message: 'Email and password required' };
 
-  if (email === SUPER_ADMIN.email && pass === SUPER_ADMIN.password) {
-    var suUser = {
-      id: 'USR100', name: 'Super Admin', email: SUPER_ADMIN.email,
-      role: 'super_admin', assignedDistricts: ['ALL'], status: 'active'
-    };
-    return { status: 'ok', user: suUser, authToken: issueAuthToken_(suUser) };
-  }
-
-  var users = (getMasterData(ss).accessUsers) || [];
+  var storedMaster = getMasterData(ss);
+  var users = storedMaster.accessUsers || [];
   for (var i = 0; i < users.length; i++) {
     var u = users[i];
-    if (String(u.email || '').trim().toLowerCase() === email &&
-        String(u.password) === pass && u.status === 'active') {
+    var emailMatches = String(u.email || '').trim().toLowerCase() === email;
+    var passwordMatches = u.passwordHash
+      ? hashPassword_(pass, u.passwordSalt || '') === String(u.passwordHash)
+      : String(u.password || '') === pass;
+    if (emailMatches && passwordMatches && u.status === 'active') {
+      // Transparently replace legacy plaintext credentials after a successful login.
+      if (!u.passwordHash) {
+        u.passwordSalt = Utilities.getUuid();
+        u.passwordHash = hashPassword_(pass, u.passwordSalt);
+        delete u.password;
+        storedMaster._v = new Date().getTime().toString();
+        ss.getSheetByName('MasterData').getRange(1, 1).setValue(JSON.stringify(storedMaster));
+      }
       var okUser = {
         id: u.id, name: u.name, email: u.email, phone: u.phone,
         role: u.role, assignedDistricts: u.assignedDistricts || [], status: u.status
@@ -1599,6 +1728,12 @@ function handleLogin(ss, data) {
     }
   }
   return { status: 'error', message: 'Invalid email, password, or account inactive' };
+}
+
+function hashPassword_(password, salt) {
+  var material = String(salt || '') + '|' + String(password || '') + '|' + getSessionSecret_();
+  var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, material, Utilities.Charset.UTF_8);
+  return Utilities.base64EncodeWebSafe(bytes);
 }
 
 /* ── Stateless signed session tokens (QA hardening: authenticated admin mutations) ── */
@@ -1640,6 +1775,38 @@ function verifyAuthToken_(token) {
   }
 }
 
+function issuePortalResolutionToken_(srNo, dise, serialNumber) {
+  var payload = JSON.stringify({
+    srNo: String(srNo || ''),
+    dise: String(dise || '').trim(),
+    serial: String(serialNumber || '').trim().toUpperCase(),
+    // Field teams may submit after extended offline work; bind the token to one
+    // exact complaint while allowing a seven-day offline window.
+    exp: new Date().getTime() + 7 * 24 * 60 * 60 * 1000
+  });
+  var sig = Utilities.computeHmacSha256Signature(payload, getSessionSecret_());
+  return Utilities.base64EncodeWebSafe(payload) + '.' + Utilities.base64EncodeWebSafe(sig);
+}
+
+function verifyPortalResolutionToken_(token, srNo, dise, serialNumber) {
+  try {
+    if (!token) return false;
+    var parts = String(token).split('.');
+    if (parts.length !== 2) return false;
+    var payload = Utilities.newBlob(Utilities.base64DecodeWebSafe(parts[0])).getDataAsString();
+    var expected = Utilities.base64EncodeWebSafe(
+      Utilities.computeHmacSha256Signature(payload, getSessionSecret_()));
+    if (expected !== parts[1]) return false;
+    var parsed = JSON.parse(payload);
+    if (new Date().getTime() > Number(parsed.exp || 0)) return false;
+    return String(parsed.srNo) === String(srNo || '') &&
+      String(parsed.dise || '').trim() === String(dise || '').trim() &&
+      String(parsed.serial || '').trim().toUpperCase() === String(serialNumber || '').trim().toUpperCase();
+  } catch (e) {
+    return false;
+  }
+}
+
 // Guard for admin-only mutations. Returns null when authorized, or an error
 // response object to send back. superOnly restricts to super_admin.
 function requireAdminAuth_(data, superOnly) {
@@ -1653,6 +1820,95 @@ function requireAdminAuth_(data, superOnly) {
   return null;
 }
 
+function filterRowsForAdminDistricts_(ss, rows, authToken) {
+  var who = verifyAuthToken_(authToken);
+  if (!who || !Array.isArray(rows)) return [];
+  if (who.role === 'super_admin') return rows;
+  var allowed = getAuthorizedDistrictMap_(ss, who);
+  if (allowed.ALL) return rows;
+  return rows.filter(function(row) {
+    return !!allowed[String((row && row.district) || '').trim().toUpperCase()];
+  });
+}
+
+function getAuthorizedDistrictMap_(ss, who) {
+  var users = (getMasterData(ss).accessUsers) || [];
+  var assigned = [];
+  for (var i = 0; i < users.length; i++) {
+    if (String(users[i].email || '').trim().toLowerCase() === String(who.email || '').trim().toLowerCase() &&
+        users[i].status === 'active') {
+      assigned = users[i].assignedDistricts || [];
+      break;
+    }
+  }
+  var allowed = {};
+  for (var j = 0; j < assigned.length; j++) {
+    allowed[String(assigned[j] || '').trim().toUpperCase()] = true;
+  }
+  return allowed;
+}
+
+function filterComplaintUpdatesForAdmin_(ss, updates, authToken) {
+  var requested = Array.isArray(updates) ? updates : [];
+  var who = verifyAuthToken_(authToken);
+  if (!who) return [];
+  if (who.role === 'super_admin') return requested;
+
+  var allowed = getAuthorizedDistrictMap_(ss, who);
+  var sheet = ss.getSheetByName(SHEET_TAB_NAME);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 25).getValues();
+  var authorizedCaseIds = {};
+  for (var i = 0; i < rows.length; i++) {
+    var district = String(rows[i][8] || '').trim().toUpperCase();
+    var caseId = String(rows[i][24] || '').trim();
+    if (caseId && (allowed.ALL || allowed[district])) authorizedCaseIds[caseId] = true;
+  }
+  return requested.filter(function(update) {
+    return update && authorizedCaseIds[String(update.caseId || '').trim()];
+  });
+}
+
+function filterSchoolSrNosForAdmin_(ss, srNos, authToken) {
+  var requested = Array.isArray(srNos) ? srNos : [srNos];
+  var who = verifyAuthToken_(authToken);
+  if (!who) return [];
+  if (who.role === 'super_admin') return requested;
+  var allowed = getAuthorizedDistrictMap_(ss, who);
+  var wanted = {};
+  for (var i = 0; i < requested.length; i++) wanted[String(requested[i] || '').trim()] = true;
+  var sheet = ss.getSheetByName('SchoolComplaintMaster');
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 5).getValues();
+  var result = [];
+  for (var r = 0; r < rows.length; r++) {
+    var srNo = String(rows[r][0] || '').trim();
+    var district = String(rows[r][4] || '').trim().toUpperCase();
+    if (wanted[srNo] && (allowed.ALL || allowed[district])) result.push(rows[r][0]);
+  }
+  return result;
+}
+
+function requireDepartmentTicketAuth_(ss, data) {
+  var authError = requireAdminAuth_(data, false);
+  if (authError) return authError;
+  var who = verifyAuthToken_(data.authToken);
+  if (who.role === 'super_admin') return null;
+  var allowed = getAuthorizedDistrictMap_(ss, who);
+  var ticketId = String(data.ticketId || '').trim();
+  var sheet = ss.getSheetByName(DEPT_SHEET_TAB_NAME);
+  if (!sheet || sheet.getLastRow() < 2) return { status: 'error', code: 'not_found', message: 'Ticket not found.' };
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 10).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i][9] || '').trim() === ticketId) {
+      var district = String(rows[i][0] || '').trim().toUpperCase();
+      return (allowed.ALL || allowed[district]) ? null :
+        { status: 'error', code: 'forbidden', message: 'This ticket is outside your assigned districts.' };
+    }
+  }
+  return { status: 'error', code: 'not_found', message: 'Ticket not found.' };
+}
+
 /**
  * Deep-ish clone of master data with all accessUsers passwords removed — the only
  * form of master data that may be returned to a browser.
@@ -1661,7 +1917,9 @@ function sanitizeMasterForClient(md) {
   if (!md) return { equipment: [], users: [], accessUsers: [] };
   var stripPw = function(u) {
     var c = {};
-    for (var kk in u) { if (kk !== 'password') c[kk] = u[kk]; }
+    for (var kk in u) {
+      if (kk !== 'password' && kk !== 'passwordHash' && kk !== 'passwordSalt') c[kk] = u[kk];
+    }
     return c;
   };
   var clone = {};
@@ -1775,6 +2033,16 @@ function getDefaultDistricts() {
 }
 
 function saveMasterData(ss, data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw new Error('Invalid master data payload; existing data was not changed.');
+  }
+
+  // Work on a clone so validation and password restoration cannot partially
+  // mutate the request object before persistence succeeds.
+  data = JSON.parse(JSON.stringify(data));
+  if (!Array.isArray(data.accessUsers)) {
+    throw new Error('Access user list is required; master data was not changed.');
+  }
   // Stamp a version timestamp so the complaint form can detect changes cheaply
   data._v = new Date().getTime().toString();
 
@@ -1786,29 +2054,75 @@ function saveMasterData(ss, data) {
     var existing = getMasterData(ss);
     var byId = {}, byEmail = {};
     (existing.accessUsers || []).forEach(function(u) {
-      if (u && u.password) {
-        if (u.id) byId[u.id] = u.password;
-        if (u.email) byEmail[String(u.email).toLowerCase()] = u.password;
+      if (u && (u.password || u.passwordHash)) {
+        var auth = {
+          password: u.password || '',
+          passwordHash: u.passwordHash || '',
+          passwordSalt: u.passwordSalt || ''
+        };
+        if (u.id) byId[u.id] = auth;
+        if (u.email) byEmail[String(u.email).toLowerCase()] = auth;
       }
     });
     if (Array.isArray(data.accessUsers)) {
       data.accessUsers.forEach(function(u) {
         if (!u) return;
-        if (u.password === undefined || u.password === null || u.password === '') {
-          var keep = byId[u.id] || byEmail[String(u.email || '').toLowerCase()];
-          if (keep) u.password = keep;
+        var suppliedPassword = String(u.password || '');
+        var keep = byId[u.id] || byEmail[String(u.email || '').toLowerCase()];
+        if (suppliedPassword) {
+          if (suppliedPassword.length < 8) {
+            throw new Error('New passwords must contain at least 8 characters.');
+          }
+          u.passwordSalt = Utilities.getUuid();
+          u.passwordHash = hashPassword_(suppliedPassword, u.passwordSalt);
+          delete u.password;
+        } else if (keep && keep.passwordHash) {
+          u.passwordHash = keep.passwordHash;
+          u.passwordSalt = keep.passwordSalt;
+          delete u.password;
+        } else if (keep && keep.password) {
+          u.passwordSalt = Utilities.getUuid();
+          u.passwordHash = hashPassword_(keep.password, u.passwordSalt);
+          delete u.password;
         }
       });
     }
   } catch (mergeErr) {
-    Logger.log('Password merge skipped (saving as-is): ' + mergeErr.toString());
+    throw new Error('Unable to preserve existing account credentials; master data was not changed.');
+  }
+
+  if (Array.isArray(data.accessUsers)) {
+    var seenEmails = {};
+    var activeSuperAdmins = 0;
+    var allowedRoles = { super_admin: true, district_admin: true, viewer: true };
+    for (var i = 0; i < data.accessUsers.length; i++) {
+      var user = data.accessUsers[i];
+      if (!user) throw new Error('Invalid access user at row ' + (i + 1) + '.');
+      var email = String(user.email || '').trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        throw new Error('Invalid email for access user ' + String(user.name || (i + 1)) + '.');
+      }
+      if (seenEmails[email]) throw new Error('Duplicate access user email: ' + email + '.');
+      seenEmails[email] = true;
+      user.email = email;
+      if (!allowedRoles[user.role]) throw new Error('Invalid role for access user ' + email + '.');
+      if (user.status !== 'active' && user.status !== 'inactive') {
+        throw new Error('Invalid status for access user ' + email + '.');
+      }
+      if (user && user.status === 'active' && !String(user.passwordHash || '')) {
+        throw new Error('Active user ' + String(user.email || user.id || (i + 1)) + ' has no password; master data was not changed.');
+      }
+      if (user.status === 'active' && user.role === 'super_admin') activeSuperAdmins++;
+    }
+    if (activeSuperAdmins < 1) {
+      throw new Error('At least one active super admin is required; master data was not changed.');
+    }
   }
 
   var sheet = ss.getSheetByName('MasterData');
   if (!sheet) {
     sheet = ss.insertSheet('MasterData');
   }
-  sheet.clear();
   sheet.getRange(1, 1).setValue(JSON.stringify(data));
 }
 
@@ -1862,13 +2176,25 @@ function datesMatch(val1, val2) {
 
 function updateComplaintsStatus(ss, complaintsArray) {
   var sheet = ss.getSheetByName(SHEET_TAB_NAME);
-  if (!sheet) return 0;
+  if (!sheet || !Array.isArray(complaintsArray)) return 0;
   var lastRow = sheet.getLastRow();
   if (lastRow <= 1) return 0;
 
   var numCols = HEADERS.length;
-  var rows = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+  var dataRange = sheet.getRange(2, 1, lastRow - 1, numCols);
+  var rows = dataRange.getValues();
+  var formulas = dataRange.getFormulas();
+  var writeRows = rows.map(function(row, rowIndex) {
+    return row.map(function(value, colIndex) {
+      return formulas[rowIndex][colIndex] || value;
+    });
+  });
   var updatedCount = 0;
+  var caseIdIndex = {};
+  for (var r = 0; r < rows.length; r++) {
+    var existingCaseId = String(rows[r][24] || '').trim();
+    if (existingCaseId && caseIdIndex[existingCaseId] === undefined) caseIdIndex[existingCaseId] = r;
+  }
 
   for (var j = 0; j < complaintsArray.length; j++) {
     var c = complaintsArray[j];
@@ -1876,12 +2202,8 @@ function updateComplaintsStatus(ss, complaintsArray) {
 
     // 1. Try matching by Case ID
     if (c.caseId && c.caseId !== 'CASE-N/A') {
-      for (var i = 0; i < rows.length; i++) {
-        if (String(rows[i][24]).trim() === String(c.caseId).trim()) {
-          foundIndex = i;
-          break;
-        }
-      }
+      var indexedRow = caseIdIndex[String(c.caseId).trim()];
+      if (indexedRow !== undefined) foundIndex = indexedRow;
     }
 
     // 2. Fallback: match by Submitted At + DISE Code
@@ -1943,8 +2265,8 @@ function updateComplaintsStatus(ss, complaintsArray) {
 
         var sheetVal = rows[foundIndex][col - 1];
         if (String(sheetVal).trim() !== String(val).trim()) {
-          sheet.getRange(rowNumber, col).setValue(val);
           rows[foundIndex][col - 1] = val;
+          writeRows[foundIndex][col - 1] = val;
           changed = true;
         }
       }
@@ -1954,17 +2276,20 @@ function updateComplaintsStatus(ss, complaintsArray) {
         var sheetPhotoUrl = rows[foundIndex][29]; // col 30 (0-indexed 29)
         if (String(sheetPhotoUrl).trim() !== String(c.photoUrl).trim()) {
           var pUrl = String(c.photoUrl).trim();
-          sheet.getRange(rowNumber, 30).setValue(pUrl);
+          if (pUrl && !/^https?:\/\/[^\s"]+$/i.test(pUrl)) {
+            throw new Error('Invalid photo URL for case ' + String(c.caseId || rowNumber));
+          }
           rows[foundIndex][29] = pUrl;
-          
+          writeRows[foundIndex][29] = pUrl;
+
           if (pUrl) {
-            sheet.getRange(rowNumber, 28).setFormula('=IMAGE("' + pUrl + '")');
-            sheet.getRange(rowNumber, 29).setFormula('=HYPERLINK("' + pUrl + '","🔗 View Photo")');
-            sheet.getRange(rowNumber, 23).setValue(1); // Photo Count
+            writeRows[foundIndex][27] = '=IMAGE("' + pUrl + '")';
+            writeRows[foundIndex][28] = '=HYPERLINK("' + pUrl + '","🔗 View Photo")';
+            writeRows[foundIndex][22] = 1;
           } else {
-            sheet.getRange(rowNumber, 28).setValue('');
-            sheet.getRange(rowNumber, 29).setValue('');
-            sheet.getRange(rowNumber, 23).setValue(0); // Photo Count
+            writeRows[foundIndex][27] = '';
+            writeRows[foundIndex][28] = '';
+            writeRows[foundIndex][22] = 0;
           }
           changed = true;
         }
@@ -1977,6 +2302,7 @@ function updateComplaintsStatus(ss, complaintsArray) {
   }
 
   if (updatedCount > 0) {
+    dataRange.setValues(writeRows);
     syncSchoolComplaintMasterStatus(ss);
   }
 
@@ -2115,7 +2441,7 @@ function normalizeTicketStatus(s) {
  * matching what the scraper/manual export already filters to before sending.
  */
 function importDepartmentComplaints(ss, data) {
-  var importKeyError = requireImportKey(data);
+  var importKeyError = requireImportOrAdmin_(data);
   if (importKeyError) return importKeyError;
 
   var rows = data.rows || [];
@@ -2133,6 +2459,9 @@ function importDepartmentComplaints(ss, data) {
   var now = new Date();
   var insertedRows = [];
   var updatedCount = 0;
+  var existingRowsChanged = false;
+  var duplicateInputCount = 0;
+  var seenTicketIds = {};
   var syncTicketIds = [];
   var newByAdmin = {}; // email -> { name, tickets: [] }
   var newByBranch = {}; // branchId -> { branchName, tickets: [] }
@@ -2147,20 +2476,28 @@ function importDepartmentComplaints(ss, data) {
     var ticketId = String(r.TicketId || '').trim();
     if (!ticketId) continue;
 
+    if (seenTicketIds[ticketId]) {
+      duplicateInputCount++;
+      continue;
+    }
+    seenTicketIds[ticketId] = true;
+
     syncTicketIds.push(ticketId);
 
     if (ticketRowNumber[ticketId]) {
       var rowNum = ticketRowNumber[ticketId];
-      sheet.getRange(rowNum, 20).setValue(status);                     // Ticket_Status
-      sheet.getRange(rowNum, 23).setValue(r.UpdatedBy || '');
-      sheet.getRange(rowNum, 24).setValue(r.UpdatedDate || '');
-      sheet.getRange(rowNum, 25).setValue(r.Diagnosis_Notes_Agency || '');
-      sheet.getRange(rowNum, 26).setValue(r.Schedule_Visit_Date || '');
-      sheet.getRange(rowNum, 27).setValue(r.Technician_Name || '');
-      sheet.getRange(rowNum, 28).setValue(r.Technician_Number || '');
-      sheet.getRange(rowNum, 29).setValue(r.Issue_Resolved_By || '');
-      sheet.getRange(rowNum, 30).setValue(r.TotalDaysOfTicket || '');
-      sheet.getRange(rowNum, 32).setValue(status);                     // LastSeenStatus
+      var existingRow = existingRows[rowNum - 2];
+      existingRow[19] = status;
+      existingRow[22] = r.UpdatedBy || '';
+      existingRow[23] = r.UpdatedDate || '';
+      existingRow[24] = r.Diagnosis_Notes_Agency || '';
+      existingRow[25] = r.Schedule_Visit_Date || '';
+      existingRow[26] = r.Technician_Name || '';
+      existingRow[27] = r.Technician_Number || '';
+      existingRow[28] = r.Issue_Resolved_By || '';
+      existingRow[29] = r.TotalDaysOfTicket || '';
+      existingRow[31] = status;
+      existingRowsChanged = true;
       updatedCount++;
       continue;
     }
@@ -2202,6 +2539,9 @@ function importDepartmentComplaints(ss, data) {
     });
   }
 
+  if (existingRowsChanged) {
+    sheet.getRange(2, 1, existingRows.length, DEPT_HEADERS.length).setValues(existingRows);
+  }
   if (insertedRows.length > 0) {
     sheet.getRange(sheet.getLastRow() + 1, 1, insertedRows.length, DEPT_HEADERS.length).setValues(insertedRows);
   }
@@ -2218,7 +2558,10 @@ function importDepartmentComplaints(ss, data) {
     sendBranchComplaintDigestEmails(ss, newByBranch);
   }
 
-  return { status: 'ok', inserted: insertedRows.length, updated: updatedCount };
+  return {
+    status: 'ok', inserted: insertedRows.length, updated: updatedCount,
+    duplicateInputRowsSkipped: duplicateInputCount
+  };
 }
 
 /**
@@ -3053,6 +3396,10 @@ function getDepartmentDashboard(ss) {
     else if (res.internalStatus === 'InProgress') pendency.inProgress++;
     else pendency.pending++;
 
+    // Pending OTP is tracked in its own completion-follow-up card and is not
+    // part of active branch aging, matching the browser dashboard definition.
+    if (res.internalStatus === 'PendingOTP') continue;
+
     var managerString = res.owningDistrictAdmin;
     if (!managerString) {
       var owningAdmin = getOwningDistrictAdmin(ss, row[0]);
@@ -3144,6 +3491,12 @@ function requireImportKey(data) {
     return { status: 'error', message: 'Invalid or missing importKey' };
   }
   return null;
+}
+
+function requireImportOrAdmin_(data) {
+  var keyError = requireImportKey(data);
+  if (!keyError) return null;
+  return requireAdminAuth_(data, true);
 }
 
 // Per-request cache of the whole branch structure; every mutator resets it.
@@ -3888,12 +4241,10 @@ function checkDuplicateSerial(ss, serialNumber) {
       var rowDate = new Date(data[i][1]); // Col 2 = Submitted At
       if (!isNaN(rowDate.getTime())) {
         if (rowDate.getMonth() === currentMonth && rowDate.getFullYear() === currentYear) {
-          return {
-            isDuplicate: true,
-            existingDate: data[i][1],
-            existingCaseId: String(data[i][24] || ''),
-            existingSchool: String(data[i][10] || '')
-          };
+          // The public field form needs only a yes/no warning. Returning the
+          // school, case ID or date would let an unauthenticated caller probe
+          // operational records by guessing serial numbers.
+          return { isDuplicate: true };
         }
       }
     }
@@ -3904,28 +4255,20 @@ function checkDuplicateSerial(ss, serialNumber) {
 function archiveComplaints(ss, fromDate, toDate) {
   var sheet = ss.getSheetByName('Complaints');
   if (!sheet || sheet.getLastRow() < 2) return { archived: 0 };
-  
+
   var from = new Date(fromDate);
   var to = new Date(toDate);
-  to.setHours(23, 59, 59, 999);
-  
-  // Format target sheet name based on the month/year tag as checked for separate month tagging
-  var months = ['01','02','03','04','05','06','07','08','09','10','11','12'];
-  var yearStr = from.getFullYear().toString();
-  var monthStr = months[from.getMonth()];
-  var archiveTabName = 'Archive_' + yearStr + '_' + monthStr;
-  
-  var archiveSheet = ss.getSheetByName(archiveTabName);
-  if (!archiveSheet) {
-    archiveSheet = ss.insertSheet(archiveTabName);
-    setupHeaders(archiveSheet);
+  if (isNaN(from.getTime()) || isNaN(to.getTime()) || from > to) {
+    throw new Error('A valid archive date range is required.');
   }
-  
+  to.setHours(23, 59, 59, 999);
+
+  var months = ['01','02','03','04','05','06','07','08','09','10','11','12'];
   var data = sheet.getDataRange().getValues();
   var formulas = sheet.getDataRange().getFormulas();
-  var rowsToArchive = [];
+  var rowsByArchive = {};
   var rowIndicesToDelete = [];
-  
+
   for (var i = data.length - 1; i >= 1; i--) {
     var rowDate = new Date(data[i][1]);
     if (!isNaN(rowDate.getTime())) {
@@ -3938,23 +4281,33 @@ function archiveComplaints(ss, fromDate, toDate) {
             row.push(data[i][col]);
           }
         }
-        row[31] = 'YES'; // Mark as archived
-        rowsToArchive.unshift(row);
+        row[34] = 'YES'; // Column 35: Archived
+        var archiveTabName = 'Archive_' + rowDate.getFullYear() + '_' + months[rowDate.getMonth()];
+        if (!rowsByArchive[archiveTabName]) rowsByArchive[archiveTabName] = [];
+        rowsByArchive[archiveTabName].unshift(row);
         rowIndicesToDelete.push(i + 1); // 1-indexed row number
       }
     }
   }
-  
-  if (rowsToArchive.length > 0) {
-    // Append to archive sheet
-    archiveSheet.getRange(archiveSheet.getLastRow() + 1, 1, rowsToArchive.length, rowsToArchive[0].length).setValues(rowsToArchive);
-    // Delete from main sheet (reverse order to preserve indices)
+
+  var archiveNames = Object.keys(rowsByArchive);
+  if (archiveNames.length > 0) {
+    for (var a = 0; a < archiveNames.length; a++) {
+      var archiveName = archiveNames[a];
+      var archiveRows = rowsByArchive[archiveName];
+      var archiveSheet = ss.getSheetByName(archiveName);
+      if (!archiveSheet) {
+        archiveSheet = ss.insertSheet(archiveName);
+        setupHeaders(archiveSheet);
+      }
+      archiveSheet.getRange(archiveSheet.getLastRow() + 1, 1, archiveRows.length, archiveRows[0].length).setValues(archiveRows);
+    }
     for (var j = 0; j < rowIndicesToDelete.length; j++) {
       sheet.deleteRow(rowIndicesToDelete[j]);
     }
   }
-  
-  return { archived: rowsToArchive.length };
+
+  return { archived: rowIndicesToDelete.length };
 }
 
 function restoreComplaints(ss, caseIds) {
@@ -3965,6 +4318,13 @@ function restoreComplaints(ss, caseIds) {
   
   var sheets = ss.getSheets();
   var restoredCount = 0;
+  var requested = {};
+  for (var r = 0; r < caseIds.length; r++) requested[String(caseIds[r] || '')] = true;
+  var activeCaseIds = {};
+  if (sheet.getLastRow() > 1) {
+    var existingIds = sheet.getRange(2, 25, sheet.getLastRow() - 1, 1).getValues();
+    for (var e = 0; e < existingIds.length; e++) activeCaseIds[String(existingIds[e][0] || '')] = true;
+  }
   
   for (var sIdx = 0; sIdx < sheets.length; sIdx++) {
     var sName = sheets[sIdx].getName();
@@ -3977,7 +4337,7 @@ function restoreComplaints(ss, caseIds) {
       
       for (var i = data.length - 1; i >= 1; i--) {
         var caseId = String(data[i][24] || '');
-        if (caseIds.indexOf(caseId) !== -1) {
+        if (requested[caseId] && !activeCaseIds[caseId]) {
           var row = [];
           for (var col = 0; col < data[i].length; col++) {
             if (formulas[i] && formulas[i][col]) {
@@ -3986,9 +4346,10 @@ function restoreComplaints(ss, caseIds) {
               row.push(data[i][col]);
             }
           }
-          row[31] = ''; // Clear archived flag
+          row[34] = ''; // Column 35: Archived
           rowsToRestore.unshift(row);
           rowIndicesToDelete.push(i + 1);
+          activeCaseIds[caseId] = true;
         }
       }
       
@@ -4321,6 +4682,9 @@ function getOrCreateSchoolComplaintSheets(ss) {
 }
 
 function importSchoolComplaints(ss, data) {
+  var importAuthError = requireImportOrAdmin_(data);
+  if (importAuthError) return importAuthError;
+
   var masterSheet = ss.getSheetByName('SchoolComplaintMaster');
   var complaintsSheet = ss.getSheetByName('Complaints');
   var matchLogSheet = ss.getSheetByName('SchoolComplaintMatchLog');
@@ -4509,6 +4873,7 @@ function syncSchoolComplaintMasterStatus(ss) {
       if (!complaintsMap[serial] || submittedAt > complaintsMap[serial].date) {
         complaintsMap[serial] = {
           suspectedPart: suspected,
+          status: String(complaints[i][23] || '').trim(),
           date: submittedAt
         };
       }
@@ -4575,10 +4940,18 @@ function syncSchoolComplaintMasterStatus(ss) {
       if (serial && complaintsMap[serial]) {
         var match = complaintsMap[serial];
         var expectedSuspected = match.suspectedPart;
-        var expectedStatus = expectedSuspected ? 'Part Request' : 'Closed';
-
         var currentStatus = String(masterRows[j][16] || '').trim();
         var currentSuspected = String(masterRows[j][17] || '').trim();
+        var sourceStatus = String(match.status || '').trim();
+        var sourceStatusKey = sourceStatus.toLowerCase().replace(/[\s_-]+/g, '');
+        var normalizedStatuses = {
+          open: 'Open', pending: 'Pending', inprogress: 'In Progress',
+          partrequest: 'Part Request', pendingotp: 'Pending OTP', closed: 'Closed'
+        };
+        // Copy an explicit source status. For legacy rows with no source status,
+        // preserve the current status unless a requested part is explicit.
+        var expectedStatus = normalizedStatuses[sourceStatusKey] ||
+          (expectedSuspected ? 'Part Request' : currentStatus);
 
         // ACER WINS when the row has an Acer case status we recognise (Jignesh,
         // 2026-07-29). This function runs on EVERY read, so without this guard it
@@ -4609,9 +4982,6 @@ function syncSchoolComplaintMasterStatus(ss) {
  * where the Status column is blank/empty.
  */
 function getSchoolComplaints(ss, dise, schoolName) {
-  // Sync first to ensure we have up-to-date statuses
-  syncSchoolComplaintMasterStatus(ss);
-
   var master = ss.getSheetByName('SchoolComplaintMaster');
   if (!master) return [];
 
@@ -4671,7 +5041,8 @@ function getSchoolComplaints(ss, dise, schoolName) {
         natureOfComplaint: String(rows[i][12] || '').trim(),
         serialNumber:      String(rows[i][13] || '').trim(),
         state:             String(rows[i][14] || 'GUJARAT').trim(),
-        branch:            String(rows[i][15] || '').trim()
+        branch:            String(rows[i][15] || '').trim(),
+        portalToken:       issuePortalResolutionToken_(rowSrNo, rowDise || targetDise, rows[i][13])
       });
     }
   }
@@ -4683,9 +5054,6 @@ function getSchoolComplaints(ss, dise, schoolName) {
  * Returns all school complaints from SchoolComplaintMaster sheet
  */
 function getAllSchoolComplaints(ss) {
-  // Sync first to ensure we have up-to-date statuses
-  syncSchoolComplaintMasterStatus(ss);
-
   var master = ss.getSheetByName('SchoolComplaintMaster');
   if (!master) return [];
 
@@ -4796,7 +5164,8 @@ function updateSchoolComplaintDiseBulkInSheet(ss, updates) {
     var sheetSrNo = String(values[i][0]).trim();
     if (updateMap[sheetSrNo]) {
       var newDise = updateMap[sheetSrNo];
-      if (String(values[i][2]).trim() !== newDise) {
+      // This healer may fill a missing code; it must never replace an existing one.
+      if (!String(values[i][2] || '').trim()) {
         values[i][2] = newDise; // Column C: DISE Code (index 2)
         changed = true;
         updatedCount++;
@@ -4925,6 +5294,15 @@ function resolveSchoolComplaintFromPortal(ss, data) {
   var srNo = parseInt(data.srNo);
   if (isNaN(srNo) || srNo <= 0) return 0;
 
+  var requestedStatus = String(data.status || '').trim();
+  var allowedStatuses = { 'Closed': true, 'Part Request': true, 'Open': true };
+  if (!allowedStatuses[requestedStatus]) {
+    return { status: 'error', code: 'validation', message: 'Invalid complaint status.' };
+  }
+  if (requestedStatus === 'Part Request' && !String(data.suspectedPart || '').trim()) {
+    return { status: 'error', code: 'validation', message: 'A suspected part is required for Part Request.' };
+  }
+
   var range = sheet.getRange(2, 1, lastRow - 1, 19);
   var values = range.getValues();
   var updatedCount = 0;
@@ -4933,8 +5311,23 @@ function resolveSchoolComplaintFromPortal(ss, data) {
   for (var i = 0; i < values.length; i++) {
     var sheetSrNo = parseInt(values[i][0]);
     if (sheetSrNo === srNo) {
+      var rowDise = String(values[i][2] || '').trim();
+      var rowSerial = String(values[i][13] || '').trim();
+      if (!verifyPortalResolutionToken_(data.portalToken, sheetSrNo, rowDise || data.dise, rowSerial)) {
+        return { status: 'error', code: 'auth', message: 'This complaint link expired. Search the DISE code again and retry.' };
+      }
+      var existingStatus = String(values[i][16] || '').trim();
+      // A portal token is issued only for an active complaint. Once the row has
+      // moved to a final state, the same seven-day token cannot be replayed to
+      // reopen or alter it. Retrying the identical request stays idempotent.
+      if (existingStatus && existingStatus.toLowerCase() !== 'open') {
+        if (existingStatus === requestedStatus) {
+          return { status: 'ok', updatedCount: 0, duplicateIgnored: true };
+        }
+        return { status: 'error', code: 'conflict', message: 'This complaint has already been updated. Search again to refresh its status.' };
+      }
       var rowNum = i + 2;
-      var newStatus = data.status || 'Closed';
+      var newStatus = requestedStatus;
       var suspectedPart = data.suspectedPart || '';
       
       // Update Column Q (index 16) -> Status
@@ -4984,9 +5377,8 @@ function resolveSchoolComplaintFromPortal(ss, data) {
   return updatedCount;
 }
 
-function bulkAcerMapping(ss, importKey, mappings) {
-  // Validate the import key (shared helper — fails closed, no literal bypass)
-  var acerKeyError = requireImportKey({ importKey: importKey });
+function bulkAcerMapping(ss, importKey, mappings, authToken) {
+  var acerKeyError = requireImportOrAdmin_({ importKey: importKey, authToken: authToken });
   if (acerKeyError) return acerKeyError;
 
   if (!Array.isArray(mappings) || mappings.length === 0) {
@@ -5335,36 +5727,39 @@ function importSchoolMaster(ss, data) {
   // This wipes the School Master sheet (sheet.clear()) before rewriting it, so it
   // must be key-protected. It previously accepted only the hardcoded literal
   // 'armee123', which meant anyone who knew that word could clear the sheet.
-  var schoolKeyError = requireImportKey(data);
-  if (schoolKeyError) return schoolKeyError;
+  var schoolAuthError = requireImportOrAdmin_(data);
+  if (schoolAuthError) return schoolAuthError;
+
+  if (!data || !Array.isArray(data.schools) || data.schools.length === 0) {
+    return { status: 'error', message: 'A non-empty schools array is required; existing data was not changed.' };
+  }
+
+  var schools = data.schools;
+  var rows = [];
+  for (var i = 0; i < schools.length; i++) {
+    var s = schools[i];
+    if (!s || typeof s !== 'object') {
+      return { status: 'error', message: 'Invalid school record at row ' + (i + 1) + '; existing data was not changed.' };
+    }
+    rows.push([
+      s.project || '', s.dise || '', s.schoolCode || '', s.school || '',
+      s.district || '', s.block || '', s.principal || '', s.mobile || '',
+      s.address || '', s.pincode || ''
+    ]);
+  }
+
   var sheet = ss.getSheetByName(SCHOOL_MASTER_TAB_NAME);
   if (!sheet) {
     sheet = ss.insertSheet(SCHOOL_MASTER_TAB_NAME);
   }
-  sheet.clear();
-  sheet.appendRow(SCHOOL_MASTER_HEADERS);
+  var previousLastRow = sheet.getLastRow();
+  sheet.getRange(2, 1, rows.length, SCHOOL_MASTER_HEADERS.length).setValues(rows);
+  sheet.getRange(1, 1, 1, SCHOOL_MASTER_HEADERS.length).setValues([SCHOOL_MASTER_HEADERS]);
   sheet.getRange(1, 1, 1, SCHOOL_MASTER_HEADERS.length).setBackground('#1a56db').setFontColor('#ffffff').setFontWeight('bold');
   sheet.setFrozenRows(1);
-
-  var schools = data.schools || [];
-  if (schools.length > 0) {
-    var rows = [];
-    for (var i = 0; i < schools.length; i++) {
-      var s = schools[i];
-      rows.push([
-        s.project || '',
-        s.dise || '',
-        s.schoolCode || '',
-        s.school || '',
-        s.district || '',
-        s.block || '',
-        s.principal || '',
-        s.mobile || '',
-        s.address || '',
-        s.pincode || ''
-      ]);
-    }
-    sheet.getRange(2, 1, rows.length, SCHOOL_MASTER_HEADERS.length).setValues(rows);
+  var newLastRow = rows.length + 1;
+  if (previousLastRow > newLastRow) {
+    sheet.getRange(newLastRow + 1, 1, previousLastRow - newLastRow, SCHOOL_MASTER_HEADERS.length).clearContent();
   }
   return { status: 'ok', count: schools.length };
 }
@@ -5428,4 +5823,3 @@ function healSchoolComplaintMasterColumns(ss) {
     }
   }
 }
-

@@ -2245,6 +2245,10 @@ function updateUser() {
 /* ─────────────── ✏️ EDIT PRINCIPAL / CONTACT ─────────────── */
 function openEditField(field) {
   if (!foundRecord) { showToast('⚠️ No school selected', 'warn'); return; }
+  if (!isLocal()) {
+    showToast('🔒 School master changes require an administrator. Please report the correction to your coordinator.', 'warn');
+    return;
+  }
   editFieldKey = field;
   const isPrincipal = (field === 'principal');
   const label = isPrincipal ? 'Principal Name' : 'Contact Number';
@@ -2304,16 +2308,7 @@ async function syncSchoolUpdate(dise, field, newValue, oldValue) {
   const isLocalhost = isLocal();
   try {
     if (GOOGLE_SCRIPT_URL && !isLocalhost && navigator.onLine) {
-      await fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({ action: 'update_school', dise, field, newValue, oldValue }),
-      });
-      // Also update in-memory SCHOOL_DB
-      const entries = SCHOOL_DB[dise];
-      const list = Array.isArray(entries) ? entries : (entries ? [entries] : []);
-      list.forEach(r => { if (r.dise === dise) r[field] = newValue; });
+      throw new Error('Administrator authorization is required for school master changes.');
     } else {
       const res = await fetch('/update_school', {
         method: 'POST',
@@ -2355,21 +2350,8 @@ async function triggerLookup() {
         if (Array.isArray(list)) {
           SCHOOL_COMPLAINT_DB[dise] = list;
           
-          // Auto-sync missing DISE codes back to sheet
-          const missingDiseList = list.filter(r => !r.dise && r.srNo);
-          if (missingDiseList.length > 0) {
-            console.log(`Auto-healing: writing back DISE Code ${dise} for ${missingDiseList.length} complaints.`);
-            fetch(GOOGLE_SCRIPT_URL, {
-              method: 'POST',
-              headers: { 'Content-Type': 'text/plain' },
-              body: JSON.stringify({
-                action: 'update_school_complaint_dise_bulk',
-                updates: missingDiseList.map(r => ({ srNo: r.srNo, dise: dise }))
-              })
-            }).catch(e => console.warn("Failed to auto-heal DISE code on server:", e));
-          }
-          
-          // Ensure all local entries have the DISE code populated
+          // Populate the local view only. Persistent DISE repair is an authenticated
+          // administrator action and must not run from the public field form.
           list.forEach(r => { r.dise = dise; });
         }
       }
@@ -3070,6 +3052,7 @@ async function proceedWithSubmission() {
     // row when the queue re-sends the same complaint.
     submissionId:      newSubmissionId(),
     srNo:              isSchool ? r?.srNo : undefined,
+    portalToken:       isSchool ? r?.portalToken : undefined,
     submittedAt:       new Date().toISOString(),
     complainantName:   user.name  || '',
     complainantPhone:  user.phone || '',

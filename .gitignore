@@ -15,18 +15,24 @@ ssh-key-*
 *.pem
 
 # Local mock database files
+complaints.json
+school_complaint_data.json
 dash.json
 dash2.json
 deptlist.json
 dl.json
 reg.json
 
+# Operational spreadsheet exports stay local; they can contain contact details.
+*.xlsx
+
 # Backup folders
 backup_local_edits/
+server_backups/
 .claude/
 
 # Node.js dependencies and scraper downloads
 node_modules/
 scraper/node_modules/
 scraper/downloads/
-
+scraper/.scraper-run.lock
