@@ -942,20 +942,17 @@ function doGet(e) {
       var deptListAuth = requireAdminAuth_(e.parameter, false);
       if (deptListAuth) return ContentService.createTextOutput(JSON.stringify(deptListAuth))
                                               .setMimeType(ContentService.MimeType.JSON);
-      // Rebuilding this list touches several sheets and is the slowest read in
-      // the admin panel, so serve it from cache when possible. Any write clears
-      // the cache (see doPost), so cached data is never stale after a change.
-      var deptCached = cacheGetLarge(DEPT_LIST_CACHE_KEY);
-      if (deptCached) {
-        var cachedDeptRows = filterRowsForAdminDistricts_(ss, JSON.parse(deptCached), e.parameter.authToken);
-        return ContentService.createTextOutput(JSON.stringify(cachedDeptRows))
-                             .setMimeType(ContentService.MimeType.JSON);
-      }
-      var allDeptRows = getDepartmentComplaintsList(ss);
-      var deptPayload = JSON.stringify(allDeptRows);
-      cachePutLarge(DEPT_LIST_CACHE_KEY, deptPayload, CACHE_TTL_SECONDS);
-      var authorizedDeptRows = filterRowsForAdminDistricts_(ss, allDeptRows, e.parameter.authToken);
+      var authorizedDeptRows = filterRowsForAdminDistricts_(ss, getCachedDepartmentComplaints_(ss), e.parameter.authToken);
       return ContentService.createTextOutput(JSON.stringify(authorizedDeptRows))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (action === 'get_department_complaints_page') {
+      var deptPageAuth = requireAdminAuth_(e.parameter, false);
+      if (deptPageAuth) return ContentService.createTextOutput(JSON.stringify(deptPageAuth))
+                                              .setMimeType(ContentService.MimeType.JSON);
+      var authorizedPageRows = filterRowsForAdminDistricts_(ss, getCachedDepartmentComplaints_(ss), e.parameter.authToken);
+      return ContentService.createTextOutput(JSON.stringify(getDepartmentComplaintsPage_(authorizedPageRows, e.parameter)))
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -3957,8 +3954,100 @@ function applyInitialBranchMappings() {
 }
 
 /**
+ * Return one coherent cached department snapshot. Writers invalidate this key,
+ * so callers never need to read a mixture of cached and freshly-built rows.
+ */
+function getCachedDepartmentComplaints_(ss) {
+  var cached = cacheGetLarge(DEPT_LIST_CACHE_KEY);
+  if (cached) {
+    try {
+      var parsed = JSON.parse(cached);
+      if (Array.isArray(parsed)) return parsed;
+    } catch (err) {
+      // Ignore a corrupt or obsolete value and publish a fresh generation below.
+      // The old generation expires naturally and cannot be selected once the
+      // new metadata is written last by cachePutLarge.
+    }
+  }
+  var rows = getDepartmentComplaintsList(ss);
+  cachePutLarge(DEPT_LIST_CACHE_KEY, JSON.stringify(rows), CACHE_TTL_SECONDS);
+  return rows;
+}
+
+/**
+ * Build a bounded, server-filtered page from a district-authorized snapshot.
+ * This is intentionally pure so it can be regression-tested without Sheets.
+ * The legacy full-list endpoint remains for dashboard consumers until they are
+ * migrated to use aggregate and detail endpoints together.
+ */
+function getDepartmentComplaintsPage_(rows, parameters) {
+  parameters = parameters || {};
+  var pageSize = Number(parameters.pageSize || 50);
+  if (!isFinite(pageSize) || pageSize < 1) pageSize = 50;
+  pageSize = Math.min(Math.floor(pageSize), 200);
+  var page = Number(parameters.page || 1);
+  if (!isFinite(page) || page < 1) page = 1;
+  page = Math.floor(page);
+
+  var search = String(parameters.search || '').trim().toLowerCase();
+  var status = String(parameters.status || '').trim();
+  var branchId = String(parameters.branchId || '').trim();
+  var activeOnly = String(parameters.activeOnly || '').toLowerCase() === 'true';
+  var filtered = (rows || []).filter(function(row) {
+    if (activeOnly && (row.internalStatus === 'Closed' || row.internalStatus === 'PendingOTP')) return false;
+    if (status && row.internalStatus !== status) return false;
+    if (branchId && String(row.branchId || '') !== branchId) return false;
+    if (!search) return true;
+    var fields = [
+      row.ticketId, row.school, row.schoolId, row.serialNumber, row.district,
+      row.block, row.branchName, row.deviceType, row.issueType,
+      row.acerCaseId, row.acerCaseStatus
+    ];
+    for (var i = 0; i < fields.length; i++) {
+      if (String(fields[i] || '').toLowerCase().indexOf(search) !== -1) return true;
+    }
+    return false;
+  });
+
+  var allowedSorts = {
+    ticketId: true, school: true, district: true, branchName: true,
+    issueType: true, businessDays: true, createdDate: true, resolvedAt: true,
+    resolutionDate: true, acerCaseId: true, acerCaseStatus: true, internalStatus: true
+  };
+  var sortKey = String(parameters.sortKey || 'businessDays');
+  if (!allowedSorts[sortKey]) sortKey = 'businessDays';
+  var sortOrder = String(parameters.sortOrder || 'desc').toLowerCase() === 'asc' ? 'asc' : 'desc';
+  filtered.sort(function(a, b) {
+    var left = a[sortKey];
+    var right = b[sortKey];
+    var comparison;
+    if (sortKey === 'businessDays') {
+      comparison = (Number(left) || 0) - (Number(right) || 0);
+    } else if (sortKey === 'createdDate' || sortKey === 'resolvedAt' || sortKey === 'resolutionDate') {
+      comparison = (left ? new Date(left).getTime() : 0) - (right ? new Date(right).getTime() : 0);
+    } else {
+      comparison = String(left || '').toLowerCase().localeCompare(String(right || '').toLowerCase(), undefined, {
+        numeric: true, sensitivity: 'base'
+      });
+    }
+    if (!comparison) comparison = String(a.ticketId || '').localeCompare(String(b.ticketId || ''));
+    return sortOrder === 'asc' ? comparison : -comparison;
+  });
+
+  var total = filtered.length;
+  var totalPages = Math.max(1, Math.ceil(total / pageSize));
+  if (page > totalPages) page = totalPages;
+  var start = (page - 1) * pageSize;
+  return {
+    status: 'ok', items: filtered.slice(start, start + pageSize), total: total,
+    page: page, pageSize: pageSize, totalPages: totalPages, hasMore: page < totalPages,
+    sortKey: sortKey, sortOrder: sortOrder
+  };
+}
+
+/**
  * Full department complaint list joined with internal status and resolved
- * branch — the admin dashboard loads this once and filters client-side.
+ * branch — retained for dashboard calculations during the staged migration.
  */
 function getDepartmentComplaintsList(ss) {
   var s = loadBranchStructure(ss);

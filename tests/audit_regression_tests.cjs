@@ -337,6 +337,45 @@ async function test(name, fn) {
     assert.equal(out.code, 'auth');
   });
 
+  await test('department page bounds payload and applies search, status, sorting, and pagination server-side', () => {
+    const c = makeContext();
+    const rows = [
+      { ticketId: 'T-3', school: 'Gamma School', district: 'North', internalStatus: 'Pending', branchId: 'B-1', businessDays: 3 },
+      { ticketId: 'T-1', school: 'Alpha School', district: 'North', internalStatus: 'Closed', branchId: 'B-1', businessDays: 5 },
+      { ticketId: 'T-2', school: 'Beta School', district: 'North', internalStatus: 'Pending', branchId: 'B-2', businessDays: 7 },
+      { ticketId: 'T-4', school: 'Delta School', district: 'North', internalStatus: 'PendingOTP', branchId: 'B-2', businessDays: 9 },
+    ];
+    const out = c.getDepartmentComplaintsPage_(rows, {
+      activeOnly: 'true', page: '1', pageSize: '1', sortKey: 'businessDays', sortOrder: 'desc'
+    });
+    assert.equal(out.total, 2);
+    assert.equal(out.items.length, 1);
+    assert.equal(out.items[0].ticketId, 'T-2');
+    assert.equal(out.hasMore, true);
+    const search = c.getDepartmentComplaintsPage_(rows, {
+      search: 'gamma', status: 'Pending', pageSize: '5000', sortKey: 'ticketId', sortOrder: 'asc'
+    });
+    assert.equal(search.items.length, 1);
+    assert.equal(search.items[0].ticketId, 'T-3');
+    assert.equal(search.pageSize, 200);
+  });
+
+  await test('department page applies district authorization before returning any page', () => {
+    const c = makeContext();
+    c.SpreadsheetApp = { openById: () => makeSpreadsheet([]) };
+    c.verifyAuthToken_ = token => token === 'district-token' ? { email: 'north@example.test', role: 'district_admin' } : null;
+    c.getAuthorizedDistrictMap_ = () => ({ NORTH: true });
+    c.getCachedDepartmentComplaints_ = () => [
+      { ticketId: 'N-1', district: 'North', internalStatus: 'Pending', businessDays: 1 },
+      { ticketId: 'S-1', district: 'South', internalStatus: 'Pending', businessDays: 9 },
+    ];
+    const out = JSON.parse(c.doGet({ parameter: {
+      action: 'get_department_complaints_page', authToken: 'district-token', pageSize: '50'
+    } }).text);
+    assert.equal(out.total, 1);
+    assert.deepEqual(out.items.map(row => row.ticketId), ['N-1']);
+  });
+
   await test('complaint list rejects anonymous reads and filters district access', () => {
     const c = makeContext();
     const headers = vm.runInContext('HEADERS', c);
