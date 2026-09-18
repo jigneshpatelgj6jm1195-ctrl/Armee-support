@@ -5064,58 +5064,72 @@ function bulkAcerMapping(ss, importKey, mappings) {
         closeDateColIdx = 20;
       }
 
-      var dataRows = schoolSheet.getRange(2, 1, lastRow - 1, numCols).getValues();
-      var acerIdCol = [], acerStCol = [], lastUpdCol = [], statusCol = [], closeDateCol = [];
-      var hasStatusChange = false;
-
-      for (var i = 0; i < dataRows.length; i++) {
-        var existingAcerId    = String(dataRows[i][acerIdColIdx] || '').trim();
-        var existingAcerSt    = String(dataRows[i][acerStColIdx] || '').trim();
-        var existingLastUpd   = dataRows[i][lastUpdColIdx];
-        var existingStatus    = String(dataRows[i][statusColIdx] || '').trim();
-        var existingCloseDate = closeDateColIdx !== -1 ? dataRows[i][closeDateColIdx] : '';
-        var rowSn = String(dataRows[i][snColIdx] || '').trim().toUpperCase().slice(0, 22);
-
-        if (rowSn && mappingMap[rowSn]) {
-          var match = mappingMap[rowSn];
-          var newAcerId = String(match.acerCaseId || '').trim();
-          var newAcerSt = String(match.acerCaseStatus || '').trim();
-          matchedSerials[rowSn] = true;
-          matchedSchoolCount++;
-          
-          var newStatus = acerStatusToCallStatus_(newAcerSt || existingAcerSt, existingStatus);
-          var newCloseDate = existingCloseDate;
-          if (newStatus !== existingStatus) {
-            hasStatusChange = true;
-            newCloseDate = (newStatus === 'Closed') ? nowStr : '';
-          }
-
-          var changed = (newAcerId && newAcerId !== existingAcerId) ||
-                        (newAcerSt && newAcerSt !== existingAcerSt) ||
-                        (newStatus !== existingStatus);
-
-          acerIdCol.push([newAcerId || existingAcerId]);
-          acerStCol.push([newAcerSt || existingAcerSt]);
-          lastUpdCol.push([changed ? nowStr : existingLastUpd]);
-          statusCol.push([newStatus]);
-          closeDateCol.push([newCloseDate]);
-        } else {
-          acerIdCol.push([existingAcerId]);
-          acerStCol.push([existingAcerSt]);
-          lastUpdCol.push([existingLastUpd]);
-          statusCol.push([existingStatus]);
-          closeDateCol.push([existingCloseDate]);
-        }
+      // Fast pre-scan: check only serial column first (0.2s)
+      var snValuesS = schoolSheet.getRange(2, snColIdx + 1, lastRow - 1, 1).getValues();
+      var hasMatchS = false;
+      for (var s = 0; s < snValuesS.length; s++) {
+        var testSn = String(snValuesS[s][0] || '').trim().toUpperCase().slice(0, 22);
+        if (testSn && mappingMap[testSn]) { hasMatchS = true; break; }
       }
 
-      // Batch write all columns at once (avoid individual setValue in loop)
-      schoolSheet.getRange(2, acerIdColIdx + 1, dataRows.length, 1).setValues(acerIdCol);
-      schoolSheet.getRange(2, acerStColIdx + 1, dataRows.length, 1).setValues(acerStCol);
-      schoolSheet.getRange(2, lastUpdColIdx + 1, dataRows.length, 1).setValues(lastUpdCol);
-      if (hasStatusChange) {
-        schoolSheet.getRange(2, statusColIdx + 1, dataRows.length, 1).setValues(statusCol);
-        if (closeDateColIdx !== -1) {
-          schoolSheet.getRange(2, closeDateColIdx + 1, dataRows.length, 1).setValues(closeDateCol);
+      if (hasMatchS) {
+        var dataRows = schoolSheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+        var acerIdCol = [], acerStCol = [], lastUpdCol = [], statusCol = [], closeDateCol = [];
+        var hasStatusChange = false;
+        var hasChangesS = false;
+
+        for (var i = 0; i < dataRows.length; i++) {
+          var existingAcerId    = String(dataRows[i][acerIdColIdx] || '').trim();
+          var existingAcerSt    = String(dataRows[i][acerStColIdx] || '').trim();
+          var existingLastUpd   = dataRows[i][lastUpdColIdx];
+          var existingStatus    = String(dataRows[i][statusColIdx] || '').trim();
+          var existingCloseDate = closeDateColIdx !== -1 ? dataRows[i][closeDateColIdx] : '';
+          var rowSn = String(dataRows[i][snColIdx] || '').trim().toUpperCase().slice(0, 22);
+
+          if (rowSn && mappingMap[rowSn]) {
+            var match = mappingMap[rowSn];
+            var newAcerId = String(match.acerCaseId || '').trim();
+            var newAcerSt = String(match.acerCaseStatus || '').trim();
+            matchedSerials[rowSn] = true;
+            matchedSchoolCount++;
+            
+            var newStatus = acerStatusToCallStatus_(newAcerSt || existingAcerSt, existingStatus);
+            var newCloseDate = existingCloseDate;
+            if (newStatus !== existingStatus) {
+              hasStatusChange = true;
+              newCloseDate = (newStatus === 'Closed') ? nowStr : '';
+            }
+
+            var changed = (newAcerId && newAcerId !== existingAcerId) ||
+                          (newAcerSt && newAcerSt !== existingAcerSt) ||
+                          (newStatus !== existingStatus);
+            if (changed) hasChangesS = true;
+
+            acerIdCol.push([newAcerId || existingAcerId]);
+            acerStCol.push([newAcerSt || existingAcerSt]);
+            lastUpdCol.push([changed ? nowStr : existingLastUpd]);
+            statusCol.push([newStatus]);
+            closeDateCol.push([newCloseDate]);
+          } else {
+            acerIdCol.push([existingAcerId]);
+            acerStCol.push([existingAcerSt]);
+            lastUpdCol.push([existingLastUpd]);
+            statusCol.push([existingStatus]);
+            closeDateCol.push([existingCloseDate]);
+          }
+        }
+
+        // Only write back if actual matches were found and changed
+        if (hasChangesS) {
+          schoolSheet.getRange(2, acerIdColIdx + 1, dataRows.length, 1).setValues(acerIdCol);
+          schoolSheet.getRange(2, acerStColIdx + 1, dataRows.length, 1).setValues(acerStCol);
+          schoolSheet.getRange(2, lastUpdColIdx + 1, dataRows.length, 1).setValues(lastUpdCol);
+          if (hasStatusChange) {
+            schoolSheet.getRange(2, statusColIdx + 1, dataRows.length, 1).setValues(statusCol);
+            if (closeDateColIdx !== -1) {
+              schoolSheet.getRange(2, closeDateColIdx + 1, dataRows.length, 1).setValues(closeDateCol);
+            }
+          }
         }
       }
     }
@@ -5157,36 +5171,50 @@ function bulkAcerMapping(ss, importKey, mappings) {
         numCols = Math.max(numCols, lastUpdColIdx + 1);
       }
 
-      var dataRows = complaintsSheet.getRange(2, 1, lastRow - 1, numCols).getValues();
-      var acerIdCol = [], acerStCol = [], lastUpdCol = [];
-      for (var i = 0; i < dataRows.length; i++) {
-        var existingAcerId  = String(dataRows[i][acerIdColIdx] || '').trim();
-        var existingAcerSt  = String(dataRows[i][acerStColIdx] || '').trim();
-        var existingLastUpd = dataRows[i][lastUpdColIdx];
-        var rowSn = String(dataRows[i][snColIdx] || '').trim().toUpperCase().slice(0, 22);
+      // Fast pre-scan: check only serial column first (0.2s)
+      var snValuesC = complaintsSheet.getRange(2, snColIdx + 1, lastRow - 1, 1).getValues();
+      var hasMatchC = false;
+      for (var sc = 0; sc < snValuesC.length; sc++) {
+        var testSnC = String(snValuesC[sc][0] || '').trim().toUpperCase().slice(0, 22);
+        if (testSnC && mappingMap[testSnC]) { hasMatchC = true; break; }
+      }
 
-        if (rowSn && mappingMap[rowSn]) {
-          var match = mappingMap[rowSn];
-          var newAcerId = String(match.acerCaseId || '').trim();
-          var newAcerSt = String(match.acerCaseStatus || '').trim();
-          matchedSerials[rowSn] = true;
-          matchedComplaintsCount++;
-          
-          var changed = (newAcerId && newAcerId !== existingAcerId) || 
-                        (newAcerSt && newAcerSt !== existingAcerSt);
-          
-          acerIdCol.push([newAcerId || existingAcerId]);
-          acerStCol.push([newAcerSt || existingAcerSt]);
-          lastUpdCol.push([changed ? nowStr : existingLastUpd]);
-        } else {
-          acerIdCol.push([existingAcerId]);
-          acerStCol.push([existingAcerSt]);
-          lastUpdCol.push([existingLastUpd]);
+      if (hasMatchC) {
+        var dataRows = complaintsSheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+        var acerIdCol = [], acerStCol = [], lastUpdCol = [];
+        var hasChangesC = false;
+        for (var i = 0; i < dataRows.length; i++) {
+          var existingAcerId  = String(dataRows[i][acerIdColIdx] || '').trim();
+          var existingAcerSt  = String(dataRows[i][acerStColIdx] || '').trim();
+          var existingLastUpd = dataRows[i][lastUpdColIdx];
+          var rowSn = String(dataRows[i][snColIdx] || '').trim().toUpperCase().slice(0, 22);
+
+          if (rowSn && mappingMap[rowSn]) {
+            var match = mappingMap[rowSn];
+            var newAcerId = String(match.acerCaseId || '').trim();
+            var newAcerSt = String(match.acerCaseStatus || '').trim();
+            matchedSerials[rowSn] = true;
+            matchedComplaintsCount++;
+            
+            var changed = (newAcerId && newAcerId !== existingAcerId) || 
+                          (newAcerSt && newAcerSt !== existingAcerSt);
+            if (changed) hasChangesC = true;
+
+            acerIdCol.push([newAcerId || existingAcerId]);
+            acerStCol.push([newAcerSt || existingAcerSt]);
+            lastUpdCol.push([changed ? nowStr : existingLastUpd]);
+          } else {
+            acerIdCol.push([existingAcerId]);
+            acerStCol.push([existingAcerSt]);
+            lastUpdCol.push([existingLastUpd]);
+          }
+        }
+        if (hasChangesC) {
+          complaintsSheet.getRange(2, acerIdColIdx + 1, dataRows.length, 1).setValues(acerIdCol);
+          complaintsSheet.getRange(2, acerStColIdx + 1, dataRows.length, 1).setValues(acerStCol);
+          complaintsSheet.getRange(2, lastUpdColIdx + 1, dataRows.length, 1).setValues(lastUpdCol);
         }
       }
-      complaintsSheet.getRange(2, acerIdColIdx + 1, dataRows.length, 1).setValues(acerIdCol);
-      complaintsSheet.getRange(2, acerStColIdx + 1, dataRows.length, 1).setValues(acerStCol);
-      complaintsSheet.getRange(2, lastUpdColIdx + 1, dataRows.length, 1).setValues(lastUpdCol);
     }
   }
 
@@ -5217,28 +5245,43 @@ function bulkAcerMapping(ss, importKey, mappings) {
         numCols++;
       }
 
-      var dataRows = deptSheet.getRange(2, 1, lastRow - 1, numCols).getValues();
-      var acerIdCol = [], acerStCol = [];
-      for (var i = 0; i < dataRows.length; i++) {
-        var existingAcerId = String(dataRows[i][acerIdColIdx] || '').trim();
-        var existingAcerSt = String(dataRows[i][acerStColIdx] || '').trim();
-        var rowSn = String(dataRows[i][snColIdx] || '').trim().toUpperCase().slice(0, 22);
+      // Fast pre-scan: check only serial column first (0.2s)
+      var snValuesD = deptSheet.getRange(2, snColIdx + 1, lastRow - 1, 1).getValues();
+      var hasMatchD = false;
+      for (var sd = 0; sd < snValuesD.length; sd++) {
+        var testSnD = String(snValuesD[sd][0] || '').trim().toUpperCase().slice(0, 22);
+        if (testSnD && mappingMap[testSnD]) { hasMatchD = true; break; }
+      }
 
-        if (rowSn && mappingMap[rowSn]) {
-          var match = mappingMap[rowSn];
-          var newAcerId = String(match.acerCaseId || '').trim();
-          var newAcerSt = String(match.acerCaseStatus || '').trim();
-          matchedSerials[rowSn] = true;
-          matchedDeptCount++;
-          acerIdCol.push([newAcerId || existingAcerId]);
-          acerStCol.push([newAcerSt || existingAcerSt]);
-        } else {
-          acerIdCol.push([existingAcerId]);
-          acerStCol.push([existingAcerSt]);
+      if (hasMatchD) {
+        var dataRows = deptSheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+        var acerIdCol = [], acerStCol = [];
+        var hasChangesD = false;
+        for (var i = 0; i < dataRows.length; i++) {
+          var existingAcerId = String(dataRows[i][acerIdColIdx] || '').trim();
+          var existingAcerSt = String(dataRows[i][acerStColIdx] || '').trim();
+          var rowSn = String(dataRows[i][snColIdx] || '').trim().toUpperCase().slice(0, 22);
+
+          if (rowSn && mappingMap[rowSn]) {
+            var match = mappingMap[rowSn];
+            var newAcerId = String(match.acerCaseId || '').trim();
+            var newAcerSt = String(match.acerCaseStatus || '').trim();
+            matchedSerials[rowSn] = true;
+            matchedDeptCount++;
+            var changedD = (newAcerId && newAcerId !== existingAcerId) || (newAcerSt && newAcerSt !== existingAcerSt);
+            if (changedD) hasChangesD = true;
+            acerIdCol.push([newAcerId || existingAcerId]);
+            acerStCol.push([newAcerSt || existingAcerSt]);
+          } else {
+            acerIdCol.push([existingAcerId]);
+            acerStCol.push([existingAcerSt]);
+          }
+        }
+        if (hasChangesD) {
+          deptSheet.getRange(2, acerIdColIdx + 1, dataRows.length, 1).setValues(acerIdCol);
+          deptSheet.getRange(2, acerStColIdx + 1, dataRows.length, 1).setValues(acerStCol);
         }
       }
-      deptSheet.getRange(2, acerIdColIdx + 1, dataRows.length, 1).setValues(acerIdCol);
-      deptSheet.getRange(2, acerStColIdx + 1, dataRows.length, 1).setValues(acerStCol);
     }
   }
 
