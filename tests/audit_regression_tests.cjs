@@ -485,6 +485,50 @@ async function test(name, fn) {
     }
   });
 
+  await test('large dashboard charts do not force one tick per record', () => {
+    assert.equal(/stepSize\s*:\s*1/.test(adminSource), false);
+    assert.ok((adminSource.match(/precision\s*:\s*0/g) || []).length >= 8);
+  });
+
+  await test('local branch summary resolves without contacting production', () => {
+    const block = extractBlock(adminSource, 'async function ensureBranchDataLoaded');
+    assert.match(block, /if \(isLocal\(\)\)/);
+    assert.match(block, /bmBranches\s*=\s*\[\]/);
+  });
+
+  await test('consolidated dashboard uses authenticated complaint route and local fixtures', () => {
+    const block = extractBlock(adminSource, 'async function loadUnifiedDashboard');
+    assert.match(block, /action=get_complaints&authToken=/);
+    assert.match(block, /\/school_complaint_data\.json/);
+    assert.match(block, /\/deptlist\.json/);
+    assert.doesNotMatch(block, /fetchJsonWithRetry\(GOOGLE_SCRIPT_URL\s*,/);
+  });
+
+  await test('local department dashboard never contacts production', () => {
+    const block = extractBlock(adminSource, 'async fetchDepartmentComplaints(forceNetwork = false)');
+    assert.match(block, /if \(isLocal\(\)\)/);
+    assert.match(block, /fetchRequiredArray\('\/deptlist\.json'/);
+    assert.ok(block.indexOf('if (isLocal())') < block.indexOf("const url = GOOGLE_SCRIPT_URL"));
+  });
+
+  await test('large complaint tables render a bounded page', () => {
+    const complaintsBlock = extractBlock(adminSource, 'function renderComplaintsTable');
+    const unifiedBlock = extractBlock(adminSource, 'function renderUnifiedList');
+    assert.match(complaintsBlock, /const pageSize = 50/);
+    assert.match(complaintsBlock, /filtered\.slice\(pageStart, pageStart \+ pageSize\)/);
+    assert.match(unifiedBlock, /const pageSize = 50/);
+    assert.match(unifiedBlock, /rows\.slice\(pageStart, pageStart \+ pageSize\)/);
+    assert.doesNotMatch(unifiedBlock, /slice\(0,\s*500\)/);
+    assert.match(adminSource, /id="complaintsPagination"/);
+    assert.match(adminSource, /id="unifiedPagination"/);
+  });
+
+  await test('admin URL routing covers every operational dashboard', () => {
+    assert.match(adminSource, /'unified':\s*'unified'/);
+    assert.match(adminSource, /'branchemails':\s*'branchemails'/);
+    assert.doesNotMatch(adminSource, /module=undefined/);
+  });
+
   await test('all inline browser scripts compile', () => {
     for (const [name, source] of [['admin.html', adminSource], ['index.html', indexSource]]) {
       const scripts = [...source.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)];

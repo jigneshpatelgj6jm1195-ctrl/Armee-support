@@ -1049,6 +1049,7 @@ tr:hover td { background: #f8fafc; }
           </tbody>
         </table>
       </div>
+      <div id="complaintsPagination" style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:10px;"></div>
     </div>
   </div>
 
@@ -1562,13 +1563,13 @@ tr:hover td { background: #f8fafc; }
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
         <div class="card-title" style="margin-bottom:0;">📋 All Calls <span id="unifiedListLabel" style="font-size:0.76rem;color:var(--primary);font-weight:700;"></span></div>
         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-          <select id="unifiedSourceFilter" onchange="renderUnifiedList()" style="padding:5px 8px; font-size:0.78rem;">
+          <select id="unifiedSourceFilter" onchange="unifiedCurrentPage=1; renderUnifiedList()" style="padding:5px 8px; font-size:0.78rem;">
             <option value="">All systems</option>
             <option value="School">School</option>
             <option value="Department">Department</option>
             <option value="Advance">Advance</option>
           </select>
-          <input type="text" id="unifiedSearch" placeholder="Search school / serial / district…" oninput="renderUnifiedList()" style="padding:5px 8px; font-size:0.78rem; min-width:200px;" />
+          <input type="text" id="unifiedSearch" placeholder="Search school / serial / district…" oninput="unifiedCurrentPage=1; renderUnifiedList()" style="padding:5px 8px; font-size:0.78rem; min-width:200px;" />
           <button class="btn btn-ghost btn-sm" id="unifiedClearBtn" style="display:none;" onclick="clearUnifiedFilter()">✖ Clear tag filter</button>
         </div>
       </div>
@@ -1578,6 +1579,7 @@ tr:hover td { background: #f8fafc; }
           <tbody id="unifiedListBody"><tr><td colspan="9" style="text-align:center;color:var(--muted);">Loading…</td></tr></tbody>
         </table>
       </div>
+      <div id="unifiedPagination" style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:10px;"></div>
     </div>
   </div>
 
@@ -3027,9 +3029,9 @@ function applyUrlModule() {
       'schoolupload': 'schoolupload',
       'acer': 'acer',
       'schooldash': 'schooldash',
-    'unified': 'unified',
       'unified': 'unified',
       'branchmanagement': 'branch',
+      'branchemails': 'branchemails',
       'archive': 'archive'
     };
     const targetTab = moduleMap[moduleParam.toLowerCase()];
@@ -3432,6 +3434,7 @@ function switchTab(tabId) {
     'schoolupload': 'schoolupload',
     'acer': 'acer',
     'schooldash': 'schooldash',
+    'unified': 'unified',
     'branch': 'branchmanagement',
     'branchemails': 'branchemails',
     'archive': 'archive'
@@ -3848,9 +3851,12 @@ function renderChart(id, config) {
 
 let branchLoadingPromise = null;
 async function fetchRequiredArray(url, label) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`${label} returned HTTP ${res.status}`);
-  const data = await res.json();
+  const data = await adminApi.request(url, {
+    timeoutMs: 12000,
+    attempts: 2,
+    dedup: true,
+    prefix: 'REF'
+  });
   if (!Array.isArray(data)) throw new Error((data && data.message) || `${label} returned invalid data`);
   return data;
 }
@@ -3858,6 +3864,17 @@ async function fetchRequiredArray(url, label) {
 async function ensureBranchDataLoaded() {
   if (bmBranches.length > 0 && bmAliases.length > 0) return;
   if (branchLoadingPromise) return branchLoadingPromise;
+
+  // Local staging has no authenticated branch-management API. Resolve the
+  // dashboard immediately to its explicit empty state instead of contacting
+  // production and leaving the widget on "Loading…" until a remote timeout.
+  if (isLocal()) {
+    bmBranches = [];
+    bmAliases = [];
+    window.parentBmBranches = bmBranches;
+    window.parentBmAliases = bmAliases;
+    return;
+  }
   
   branchLoadingPromise = (async () => {
     try {
@@ -4220,7 +4237,7 @@ function drawTrendChart(data) {
       plugins: { legend: { display: false } },
       scales: {
         x: { grid: { display: false }, ticks: { font: { size: 9 } } },
-        y: { ticks: { stepSize: 1, font: { size: 9 } } }
+        y: { ticks: { precision: 0, font: { size: 9 } } }
       }
     }
   });
@@ -4255,7 +4272,7 @@ function drawDistrictChart(data) {
       maintainAspectRatio: false,
       plugins: { legend: { display: false } },
       scales: {
-        x: { ticks: { stepSize: 1, font: { size: 9 } } },
+        x: { ticks: { precision: 0, font: { size: 9 } } },
         y: { grid: { display: false }, ticks: { font: { size: 9 } } }
       }
     }
@@ -4312,7 +4329,7 @@ function updateAllDistrictsChartFiltered() {
       plugins: { legend: { display: false } },
       scales: {
         x: { grid: { display: false }, ticks: { font: { size: 8 }, maxRotation: 45, minRotation: 45 } },
-        y: { ticks: { stepSize: 1, font: { size: 9 } } }
+        y: { ticks: { precision: 0, font: { size: 9 } } }
       }
     }
   });
@@ -4375,7 +4392,7 @@ function updateTimeLoggingChartFiltered() {
       plugins: { legend: { display: false } },
       scales: {
         x: { grid: { display: false }, ticks: { font: { size: 9 } } },
-        y: { ticks: { stepSize: 1, font: { size: 9 } } }
+        y: { ticks: { precision: 0, font: { size: 9 } } }
       }
     }
   });
@@ -4523,7 +4540,7 @@ function drawEquipChart(data) {
       maintainAspectRatio: false,
       plugins: { legend: { display: false } },
       scales: {
-        x: { ticks: { stepSize: 1, font: { size: 9 } } },
+        x: { ticks: { precision: 0, font: { size: 9 } } },
         y: { grid: { display: false }, ticks: { font: { size: 9 } } }
       }
     }
@@ -4588,7 +4605,7 @@ function drawNatureChart(data) {
       plugins: { legend: { display: false } },
       scales: {
         x: { grid: { display: false }, ticks: { font: { size: 9 } } },
-        y: { ticks: { stepSize: 1, font: { size: 9 } } }
+        y: { ticks: { precision: 0, font: { size: 9 } } }
       }
     }
   });
@@ -4632,7 +4649,7 @@ function drawDupTrendChart(data) {
       plugins: { legend: { display: false } },
       scales: {
         x: { grid: { display: false }, ticks: { font: { size: 9 } } },
-        y: { ticks: { stepSize: 1, font: { size: 9 } } }
+        y: { ticks: { precision: 0, font: { size: 9 } } }
       }
     }
   });
@@ -5804,6 +5821,7 @@ function getFilteredComplaints() {
 }
 
 function filterComplaints() {
+  complaintsCurrentPage = 1;
   renderComplaintsTable();
 }
 
@@ -5929,8 +5947,16 @@ function renderComplaintsTable() {
 
   if (filtered.length === 0) {
     tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; color:var(--muted);">No matching complaints found.</td></tr>';
+    const pager = document.getElementById('complaintsPagination');
+    if (pager) pager.innerHTML = '';
     return;
   }
+
+  const pageSize = 50;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  complaintsCurrentPage = Math.max(1, Math.min(complaintsCurrentPage, totalPages));
+  const pageStart = (complaintsCurrentPage - 1) * pageSize;
+  const pageRows = filtered.slice(pageStart, pageStart + pageSize);
 
   // Index the master list ONCE instead of scanning it for every rendered row.
   // The old code ran complaintsList.findIndex() inside this .map(), which is
@@ -5941,7 +5967,7 @@ function renderComplaintsTable() {
     if (!origIndexByKey.has(k)) origIndexByKey.set(k, i); // first match wins, as findIndex did
   });
 
-  tbody.innerHTML = filtered.map((c, index) => {
+  tbody.innerHTML = pageRows.map((c, index) => {
     const origKey = String(c.submittedAt) + '|' + String(c.dise);
     const origIndex = origIndexByKey.has(origKey) ? origIndexByKey.get(origKey) : -1;
     const isDuplicate = isDuplicateComplaint(c);
@@ -6036,6 +6062,22 @@ function renderComplaintsTable() {
       </tr>
     `;
   }).join('');
+
+  const pager = document.getElementById('complaintsPagination');
+  if (pager) {
+    pager.innerHTML = `
+      <button class="btn btn-ghost btn-sm" onclick="setComplaintsPage(${complaintsCurrentPage - 1})" ${complaintsCurrentPage <= 1 ? 'disabled' : ''}>← Previous</button>
+      <span style="font-size:0.76rem;color:var(--muted);">Page ${complaintsCurrentPage} of ${totalPages} · rows ${pageStart + 1}–${Math.min(pageStart + pageSize, filtered.length)}</span>
+      <button class="btn btn-ghost btn-sm" onclick="setComplaintsPage(${complaintsCurrentPage + 1})" ${complaintsCurrentPage >= totalPages ? 'disabled' : ''}>Next →</button>`;
+  }
+}
+
+let complaintsCurrentPage = 1;
+function setComplaintsPage(page) {
+  complaintsCurrentPage = Math.max(1, Number(page) || 1);
+  renderComplaintsTable();
+  const table = document.getElementById('complaintsTableBody');
+  if (table) table.closest('.table-responsive').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 /* ─────────────── SESSION & ACCESS LOGIC ─────────────── */
@@ -7457,6 +7499,7 @@ const UNIFIED_TAG_STYLE = {
 };
 let unifiedRows = [];
 let unifiedTagFilter = null;
+let unifiedCurrentPage = 1;
 
 // Collapse every spelling variant onto one tag.
 function unifiedTag(rawStatus) {
@@ -7494,17 +7537,36 @@ async function loadUnifiedDashboard() {
     };
     const failed = [];
     const jobs = [];
-    if (need.School) jobs.push(
-      fetchJsonWithRetry(GOOGLE_SCRIPT_URL + '?action=get_all_school_complaints&authToken=' + encodeURIComponent(adminAuthToken()), 3)
-        .then(d => { window.parentSchoolComplaintsList = Array.isArray(d) ? d : []; })
-        .catch(() => { failed.push('School'); window.parentSchoolComplaintsList = window.parentSchoolComplaintsList || []; }));
-    if (need.Advance) jobs.push(
-      fetchJsonWithRetry(GOOGLE_SCRIPT_URL, 3)
-        .then(d => { complaintsList = normalizeComplaintStatuses(Array.isArray(d) ? d : []); })
-        .catch(() => { failed.push('Advance'); complaintsList = complaintsList || []; }));
-    if (need.Department) jobs.push(
-      departmentApi.fetchDepartmentComplaints()
-        .catch(() => { failed.push('Department'); deptList = deptList || []; }));
+    if (isLocal()) {
+      if (need.School) jobs.push(
+        adminApi.request('/school_complaint_data.json', { timeoutMs: 5000, attempts: 1, prefix: 'LOCAL' })
+          .then(d => {
+            window.parentSchoolComplaintsList = d && !Array.isArray(d)
+              ? Object.keys(d).reduce((all, key) => all.concat(Array.isArray(d[key]) ? d[key] : []), [])
+              : (Array.isArray(d) ? d : []);
+          })
+          .catch(() => { failed.push('School'); window.parentSchoolComplaintsList = []; }));
+      if (need.Advance) jobs.push(
+        adminApi.request('/complaints.json', { timeoutMs: 5000, attempts: 1, prefix: 'LOCAL' })
+          .then(d => { complaintsList = normalizeComplaintStatuses(Array.isArray(d) ? d : []); })
+          .catch(() => { failed.push('Advance'); complaintsList = complaintsList || []; }));
+      if (need.Department) jobs.push(
+        fetchRequiredArray('/deptlist.json', 'Local department complaints')
+          .then(d => { deptList = d; })
+          .catch(() => { failed.push('Department'); deptList = deptList || []; }));
+    } else {
+      if (need.School) jobs.push(
+        fetchJsonWithRetry(GOOGLE_SCRIPT_URL + '?action=get_all_school_complaints&authToken=' + encodeURIComponent(adminAuthToken()), 3)
+          .then(d => { window.parentSchoolComplaintsList = Array.isArray(d) ? d : []; })
+          .catch(() => { failed.push('School'); window.parentSchoolComplaintsList = window.parentSchoolComplaintsList || []; }));
+      if (need.Advance) jobs.push(
+        fetchJsonWithRetry(GOOGLE_SCRIPT_URL + '?action=get_complaints&authToken=' + encodeURIComponent(adminAuthToken()), 3)
+          .then(d => { complaintsList = normalizeComplaintStatuses(Array.isArray(d) ? d : []); })
+          .catch(() => { failed.push('Advance'); complaintsList = complaintsList || []; }));
+      if (need.Department) jobs.push(
+        departmentApi.fetchDepartmentComplaints()
+          .catch(() => { failed.push('Department'); deptList = deptList || []; }));
+    }
     if (jobs.length) await Promise.all(jobs);
 
     const dept = deptList;
@@ -7632,10 +7694,11 @@ function renderUnifiedByBranch() { unifiedGroupRows('unifiedByBranchBody', r => 
 
 function filterUnifiedByTag(tag) {
   unifiedTagFilter = (unifiedTagFilter === tag) ? null : tag;
+  unifiedCurrentPage = 1;
   renderUnifiedCards(); renderUnifiedList();
   document.getElementById('unifiedListBody').closest('.card').scrollIntoView({ behavior: 'smooth' });
 }
-function clearUnifiedFilter() { unifiedTagFilter = null; renderUnifiedCards(); renderUnifiedList(); }
+function clearUnifiedFilter() { unifiedTagFilter = null; unifiedCurrentPage = 1; renderUnifiedCards(); renderUnifiedList(); }
 
 function getUnifiedFiltered() {
   const src = document.getElementById('unifiedSourceFilter');
@@ -7661,9 +7724,20 @@ function renderUnifiedList() {
   document.getElementById('unifiedClearBtn').style.display = unifiedTagFilter ? '' : 'none';
 
   const body = document.getElementById('unifiedListBody');
-  if (!rows.length) { body.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--muted);">No calls match.</td></tr>'; return; }
+  const pager = document.getElementById('unifiedPagination');
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--muted);">No calls match.</td></tr>';
+    if (pager) pager.innerHTML = '';
+    return;
+  }
 
-  body.innerHTML = rows.slice(0, 500).map(r => {
+  const pageSize = 50;
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  unifiedCurrentPage = Math.max(1, Math.min(unifiedCurrentPage, totalPages));
+  const pageStart = (unifiedCurrentPage - 1) * pageSize;
+  const pageRows = rows.slice(pageStart, pageStart + pageSize);
+
+  body.innerHTML = pageRows.map(r => {
     const [bg, fg] = UNIFIED_TAG_STYLE[r.tag];
     return `<tr>
       <td><span style="font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;background:#eef2ff;color:#3730a3;">${esc(r.source)}</span></td>
@@ -7676,9 +7750,21 @@ function renderUnifiedList() {
       <td>${esc(r.branch)}</td>
       <td>${esc(r.district)}</td>
     </tr>`;
-  }).join('') + (rows.length > 500
-    ? `<tr><td colspan="9" style="text-align:center;color:var(--muted);">…and ${rows.length - 500} more — narrow the filter or use Export CSV for the full set.</td></tr>`
-    : '');
+  }).join('');
+
+  if (pager) {
+    pager.innerHTML = `
+      <button class="btn btn-ghost btn-sm" onclick="setUnifiedPage(${unifiedCurrentPage - 1})" ${unifiedCurrentPage <= 1 ? 'disabled' : ''}>← Previous</button>
+      <span style="font-size:0.76rem;color:var(--muted);">Page ${unifiedCurrentPage} of ${totalPages} · rows ${pageStart + 1}–${Math.min(pageStart + pageSize, rows.length)}</span>
+      <button class="btn btn-ghost btn-sm" onclick="setUnifiedPage(${unifiedCurrentPage + 1})" ${unifiedCurrentPage >= totalPages ? 'disabled' : ''}>Next →</button>`;
+  }
+}
+
+function setUnifiedPage(page) {
+  unifiedCurrentPage = Math.max(1, Number(page) || 1);
+  renderUnifiedList();
+  const body = document.getElementById('unifiedListBody');
+  if (body) body.closest('.table-responsive').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function exportUnifiedCSV() {
@@ -7880,6 +7966,16 @@ const departmentApi = {
         // Render cached data immediately so user sees UI instantly
         renderAllDeptWidgets(false);
       }
+    }
+
+    // Local staging must remain self-contained. Sending its synthetic login token
+    // to the production Apps Script both fails authentication and creates a false
+    // "live sync failed" warning during every audit run.
+    if (isLocal()) {
+      const list = await fetchRequiredArray('/deptlist.json', 'Local department complaints');
+      deptList = filterByUserDistricts(list);
+      deptDash = computeClientDeptDashboard(deptList);
+      return deptList;
     }
 
     // 2. Fetch fresh live data from Google Apps Script with deduplication and timeout
@@ -8995,7 +9091,7 @@ function updateDeptTrendChartFiltered() {
       plugins: { legend: { display: false } },
       scales: {
         x: { ticks: { font: { size: 9 } } },
-        y: { ticks: { stepSize: 1, font: { size: 9 } } }
+        y: { ticks: { precision: 0, font: { size: 9 } } }
       }
     }
   });
