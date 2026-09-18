@@ -7303,8 +7303,8 @@ async function runAcerMapping() {
   result.style.color = '#1e40af';
   result.style.border = '1.5px solid #bfdbfe';
 
-  // Batch chunking (500 rows per batch to ensure fast execution and no gateway timeouts)
-  const BATCH_SIZE = 500;
+  // Batch chunking (250 rows per batch to ensure fast execution and avoid gateway timeouts)
+  const BATCH_SIZE = 250;
   const totalRows = acerParsedRows.length;
   const totalBatches = Math.ceil(totalRows / BATCH_SIZE);
 
@@ -7327,34 +7327,48 @@ async function runAcerMapping() {
       const end = Math.min(start + BATCH_SIZE, totalRows);
       const chunk = acerParsedRows.slice(start, end);
 
-      result.innerHTML = `
-        <div style="font-weight:700;margin-bottom:6px;">⏳ Mapping Acer cases: Processing Batch ${b + 1} of ${totalBatches} (${start + 1}–${end} of ${totalRows} rows)...</div>
-        <div style="background:#dbeafe;height:8px;border-radius:4px;overflow:hidden;">
-          <div style="background:#2563eb;height:100%;width:${Math.round(((b + 1) / totalBatches) * 100)}%;transition:width 0.3s ease;"></div>
-        </div>
-        <div style="font-size:0.75rem;margin-top:6px;color:#1e40af;">Updated so far: <b>${combinedResult.matchedCount}</b> matched</div>
-      `;
+      const maxAttempts = 3;
+      let out = null;
 
-      const res = await fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({
-          action: 'bulk_acer_mapping',
-          importKey: importKey,
-          mappings: chunk
-        }),
-      });
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        result.innerHTML = `
+          <div style="font-weight:700;margin-bottom:6px;">⏳ Mapping Acer cases: Batch ${b + 1} of ${totalBatches} (${start + 1}–${end} of ${totalRows} rows)${attempt > 1 ? ` [Retry ${attempt}/${maxAttempts}]` : ''}...</div>
+          <div style="background:#dbeafe;height:8px;border-radius:4px;overflow:hidden;">
+            <div style="background:#2563eb;height:100%;width:${Math.round(((b + 1) / totalBatches) * 100)}%;transition:width 0.3s ease;"></div>
+          </div>
+          <div style="font-size:0.75rem;margin-top:6px;color:#1e40af;">Updated so far: <b>${combinedResult.matchedCount}</b> matched (${combinedResult.matchedSchoolCount} school, ${combinedResult.matchedComplaintsCount} complaints, ${combinedResult.matchedDeptCount} dept)</div>
+        `;
 
-      const text = await res.text();
-      let out;
-      try {
-        out = JSON.parse(text);
-      } catch (jsonErr) {
-        throw new Error(`Batch ${b + 1} returned invalid response (${text.slice(0, 80)}...). Check internet connection or sheet limits.`);
-      }
+        try {
+          const res = await fetch(GOOGLE_SCRIPT_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({
+              action: 'bulk_acer_mapping',
+              importKey: importKey,
+              mappings: chunk
+            }),
+          });
 
-      if (out.status !== 'ok') {
-        throw new Error(`Batch ${b + 1} error: ` + (out.message || 'Server rejected the mapping'));
+          const text = await res.text();
+          try {
+            out = JSON.parse(text);
+          } catch (jsonErr) {
+            throw new Error(`Invalid response (${text.slice(0, 80)}...)`);
+          }
+
+          if (out.status !== 'ok') {
+            throw new Error(out.message || 'Server rejected the mapping');
+          }
+
+          // Success! Break retry loop
+          break;
+        } catch (attemptErr) {
+          if (attempt >= maxAttempts) {
+            throw new Error(`Batch ${b + 1} failed after ${maxAttempts} attempts: ${attemptErr.message}`);
+          }
+          await new Promise(resolve => setTimeout(resolve, 1500 * attempt));
+        }
       }
 
       combinedResult.matchedCount += (out.matchedCount || 0);
