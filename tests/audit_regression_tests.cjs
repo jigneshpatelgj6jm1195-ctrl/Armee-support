@@ -655,6 +655,15 @@ async function test(name, fn) {
     assert.match(adminSource, /id="complaintsLoadNotice"/);
   });
 
+  await test('school master refresh uses bounded API requests and retains prior data on failure', () => {
+    const block = extractBlock(adminSource, 'async function loadSchoolList()');
+    assert.match(block, /const previousSchoolDataRaw = schoolDataRaw/);
+    assert.match(block, /adminApi\.request\('\/school_data\.json', \{[\s\S]*?timeoutMs: 5000/);
+    assert.match(block, /cacheKey: 'get_school_master'/);
+    assert.match(block, /cacheKey: 'get_school_updates'/);
+    assert.match(block, /Retained the previous school list after a failed refresh/);
+  });
+
   await test('production complaint failures do not request the intentionally absent local JSON fallback', () => {
     const block = extractBlock(adminSource, 'async function loadComplaints()');
     assert.match(block, /if \(!isLocalhost\) \{\s*restorePriorData\(\);/);

@@ -2802,38 +2802,54 @@ async function loadComplaints() {
 }
 
 async function loadSchoolList() {
+  const previousSchoolDataRaw = schoolDataRaw;
+  let loadedSchoolData = false;
   try {
-    const res = await fetch('/school_data.json?' + Date.now());
-    if (res.ok) {
-      schoolDataRaw = await res.json();
+    // The bundled file is a safe offline starting point. Bound this read so a
+    // missing or slow file can never leave the admin startup waiting forever.
+    try {
+      const localSchoolData = await adminApi.request('/school_data.json', {
+        timeoutMs: 5000, attempts: 1, dedup: true, cacheKey: 'local_school_data', prefix: 'SCHOOLLOCAL'
+      });
+      if (localSchoolData && typeof localSchoolData === 'object' && !Array.isArray(localSchoolData)) {
+        schoolDataRaw = localSchoolData;
+        loadedSchoolData = true;
+      }
+    } catch (e) {
+      logToDebug(`Bundled school data loading failed: ${e.message}`, 'warning');
     }
     
     // Apply live online updates if available
     const isLocalhost = isLocal();
     if (GOOGLE_SCRIPT_URL && !isLocalhost && navigator.onLine) {
       try {
-        const resMaster = await fetch(GOOGLE_SCRIPT_URL + '?action=get_school_master&authToken=' + encodeURIComponent(adminAuthToken()));
-        if (resMaster.ok) {
-          const liveMaster = await resMaster.json();
-          if (Array.isArray(liveMaster) && liveMaster.length > 0) {
-            const newRaw = {};
-            liveMaster.forEach(s => {
-              const d = s.dise;
-              if (d) {
-                if (!newRaw[d]) newRaw[d] = [];
-                newRaw[d].push(s);
-              }
-            });
+        const liveMaster = await adminApi.request(
+          GOOGLE_SCRIPT_URL + '?action=get_school_master&authToken=' + encodeURIComponent(adminAuthToken()),
+          { timeoutMs: 45000, attempts: 2, dedup: true, cacheKey: 'get_school_master', prefix: 'SCHOOLMASTER' }
+        );
+        if (Array.isArray(liveMaster) && liveMaster.length > 0) {
+          const newRaw = {};
+          liveMaster.forEach(s => {
+            const d = s.dise;
+            if (d) {
+              if (!newRaw[d]) newRaw[d] = [];
+              newRaw[d].push(s);
+            }
+          });
+          if (Object.keys(newRaw).length > 0) {
             schoolDataRaw = newRaw;
+            loadedSchoolData = true;
           }
         }
       } catch (e) {
-        console.error("Failed to load live school master:", e);
+        logToDebug(`Live school master loading failed: ${e.message}`, 'warning');
       }
 
-      const resUpdates = await fetch(GOOGLE_SCRIPT_URL + '?action=get_school_updates');
-      if (resUpdates.ok) {
-        const updates = await resUpdates.json();
+      try {
+        const updates = await adminApi.request(
+          GOOGLE_SCRIPT_URL + '?action=get_school_updates',
+          { timeoutMs: 45000, attempts: 2, dedup: true, cacheKey: 'get_school_updates', prefix: 'SCHOOLUPDATES' }
+        );
         if (updates && updates.error) {
           showToast('⚠️ Backend Error (School Updates): ' + updates.error, 'error');
         } else if (Array.isArray(updates)) {
@@ -2884,9 +2900,17 @@ async function loadSchoolList() {
             }
           });
         }
+      } catch (e) {
+        logToDebug(`School updates loading failed: ${e.message}`, 'warning');
       }
     }
-  } catch(_) {}
+  } catch (e) {
+    logToDebug(`School list loading failed: ${e.message}`, 'error');
+  }
+  if (!loadedSchoolData && previousSchoolDataRaw && Object.keys(previousSchoolDataRaw).length > 0) {
+    schoolDataRaw = previousSchoolDataRaw;
+    logToDebug('Retained the previous school list after a failed refresh.', 'warning');
+  }
   renderDashboard();
   if (typeof searchSchoolMaster === 'function') {
     searchSchoolMaster(0);
