@@ -5646,23 +5646,40 @@ function resetAccessUserPassword(idx) {
 
 /* ─────────────── ARCHIVE MANAGER ─────────────── */
 let archiveList = [];
+let archiveLoadError = '';
 
 async function renderArchiveManager() {
   const tbody = document.getElementById('archiveHistoryBody');
   if (!tbody) return;
   
   const local = isLocal();
+  const previousArchiveList = archiveList;
   try {
     if (GOOGLE_SCRIPT_URL && !local && navigator.onLine) {
-      const res = await fetch(GOOGLE_SCRIPT_URL + '?action=get_archive_list&authToken=' + encodeURIComponent(adminAuthToken()));
-      if (res.ok) {
-        archiveList = await res.json();
-      }
+      const data = await adminApi.request(
+        GOOGLE_SCRIPT_URL + '?action=get_archive_list&authToken=' + encodeURIComponent(adminAuthToken()),
+        { timeoutMs: 45000, attempts: 2, dedup: true, cacheKey: 'get_archive_list', prefix: 'ARCHIVE' }
+      );
+      if (!Array.isArray(data)) throw new Error('Archive list returned invalid data');
+      archiveList = data;
+      archiveLoadError = '';
+    } else {
+      archiveList = [];
+      archiveLoadError = '';
+    }
+  } catch (e) {
+    archiveLoadError = 'Archive data is temporarily unavailable. No archive totals are being shown as zero.';
+    if (Array.isArray(previousArchiveList) && previousArchiveList.length > 0) {
+      archiveList = previousArchiveList;
     } else {
       archiveList = [];
     }
-  } catch (e) {
-    archiveList = [];
+    logToDebug(`Archive list loading failed: ${e.message}`, 'warning');
+  }
+  
+  if (archiveLoadError && archiveList.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#b45309;">⚠️ ${esc(archiveLoadError)}</td></tr>`;
+    return;
   }
   
   if (archiveList.length === 0) {
@@ -5670,7 +5687,10 @@ async function renderArchiveManager() {
     return;
   }
   
-  tbody.innerHTML = archiveList.map((c, idx) => `
+  const archiveWarning = archiveLoadError
+    ? `<tr><td colspan="8" style="text-align:center;color:#b45309;">⚠️ ${esc(archiveLoadError)} Showing the last successfully loaded records.</td></tr>`
+    : '';
+  tbody.innerHTML = archiveWarning + archiveList.map((c, idx) => `
     <tr>
       <td><code>${esc(c.archiveTab)}</code></td>
       <td><b>${esc(c.caseId)}</b></td>
@@ -5713,12 +5733,11 @@ async function archiveDataRange() {
   }
   
   try {
-    const res = await fetch(GOOGLE_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ action: 'archive_complaints', fromDate, toDate, authToken: adminAuthToken() }),
-    });
-    const result = await res.json();
+    const result = await postJsonWithDeadline(
+      GOOGLE_SCRIPT_URL,
+      { action: 'archive_complaints', fromDate, toDate, authToken: adminAuthToken() },
+      { timeoutMs: 60000 }
+    );
     if (result.status === 'ok') {
       showToast(`📦 Archived ${result.archived} records successfully!`, 'success');
       await loadComplaints();
@@ -5745,12 +5764,11 @@ async function restoreArchiveRecord(caseId) {
   }
   
   try {
-    const res = await fetch(GOOGLE_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ action: 'restore_complaints', caseIds: [caseId], authToken: adminAuthToken() }),
-    });
-    const result = await res.json();
+    const result = await postJsonWithDeadline(
+      GOOGLE_SCRIPT_URL,
+      { action: 'restore_complaints', caseIds: [caseId], authToken: adminAuthToken() },
+      { timeoutMs: 60000 }
+    );
     if (result.status === 'ok') {
       showToast(`📥 Restored ${result.restored} records successfully!`, 'success');
       await loadComplaints();

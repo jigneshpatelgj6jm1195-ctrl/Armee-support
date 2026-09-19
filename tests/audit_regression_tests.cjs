@@ -728,6 +728,17 @@ async function test(name, fn) {
     assert.match(postBlock, /Request timed out after/);
   });
 
+  await test('archive operations use bounded requests and do not label a failed list load as empty data', () => {
+    const listBlock = extractBlock(adminSource, 'async function renderArchiveManager()');
+    const archiveBlock = extractBlock(adminSource, 'async function archiveDataRange()');
+    const restoreBlock = extractBlock(adminSource, 'async function restoreArchiveRecord(caseId)');
+    assert.match(listBlock, /cacheKey: 'get_archive_list'/);
+    assert.match(listBlock, /const previousArchiveList = archiveList/);
+    assert.match(listBlock, /Archive data is temporarily unavailable/);
+    assert.match(archiveBlock, /postJsonWithDeadline\([\s\S]*?timeoutMs: 60000/);
+    assert.match(restoreBlock, /postJsonWithDeadline\([\s\S]*?timeoutMs: 60000/);
+  });
+
   await test('consolidated dashboard does not treat one department page as complete data', () => {
     const block = extractBlock(adminSource, 'async function loadUnifiedDashboard()');
     assert.match(block, /deptUsesServerPaging \? unifiedDepartmentRows : deptList/);
