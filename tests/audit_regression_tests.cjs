@@ -664,6 +664,15 @@ async function test(name, fn) {
     assert.match(block, /Retained the previous school list after a failed refresh/);
   });
 
+  await test('master data refresh uses bounded API requests and retains prior data on failure', () => {
+    const block = extractBlock(adminSource, 'async function loadData()');
+    assert.match(block, /const previousMasterData = masterData/);
+    assert.match(block, /cacheKey: 'get_master'/);
+    assert.match(block, /cacheKey: 'local_master_data'/);
+    assert.match(block, /Retained the previous master data after a failed refresh/);
+    assert.match(block, /Empty setup values are not confirmed data/);
+  });
+
   await test('branch summary labels a failed mapping refresh as unavailable instead of zero data', () => {
     const loadBlock = extractBlock(adminSource, 'async function ensureBranchDataLoaded()');
     const renderBlock = extractBlock(adminSource, 'async function renderBranchSummary(complaints)');

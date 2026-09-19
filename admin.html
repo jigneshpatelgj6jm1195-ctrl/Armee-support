@@ -2525,6 +2525,7 @@ function clearMasterSecretsInPlace(data) {
 async function loadData() {
   const local = isLocal();
   let loaded = false;
+  const previousMasterData = masterData;
   logToDebug(`loadData() initiated (local = ${local}, onLine = ${navigator.onLine})`, 'info');
 
   // 1. Try Google Apps Script (live, most up-to-date)
@@ -2532,25 +2533,19 @@ async function loadData() {
     try {
       logToDebug(`Fetching live master data from Google Apps Script...`, 'api');
       const masterToken = adminAuthToken();
-      const res = await fetch(GOOGLE_SCRIPT_URL + '?action=get_master' +
-        (masterToken ? '&authToken=' + encodeURIComponent(masterToken) : '') + '&t=' + Date.now());
-      if (res.ok) {
-        const text = await res.text();
-        const bytes = new Blob([text]).size;
-        logToDebug(`Live master data fetched. Size: ${(bytes/1024).toFixed(2)} KB`, 'api');
-        const data = JSON.parse(text);
-        if (data && data.equipment && data.equipment.length > 0) {
-          masterData = data;
-          if (!masterData.users) masterData.users = [];
-          // Sync to localStorage so offline/reload works
-          try { localStorage.setItem(LS_MASTER_KEY, JSON.stringify(masterDataForBrowserCache(masterData))); } catch(_) {}
-          loaded = true;
-          logToDebug(`Loaded master data successfully from Apps Script. ${masterData.equipment.length} equipment types.`, 'success');
-        }
-      } else {
-        console.error('GAS master data load response not OK:', res.status, res.statusText);
-        logToDebug(`GAS master data HTTP error: ${res.status}`, 'error');
-        showToast('⚠️ Google Apps Script master data error: HTTP ' + res.status, 'warn');
+      const data = await adminApi.request(
+        GOOGLE_SCRIPT_URL + '?action=get_master' + (masterToken ? '&authToken=' + encodeURIComponent(masterToken) : ''),
+        { timeoutMs: 45000, attempts: 2, dedup: true, cacheKey: 'get_master', prefix: 'MASTER' }
+      );
+      const bytes = new Blob([JSON.stringify(data)]).size;
+      logToDebug(`Live master data fetched. Size: ${(bytes/1024).toFixed(2)} KB`, 'api');
+      if (data && data.equipment && data.equipment.length > 0) {
+        masterData = data;
+        if (!masterData.users) masterData.users = [];
+        // Sync to localStorage so offline/reload works
+        try { localStorage.setItem(LS_MASTER_KEY, JSON.stringify(masterDataForBrowserCache(masterData))); } catch(_) {}
+        loaded = true;
+        logToDebug(`Loaded master data successfully from Apps Script. ${masterData.equipment.length} equipment types.`, 'success');
       }
     } catch (e) {
       console.error('GAS master data load failed:', e);
@@ -2583,17 +2578,28 @@ async function loadData() {
   if (!loaded) {
     try {
       logToDebug(`Attempting to load master data from fallback /master_data.json...`, 'info');
-      const res = await fetch('/master_data.json?' + Date.now());
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const text = await res.text();
-      const bytes = new Blob([text]).size;
+      const data = await adminApi.request('/master_data.json', {
+        timeoutMs: 5000, attempts: 1, dedup: true, cacheKey: 'local_master_data', prefix: 'MASTERLOCAL'
+      });
+      const bytes = new Blob([JSON.stringify(data)]).size;
       logToDebug(`Fallback master data size: ${(bytes/1024).toFixed(2)} KB`, 'api');
-      masterData = JSON.parse(text);
+      if (!data || !Array.isArray(data.equipment) || data.equipment.length === 0) {
+        throw new Error('Fallback master data is invalid');
+      }
+      masterData = data;
       if (!masterData.users) masterData.users = [];
+      loaded = true;
       logToDebug(`Loaded master data from fallback JSON.`, 'success');
     } catch (e) {
       logToDebug(`Fallback master data load failed: ${e.message}`, 'error');
-      masterData = { equipment: [], users: [], accessUsers: [] };
+      if (previousMasterData && Array.isArray(previousMasterData.equipment) && previousMasterData.equipment.length > 0) {
+        masterData = previousMasterData;
+        logToDebug('Retained the previous master data after a failed refresh.', 'warning');
+        showToast('⚠️ Master data refresh failed. Showing the last successfully loaded setup.', 'warn');
+      } else {
+        masterData = { equipment: [], users: [], accessUsers: [] };
+        showToast('⚠️ Master data is unavailable. Empty setup values are not confirmed data.', 'warn');
+      }
     }
   }
   
