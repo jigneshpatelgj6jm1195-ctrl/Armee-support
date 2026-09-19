@@ -673,6 +673,15 @@ async function test(name, fn) {
     assert.match(block, /Empty setup values are not confirmed data/);
   });
 
+  await test('department photo preview validates stored URLs before assigning image sources', () => {
+    const marker = adminSource.indexOf('// Photos');
+    const block = adminSource.slice(marker, marker + 1100);
+    assert.match(block, /const serialPhotoSrc = safePhotoUrl\(r\.serialPhotoUrl\)/);
+    assert.match(block, /const suspectedPhotoSrc = safePhotoUrl\(r\.suspectedPartPhotoUrl\)/);
+    assert.match(block, /deptDetSerialImg'\)\.src = serialPhotoSrc/);
+    assert.match(block, /deptDetSuspectedImg'\)\.src = suspectedPhotoSrc/);
+  });
+
   await test('branch summary labels a failed mapping refresh as unavailable instead of zero data', () => {
     const loadBlock = extractBlock(adminSource, 'async function ensureBranchDataLoaded()');
     const renderBlock = extractBlock(adminSource, 'async function renderBranchSummary(complaints)');

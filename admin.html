@@ -9100,16 +9100,18 @@ function viewDeptDetails(ticketId) {
   const suspectedCont = document.getElementById('deptDetSuspectedPhotoContainer');
   
   let showPhotos = false;
-  if (r.serialPhotoUrl) {
-    document.getElementById('deptDetSerialImg').src = r.serialPhotoUrl;
+  const serialPhotoSrc = safePhotoUrl(r.serialPhotoUrl);
+  const suspectedPhotoSrc = safePhotoUrl(r.suspectedPartPhotoUrl);
+  if (serialPhotoSrc) {
+    document.getElementById('deptDetSerialImg').src = serialPhotoSrc;
     serialCont.style.display = 'block';
     showPhotos = true;
   } else {
     serialCont.style.display = 'none';
   }
   
-  if (r.suspectedPartPhotoUrl) {
-    document.getElementById('deptDetSuspectedImg').src = r.suspectedPartPhotoUrl;
+  if (suspectedPhotoSrc) {
+    document.getElementById('deptDetSuspectedImg').src = suspectedPhotoSrc;
     suspectedCont.style.display = 'block';
     showPhotos = true;
   } else {
