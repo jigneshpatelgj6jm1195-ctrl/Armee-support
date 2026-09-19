@@ -6505,22 +6505,29 @@ async function submitAdminDeleteLogin() {
     showToast('🔓 Admin delete actions unlocked successfully!', 'success');
   };
 
-  // Local development fallback keeps the legacy fixed credentials
+  // Local mode uses the environment-configured local administrator. A fixed
+  // browser password would be visible to anyone who downloaded this file.
   if (isLocal()) {
-    if (user === 'admin' && pass === 'armee@2026') { unlock(); }
-    else { showToast('❌ Invalid admin credentials!', 'danger'); }
+    try {
+      const out = await postJsonWithDeadline('/local_login', { email: user, password: pass }, {
+        timeoutMs: 15000,
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (out && out.status === 'ok' && out.user && out.user.role === 'super_admin') unlock();
+      else showToast('❌ Invalid credentials or not a super admin!', 'danger');
+    } catch (e) {
+      showToast('❌ Verification failed: ' + e.message, 'danger');
+    }
     return;
   }
 
   // Live site: verify against the backend — only a super_admin account unlocks deletes
   try {
-    const res = await fetch(GOOGLE_SCRIPT_URL, {
-      method: 'POST',
-      mode: 'cors',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ action: 'login', email: user, password: pass })
-    });
-    const out = await res.json();
+    const out = await postJsonWithDeadline(
+      GOOGLE_SCRIPT_URL,
+      { action: 'login', email: user, password: pass },
+      { timeoutMs: 20000 }
+    );
     if (out && out.status === 'ok' && out.user && out.user.role === 'super_admin') {
       unlock();
     } else {

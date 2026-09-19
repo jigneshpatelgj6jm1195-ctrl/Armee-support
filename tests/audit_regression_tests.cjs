@@ -562,6 +562,7 @@ async function test(name, fn) {
   await test('downloadable source contains no embedded import or fallback admin secret', () => {
     assert.equal(/ArmeeICT-[A-Za-z0-9_-]+/.test(adminSource), false);
     assert.equal(/var\s+SUPER_ADMIN\s*=/.test(backendSource), false);
+    assert.equal(adminSource.includes('armee@2026'), false);
   });
 
   await test('browser cache strips every stored credential field', () => {
@@ -742,6 +743,13 @@ async function test(name, fn) {
     assert.match(otpBlock, /postJsonWithDeadline\([\s\S]*?timeoutMs: 30000/);
     assert.match(postBlock, /const text = await response\.text\(\)/);
     assert.match(postBlock, /Request timed out after/);
+  });
+
+  await test('admin delete unlock uses configured authentication with a bounded request', () => {
+    const block = extractBlock(adminSource, 'async function submitAdminDeleteLogin()');
+    assert.match(block, /postJsonWithDeadline\('\/local_login'/);
+    assert.match(block, /postJsonWithDeadline\([\s\S]*?timeoutMs: 20000/);
+    assert.doesNotMatch(block, /armee@2026/);
   });
 
   await test('complaint deletion changes local data only after a confirmed server response', () => {
