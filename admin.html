@@ -8964,8 +8964,22 @@ async function finalizePendingOtp(ticketId) {
   btn.disabled = true;
   btn.textContent = '⏳ Closing…';
   try {
-    const res = await fetch(GOOGLE_SCRIPT_URL + '?action=finalize_pending_otp&ticketId=' + encodeURIComponent(ticketId) + '&otp=' + encodeURIComponent(otp) + '&t=' + Date.now()).then(r => r.json());
-    if (res.error) throw new Error(res.error);
+    const response = await fetch(GOOGLE_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'resolve_department_complaint',
+        ticketId: ticketId,
+        resolutionAction: 'finalize_otp',
+        otp: otp,
+        resolvedBy: (currentUser && currentUser.name) || 'admin',
+        source: 'admin_portal',
+        authToken: adminAuthToken()
+      })
+    });
+    if (!response.ok) throw new Error('Server returned HTTP ' + response.status);
+    const res = await response.json();
+    if (!res || res.status !== 'ok') throw new Error((res && res.message) || 'Server rejected OTP finalization');
     showToast('✅ Ticket ' + ticketId + ' closed with OTP!', 'success');
     loadDeptDashboard();
   } catch(e) {

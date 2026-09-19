@@ -662,6 +662,15 @@ async function test(name, fn) {
     assert.equal((block.match(/local_complaints:fallback/g) || []).length, 1);
   });
 
+  await test('pending-OTP finalization uses the authenticated department resolution POST', () => {
+    const block = extractBlock(adminSource, 'async function finalizePendingOtp(ticketId)');
+    assert.match(block, /method: 'POST'/);
+    assert.match(block, /action: 'resolve_department_complaint'/);
+    assert.match(block, /resolutionAction: 'finalize_otp'/);
+    assert.match(block, /authToken: adminAuthToken\(\)/);
+    assert.doesNotMatch(block, /action=finalize_pending_otp/);
+  });
+
   await test('consolidated dashboard does not treat one department page as complete data', () => {
     const block = extractBlock(adminSource, 'async function loadUnifiedDashboard()');
     assert.match(block, /deptUsesServerPaging \? unifiedDepartmentRows : deptList/);
