@@ -738,6 +738,15 @@ async function test(name, fn) {
     assert.doesNotMatch(block, /mode: 'no-cors'/);
   });
 
+  await test('school master deletion uses a bounded confirmed request', () => {
+    const block = extractBlock(adminSource, 'async function deleteSchoolMaster(dise, project)');
+    assert.match(block, /postJsonWithDeadline\('\/update_school'/);
+    assert.match(block, /postJsonWithDeadline\([\s\S]*?action: 'update_school'/);
+    assert.match(block, /timeoutMs: 15000/);
+    assert.match(block, /timeoutMs: 30000/);
+    assert.doesNotMatch(block, /await fetch\(/);
+  });
+
   await test('archive operations use bounded requests and do not label a failed list load as empty data', () => {
     const listBlock = extractBlock(adminSource, 'async function renderArchiveManager()');
     const archiveBlock = extractBlock(adminSource, 'async function archiveDataRange()');

@@ -5158,21 +5158,18 @@ async function deleteSchoolMaster(dise, project) {
   try {
     showToast('⏳ Deleting school record...', 'info');
     if (local) {
-      const res = await fetch('/update_school', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dise, field: 'deleted', project })
+      const result = await postJsonWithDeadline('/update_school', { dise, field: 'deleted', project }, {
+        timeoutMs: 15000,
+        headers: { 'Content-Type': 'application/json' }
       });
-      if (!res.ok) throw new Error('Local deletion failed');
+      if (!result || !result.ok) throw new Error((result && result.error) || 'Local deletion failed');
     } else if (GOOGLE_SCRIPT_URL && navigator.onLine) {
-      await fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({ action: 'update_school', dise, field: 'deleted', oldValue: project, project, authToken: adminAuthToken() })
-      }).then(async res => {
-        const out = await res.json();
-        if (!res.ok || out.status !== 'ok') throw new Error(out.message || 'Server rejected the deletion');
-      });
+      const result = await postJsonWithDeadline(
+        GOOGLE_SCRIPT_URL,
+        { action: 'update_school', dise, field: 'deleted', oldValue: project, project, authToken: adminAuthToken() },
+        { timeoutMs: 30000 }
+      );
+      if (!result || result.status !== 'ok') throw new Error((result && result.message) || 'Server rejected the deletion');
     } else {
       throw new Error('No connection available');
     }
