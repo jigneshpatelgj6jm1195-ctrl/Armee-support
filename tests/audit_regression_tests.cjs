@@ -785,6 +785,15 @@ async function test(name, fn) {
     }
   });
 
+  await test('department and school bulk uploads use bounded confirmed requests', () => {
+    const deptBlock = extractBlock(adminSource, 'async function runDeptUpload()');
+    const schoolBlock = extractBlock(adminSource, 'async function runSchoolUpload()');
+    for (const block of [deptBlock, schoolBlock]) {
+      assert.match(block, /postJsonWithDeadline\([\s\S]*?timeoutMs: 60000/);
+      assert.doesNotMatch(block, /await fetch\(/);
+    }
+  });
+
   await test('complaint deletion changes local data only after a confirmed server response', () => {
     const block = extractBlock(adminSource, 'async function deleteComplaint(origIndex)');
     assert.match(block, /const updatedComplaints = complaintsList\.filter/);

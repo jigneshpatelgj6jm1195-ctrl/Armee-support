@@ -6989,18 +6989,17 @@ async function runDeptUpload() {
     for (let i = 0; i < deptParsedRows.length; i += DEPT_UPLOAD_CHUNK) {
       const chunk = deptParsedRows.slice(i, i + DEPT_UPLOAD_CHUNK);
       result.textContent = `⏳ Uploading ${Math.min(i + chunk.length, deptParsedRows.length)} / ${deptParsedRows.length}…`;
-      const res = await fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({
+      const out = await postJsonWithDeadline(
+        GOOGLE_SCRIPT_URL,
+        {
           action: 'import_department_complaints',
           authToken: adminAuthToken(),
           importSource: 'MANUAL_UPLOAD',
           sendEmails: sendEmails,
           rows: chunk
-        }),
-      });
-      const out = await res.json();
+        },
+        { timeoutMs: 60000 }
+      );
       if (out.status !== 'ok') throw new Error(out.message || 'Server rejected the upload');
       inserted += out.inserted; updated += out.updated;
     }
@@ -7123,17 +7122,16 @@ async function runSchoolUpload() {
   result.textContent = `⏳ Uploading and matching records…`;
 
   try {
-    const res = await fetch(GOOGLE_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({
+    const out = await postJsonWithDeadline(
+      GOOGLE_SCRIPT_URL,
+      {
         action: 'import_school_complaints',
         authToken: adminAuthToken(),
         importDate: importDate,
         records: schoolParsedRows
-      }),
-    });
-    const out = await res.json();
+      },
+      { timeoutMs: 60000 }
+    );
     if (out.status !== 'ok') throw new Error(out.message || 'Server rejected the upload');
 
     result.style.background = '#f0fdf4'; result.style.color = '#166534'; result.style.border = '1.5px solid #bbf7d0';
