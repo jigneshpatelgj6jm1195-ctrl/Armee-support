@@ -8632,19 +8632,18 @@ async function bulkUpdateDeptStatus(action) {
   
   for (const ticketId of ticketIds) {
     try {
-      const res = await fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({
+      const out = await postJsonWithDeadline(
+        GOOGLE_SCRIPT_URL,
+        {
           action: 'resolve_department_complaint',
           ticketId: ticketId,
           resolutionAction: action,
           resolvedBy: (currentUser && currentUser.name) || 'admin',
           source: 'admin_portal',
           authToken: adminAuthToken()
-        })
-      });
-      const out = await res.json();
+        },
+        { timeoutMs: 30000 }
+      );
       if (out.status === 'ok') {
         successCount++;
       } else {
@@ -8716,10 +8715,9 @@ async function submitDeptStatusUpdate(action) {
   const userName = (typeof currentUser !== 'undefined' && currentUser && currentUser.name) ? currentUser.name : 'admin';
 
   try {
-    const res = await fetch(GOOGLE_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({
+    const out = await postJsonWithDeadline(
+      GOOGLE_SCRIPT_URL,
+      {
         action: 'resolve_department_complaint',
         ticketId: ticketId,
         resolutionAction: action,
@@ -8731,9 +8729,9 @@ async function submitDeptStatusUpdate(action) {
         suspectedPart: suspectedPart,
         source: 'admin_portal',
         authToken: adminAuthToken()
-      })
-    });
-    const out = await res.json();
+      },
+      { timeoutMs: 30000 }
+    );
     if (out.status !== 'ok') throw new Error(out.message || 'Server rejected the update');
     
     showToast('✅ Ticket status updated successfully!', 'success');
