@@ -636,6 +636,17 @@ async function test(name, fn) {
     assert.equal(vm.runInContext('deptUsesServerPaging', c), true);
   });
 
+  await test('main complaints loader applies deadlines and keeps school data optional', () => {
+    const block = extractBlock(adminSource, 'async function loadComplaints()');
+    assert.match(block, /action=get_all_school_complaints/);
+    assert.match(block, /action=get_complaints/);
+    assert.match(block, /timeoutMs: 45000/);
+    assert.match(block, /schoolPromise/);
+    assert.match(block, /\.catch\(schoolErr =>/);
+    assert.doesNotMatch(block, /fetch\(GOOGLE_SCRIPT_URL/);
+    assert.match(block, /adminApi\.request\('\/complaints\.json'/);
+  });
+
   await test('consolidated dashboard does not treat one department page as complete data', () => {
     const block = extractBlock(adminSource, 'async function loadUnifiedDashboard()');
     assert.match(block, /deptUsesServerPaging \? unifiedDepartmentRows : deptList/);

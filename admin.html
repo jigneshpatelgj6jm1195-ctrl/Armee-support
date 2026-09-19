@@ -2696,18 +2696,23 @@ async function loadComplaints() {
   try {
     if (GOOGLE_SCRIPT_URL && !isLocalhost && navigator.onLine) {
       logToDebug(`Fetching live complaints and school complaints list from Google Apps Script...`, 'api');
-      const [res, resSchool] = await Promise.all([
-        fetch(GOOGLE_SCRIPT_URL + '?action=get_complaints&authToken=' + encodeURIComponent(adminAuthToken()) + '&t=' + Date.now()),
-        fetch(GOOGLE_SCRIPT_URL + '?action=get_all_school_complaints&authToken=' + encodeURIComponent(adminAuthToken()) + '&t=' + Date.now())
-      ]);
-
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const text = await res.text();
-      const bytes = new Blob([text]).size;
-      const sizeKB = (bytes / 1024).toFixed(2);
+      const authToken = encodeURIComponent(adminAuthToken());
+      // School data is useful to the dashboard but must not hold the main
+      // complaints screen hostage. Both reads use whole-response deadlines.
+      const schoolPromise = adminApi.request(
+        GOOGLE_SCRIPT_URL + '?action=get_all_school_complaints&authToken=' + authToken,
+        { timeoutMs: 45000, attempts: 2, dedup: true, cacheKey: 'get_all_school_complaints', prefix: 'SCHOOL' }
+      ).catch(schoolErr => {
+        logToDebug(`School complaints loading failed: ${schoolErr.message}`, 'warning');
+        return null;
+      });
+      const data = await adminApi.request(
+        GOOGLE_SCRIPT_URL + '?action=get_complaints&authToken=' + authToken,
+        { timeoutMs: 45000, attempts: 2, dedup: true, cacheKey: 'get_complaints', prefix: 'ADVANCE' }
+      );
+      const sizeKB = (new Blob([JSON.stringify(data)]).size / 1024).toFixed(2);
       document.getElementById('debugResponseSize').textContent = sizeKB + ' KB';
       logToDebug(`Live complaints fetched. Response size: ${sizeKB} KB`, 'api');
-      const data = JSON.parse(text);
       if (data && data.error) {
         logToDebug(`Backend returned error: ${data.error}`, 'error');
         showToast('⚠️ Backend Error: ' + data.error, 'error');
@@ -2723,28 +2728,19 @@ async function loadComplaints() {
         window.parentComplaintsList = [];
       }
 
-      // Try loading school master complaints
-      try {
-        if (resSchool.ok) {
-          const schoolData = await resSchool.json();
-          if (Array.isArray(schoolData)) {
-            window.parentSchoolComplaintsList = schoolData;
-            logToDebug(`Loaded ${schoolData.length} school master complaints for dashboard.`, 'success');
-          }
-        }
-      } catch (schoolErr) {
-        console.error('Failed to parse school complaints:', schoolErr);
+      const schoolData = await schoolPromise;
+      if (Array.isArray(schoolData)) {
+        window.parentSchoolComplaintsList = schoolData;
+        logToDebug(`Loaded ${schoolData.length} school master complaints for dashboard.`, 'success');
+      } else if (!Array.isArray(window.parentSchoolComplaintsList)) {
+        window.parentSchoolComplaintsList = [];
       }
     } else {
       logToDebug(`Fetching local/offline complaints from /complaints.json...`, 'api');
-      const res = await fetch('/complaints.json?' + Date.now());
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const text = await res.text();
-      const bytes = new Blob([text]).size;
-      const sizeKB = (bytes / 1024).toFixed(2);
+      const data = await adminApi.request('/complaints.json', { timeoutMs: 5000, attempts: 1, dedup: true, cacheKey: 'local_complaints', prefix: 'LOCAL' });
+      const sizeKB = (new Blob([JSON.stringify(data)]).size / 1024).toFixed(2);
       document.getElementById('debugResponseSize').textContent = sizeKB + ' KB';
       logToDebug(`Local complaints fetched. Size: ${sizeKB} KB`, 'api');
-      const data = JSON.parse(text);
       complaintsList = normalizeComplaintStatuses(data);
       window.parentComplaintsList = complaintsList;
       window.parentSchoolComplaintsList = [];
@@ -2756,20 +2752,13 @@ async function loadComplaints() {
     showToast('⚠️ Live data fetch error: ' + e.message + '. Trying offline fallback...', 'warn');
     try {
       logToDebug(`Attempting fallback load from local /complaints.json...`, 'info');
-      const res = await fetch('/complaints.json?' + Date.now());
-      if (res.ok) {
-        const text = await res.text();
-        const bytes = new Blob([text]).size;
-        const sizeKB = (bytes / 1024).toFixed(2);
-        document.getElementById('debugResponseSize').textContent = sizeKB + ' KB';
-        const data = JSON.parse(text);
-        complaintsList = normalizeComplaintStatuses(data);
-        window.parentComplaintsList = complaintsList;
-        window.parentSchoolComplaintsList = [];
-        logToDebug(`Fallback loaded ${complaintsList.length} complaints from local JSON.`, 'success');
-      } else {
-        throw new Error('HTTP ' + res.status);
-      }
+      const data = await adminApi.request('/complaints.json', { timeoutMs: 5000, attempts: 1, dedup: true, cacheKey: 'local_complaints:fallback', prefix: 'LOCAL' });
+      const sizeKB = (new Blob([JSON.stringify(data)]).size / 1024).toFixed(2);
+      document.getElementById('debugResponseSize').textContent = sizeKB + ' KB';
+      complaintsList = normalizeComplaintStatuses(data);
+      window.parentComplaintsList = complaintsList;
+      window.parentSchoolComplaintsList = [];
+      logToDebug(`Fallback loaded ${complaintsList.length} complaints from local JSON.`, 'success');
     } catch (fallbackErr) {
       console.error('Offline fallback failed:', fallbackErr);
       logToDebug(`Offline fallback failed: ${fallbackErr.message}`, 'error');
