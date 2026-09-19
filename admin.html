@@ -6728,11 +6728,12 @@ function onEditEquipmentChange() {
 
 function updateEditPhotoPreview() {
   const url = document.getElementById('editPhotoUrl').value.trim();
+  const safeUrl = safePhotoUrl(url);
   const img = document.getElementById('editPhotoPreviewImg');
   const placeholder = document.getElementById('editPhotoPreviewPlaceholder');
   
-  if (url) {
-    img.src = url;
+  if (safeUrl) {
+    img.src = safeUrl;
     img.style.display = 'block';
     placeholder.style.display = 'none';
   } else {
@@ -6744,11 +6745,12 @@ function updateEditPhotoPreview() {
 
 function updateEditSerialPhotoPreview() {
   const url = document.getElementById('editSerialPhotoUrl').value.trim();
+  const safeUrl = safePhotoUrl(url);
   const img = document.getElementById('editSerialPhotoPreviewImg');
   const placeholder = document.getElementById('editSerialPhotoPreviewPlaceholder');
   
-  if (url) {
-    img.src = url;
+  if (safeUrl) {
+    img.src = safeUrl;
     img.style.display = 'block';
     placeholder.style.display = 'none';
   } else {
@@ -6848,6 +6850,10 @@ function saveComplaintEdit() {
   c.longitude = parseFloat(document.getElementById('editLongitude').value) || '';
   
   const newPhotoUrl = document.getElementById('editPhotoUrl').value.trim();
+  if (newPhotoUrl && !safePhotoUrl(newPhotoUrl)) {
+    showToast('⚠️ Use a valid HTTPS/HTTP image link or supported image data.', 'warn');
+    return;
+  }
   if (newPhotoUrl !== getComplaintPhoto(c)) {
     c.photoUrl = newPhotoUrl;
     c.photos = newPhotoUrl ? [newPhotoUrl] : [];
@@ -6855,6 +6861,10 @@ function saveComplaintEdit() {
   }
   
   const newSerialPhotoUrl = document.getElementById('editSerialPhotoUrl').value.trim();
+  if (newSerialPhotoUrl && !safePhotoUrl(newSerialPhotoUrl)) {
+    showToast('⚠️ Use a valid HTTPS/HTTP image link or supported image data.', 'warn');
+    return;
+  }
   if (newSerialPhotoUrl !== (c.serialPhotoUrl || c.serialPhoto || '')) {
     c.serialPhotoUrl = newSerialPhotoUrl;
     c.serialPhoto = newSerialPhotoUrl;

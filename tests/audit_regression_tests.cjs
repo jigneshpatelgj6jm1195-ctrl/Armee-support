@@ -682,6 +682,16 @@ async function test(name, fn) {
     assert.match(block, /deptDetSuspectedImg'\)\.src = suspectedPhotoSrc/);
   });
 
+  await test('complaint photo editor validates preview and saved image URLs', () => {
+    const previewBlock = extractBlock(adminSource, 'function updateEditPhotoPreview()');
+    const serialPreviewBlock = extractBlock(adminSource, 'function updateEditSerialPhotoPreview()');
+    const saveBlock = extractBlock(adminSource, 'function saveComplaintEdit()');
+    assert.match(previewBlock, /const safeUrl = safePhotoUrl\(url\)/);
+    assert.match(serialPreviewBlock, /const safeUrl = safePhotoUrl\(url\)/);
+    assert.match(saveBlock, /newPhotoUrl && !safePhotoUrl\(newPhotoUrl\)/);
+    assert.match(saveBlock, /newSerialPhotoUrl && !safePhotoUrl\(newSerialPhotoUrl\)/);
+  });
+
   await test('branch summary labels a failed mapping refresh as unavailable instead of zero data', () => {
     const loadBlock = extractBlock(adminSource, 'async function ensureBranchDataLoaded()');
     const renderBlock = extractBlock(adminSource, 'async function renderBranchSummary(complaints)');
