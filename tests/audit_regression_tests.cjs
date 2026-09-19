@@ -752,6 +752,17 @@ async function test(name, fn) {
     assert.doesNotMatch(block, /armee@2026/);
   });
 
+  await test('branch management and notification email actions use bounded confirmed requests', () => {
+    const branchPost = extractBlock(adminSource, 'async function branchMgmtPost(payload)');
+    const emailLoad = extractBlock(adminSource, 'async function loadBranchEmails()');
+    const emailAdd = extractBlock(adminSource, 'async function addBranchEmail()');
+    const emailDelete = extractBlock(adminSource, 'async function deleteBranchEmail(rowNumber)');
+    assert.match(branchPost, /postJsonWithDeadline\(/);
+    assert.match(emailLoad, /cacheKey: 'get_branch_emails'/);
+    assert.match(emailAdd, /postJsonWithDeadline\([\s\S]*?timeoutMs: 30000/);
+    assert.match(emailDelete, /postJsonWithDeadline\([\s\S]*?timeoutMs: 30000/);
+  });
+
   await test('complaint deletion changes local data only after a confirmed server response', () => {
     const block = extractBlock(adminSource, 'async function deleteComplaint(origIndex)');
     assert.match(block, /const updatedComplaints = complaintsList\.filter/);

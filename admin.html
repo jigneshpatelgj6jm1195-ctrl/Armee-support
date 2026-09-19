@@ -9364,12 +9364,11 @@ let bmOffices = [], bmBranches = [], bmAliases = [], bmUnmapped = [];
 
 async function branchMgmtPost(payload) {
   try {
-    const res = await fetch(GOOGLE_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify(Object.assign({ authToken: adminAuthToken() }, payload)),
-    });
-    const out = await res.json();
+    const out = await postJsonWithDeadline(
+      GOOGLE_SCRIPT_URL,
+      Object.assign({ authToken: adminAuthToken() }, payload),
+      { timeoutMs: 30000 }
+    );
     if (out.status === 'blocked') {
       alert('⛔ Blocked:\n\n' + out.message + (out.branches ? '\n\n• ' + out.branches.join('\n• ') : ''));
       return null;
@@ -9498,9 +9497,10 @@ async function loadBranchEmails() {
   tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);">Loading branch emails…</td></tr>';
 
   try {
-    const res = await fetch(GOOGLE_SCRIPT_URL + '?action=get_branch_emails&authToken=' + encodeURIComponent(adminAuthToken()) + '&t=' + Date.now());
-    if (!res.ok) throw new Error('Server returned HTTP ' + res.status);
-    const data = await res.json();
+    const data = await adminApi.request(
+      GOOGLE_SCRIPT_URL + '?action=get_branch_emails&authToken=' + encodeURIComponent(adminAuthToken()),
+      { timeoutMs: 30000, attempts: 2, dedup: true, cacheKey: 'get_branch_emails', prefix: 'BRANCHEMAIL' }
+    );
     if (!Array.isArray(data)) throw new Error((data && data.message) || 'Server returned invalid data');
     branchEmailsList = data;
     
@@ -9567,19 +9567,18 @@ async function addBranchEmail() {
   showToast('⏳ Adding email(s)...', 'info');
 
   try {
-    const res = await fetch(GOOGLE_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({
+    const out = await postJsonWithDeadline(
+      GOOGLE_SCRIPT_URL,
+      {
         action: 'add_branch_email',
         branchId: branchId,
         branchName: branchName,
         email: emails.join(','),
         type: type,
         authToken: adminAuthToken()
-      })
-    });
-    const out = await res.json();
+      },
+      { timeoutMs: 30000 }
+    );
     if (out.status !== 'ok') throw new Error(out.message || 'Server error');
     
     showToast('✅ Branch email(s) added successfully!', 'success');
@@ -9596,16 +9595,15 @@ async function deleteBranchEmail(rowNumber) {
   showToast('⏳ Deleting email...', 'info');
   
   try {
-    const res = await fetch(GOOGLE_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({
+    const out = await postJsonWithDeadline(
+      GOOGLE_SCRIPT_URL,
+      {
         action: 'delete_branch_email',
         rowNumber: rowNumber,
         authToken: adminAuthToken()
-      })
-    });
-    const out = await res.json();
+      },
+      { timeoutMs: 30000 }
+    );
     if (out.status !== 'ok') throw new Error(out.message || 'Server error');
     
     showToast('✅ Branch email deleted!', 'success');
