@@ -1197,7 +1197,7 @@ tr:hover td { background: #f8fafc; }
           <div class="card-title" style="margin-bottom:0;">📅 Inflow vs Outflow — Branch-wise</div>
           <div style="display:flex; align-items:center; gap:6px;">
             <span style="font-size:0.75rem; color:var(--muted); font-weight:bold;">Date:</span>
-            <input type="date" id="todayFlowDatePicker" onchange="renderTodayFlow()" style="padding:4px 8px; font-size:0.75rem; border:1px solid var(--border); border-radius:6px; cursor:pointer;" />
+            <input type="date" id="todayFlowDatePicker" onchange="refreshDeptTodayFlow()" style="padding:4px 8px; font-size:0.75rem; border:1px solid var(--border); border-radius:6px; cursor:pointer;" />
           </div>
         </div>
         <div style="display:flex; gap:16px; font-size:0.78rem; font-weight:700; flex-wrap:wrap;">
@@ -1250,6 +1250,7 @@ tr:hover td { background: #f8fafc; }
             <option value="25">25</option>
             <option value="50" selected>50</option>
             <option value="100">100</option>
+            <option value="200">200</option>
             <option value="-1">All</option>
           </select>
         </div>
@@ -7908,6 +7909,7 @@ async function fetchJsonWithRetry(url, attempts) {
 /* ─────────────── DEPARTMENT DASHBOARD SERVICE & SMART CACHING ─────────────── */
 let deptDash = null, deptList = [], deptDrillFilter = null;
 let deptPageSize = 50, deptCurrentPage = 1, deptSortKey = 'createdDate', deptSortOrder = 'desc';
+let deptPageMeta = null, deptTodayFlow = [], deptTrendData = [], deptUsesServerPaging = false;
 
 const DEPT_CACHE_STORAGE_PREFIX = 'armee_dept_cache_v3:';
 const DEPT_CACHE_MAX_AGE_MS = 15 * 60 * 1000;
@@ -7916,6 +7918,11 @@ function deptCacheStorageKey() {
   const identity = currentUser && currentUser.email
     ? String(currentUser.email).trim().toLowerCase() : 'anonymous';
   return DEPT_CACHE_STORAGE_PREFIX + encodeURIComponent(identity);
+}
+
+function deptLocalDateKey() {
+  const now = new Date();
+  return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
 }
 
 const departmentApi = {
@@ -7975,26 +7982,68 @@ const departmentApi = {
       const list = await fetchRequiredArray('/deptlist.json', 'Local department complaints');
       deptList = filterByUserDistricts(list);
       deptDash = computeClientDeptDashboard(deptList);
+      deptPageMeta = null;
+      deptUsesServerPaging = false;
       return deptList;
     }
 
-    // 2. Fetch fresh live data from Google Apps Script with deduplication and timeout
-    const url = GOOGLE_SCRIPT_URL + '?action=get_department_complaints_list&authToken=' + encodeURIComponent(adminAuthToken());
-    const list = await adminApi.request(url, {
+    // Production reads compact summary data and one bounded ticket page. The
+    // prior full-list call was about 1.2 MB and could take 13 seconds cold.
+    deptUsesServerPaging = true;
+    const query = this.pageQuery();
+    const flowDate = document.getElementById('todayFlowDatePicker')?.value || deptLocalDateKey();
+    const summaryUrl = GOOGLE_SCRIPT_URL + '?action=get_department_dashboard_summary&authToken=' + encodeURIComponent(adminAuthToken()) + '&flowDate=' + encodeURIComponent(flowDate);
+    const pageUrl = GOOGLE_SCRIPT_URL + '?action=get_department_complaints_page&authToken=' + encodeURIComponent(adminAuthToken()) + '&' + query.toString();
+    // Keep these reads sequential: on a cache miss the summary constructs the
+    // shared snapshot once, then the page consumes that warmed snapshot. Two
+    // parallel cold reads would make Apps Script rebuild the same sheet data.
+    const summary = await adminApi.request(summaryUrl, {
+      timeoutMs: 45000, attempts: 2, dedup: true, cacheKey: 'get_department_dashboard_summary:' + flowDate, prefix: 'DEPSUM'
+    });
+    const page = await adminApi.request(pageUrl, {
       timeoutMs: 45000,
       attempts: 2, // 404 aborts immediately; transient 5xx retries once
       dedup: true,
-      cacheKey: 'get_department_complaints_list',
-      prefix: 'DEP'
+      cacheKey: 'get_department_complaints_page:' + query.toString(), prefix: 'DEPPAGE'
     });
 
-    if (Array.isArray(list)) {
-      deptList = filterByUserDistricts(list);
-      deptDash = computeClientDeptDashboard(deptList);
-      this.setLocalCache(list);
+    if (summary && summary.status === 'ok' && summary.dashboard && page && page.status === 'ok' && Array.isArray(page.items)) {
+      deptDash = summary.dashboard;
+      deptTodayFlow = Array.isArray(summary.todayFlow) ? summary.todayFlow : [];
+      deptTrendData = Array.isArray(summary.trend) ? summary.trend : [];
+      deptList = page.items;
+      deptPageMeta = page;
       return deptList;
     }
     throw new Error('Server returned invalid data format');
+  },
+
+  pageQuery() {
+    const query = new URLSearchParams({
+      page: String(deptCurrentPage), pageSize: String(deptPageSize === -1 ? 200 : deptPageSize),
+      sortKey: deptSortKey, sortOrder: deptSortOrder,
+      search: (document.getElementById('deptFilterText')?.value || '').trim()
+    });
+    if (!deptDrillFilter) {
+      query.set('activeOnly', 'true');
+      return query;
+    }
+    const f = deptDrillFilter;
+    if (f.type === 'status') {
+      if (f.val === 'total') query.set('activeOnly', 'true');
+      else if (f.val === 'ClosedWithOTP') query.set('closedWithOtp', 'true');
+      else if (f.val === 'ClosedWithoutOTP') query.set('closedWithOtp', 'false');
+      else query.set('status', f.val);
+    } else if (f.type === 'branch') {
+      if (f.val === 'UNMAPPED') query.set('unmappedOnly', 'true');
+      else { query.set('branchId', f.val); query.set('activeOnly', 'true'); }
+    } else if (f.type === 'today_inflow' || f.type === 'today_outflow') {
+      query.set('flowType', f.type === 'today_inflow' ? 'inflow' : 'outflow');
+      query.set('flowDate', f.targetDate || '');
+      query.set('flowBranchName', f.branchName || 'ALL');
+      if (f.type === 'today_outflow') query.set('flowStatus', f.status || 'ALL');
+    }
+    return query;
   }
 };
 
@@ -8050,7 +8099,7 @@ function renderAllDeptWidgets(isBackground = false) {
   try { renderBranchAging(); } catch (e) { console.error('Error rendering branch aging:', e); }
   try { renderTodayFlow(); } catch (e) { console.error('Error rendering today flow:', e); }
   try { renderDeptList(); } catch (e) { console.error('Error rendering dept list:', e); }
-  try { drawDeptTrendChart(deptList); } catch (e) { console.error('Error rendering trend chart:', e); }
+  try { drawDeptTrendChart(deptUsesServerPaging ? deptTrendData : deptList); } catch (e) { console.error('Error rendering trend chart:', e); }
   try { renderUnifiedDailyFlow(); } catch (e) {}
 }
 
@@ -8163,11 +8212,18 @@ function deptDrillToday(flowType, branchName, status) {
     status: status || 'ALL',
     targetDate: targetDate
   };
-  renderDeptList();
+  deptCurrentPage = 1;
+  if (deptUsesServerPaging) departmentApi.fetchDepartmentComplaints().then(() => renderDeptList()).catch(e => showToast('❌ Could not load tickets: ' + e.message, 'danger'));
+  else renderDeptList();
   const listCard = document.getElementById('deptListBody').closest('.card');
   if (listCard) {
     listCard.scrollIntoView({ behavior: 'smooth' });
   }
+}
+
+function refreshDeptTodayFlow() {
+  if (!deptUsesServerPaging) { renderTodayFlow(); return; }
+  departmentApi.fetchDepartmentComplaints().then(() => renderAllDeptWidgets()).catch(e => showToast('❌ Could not refresh daily activity: ' + e.message, 'danger'));
 }
 
 function renderTodayFlow() {
@@ -8192,10 +8248,18 @@ function renderTodayFlow() {
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
 
-  // Build branch-wise stats
-  const branchStats = {}; // branchName -> { inflow, InProgress, PartRequest, PendingOTP, Closed }
-
-  deptList.forEach(function(r) {
+  // Build branch-wise stats. Production receives this compact aggregation from
+  // the server; local staging retains the source-list implementation.
+  const branchStats = {};
+  if (deptUsesServerPaging) {
+    deptTodayFlow.forEach(function(row) {
+      branchStats[row.branchName] = {
+        inflow: Number(row.inflow) || 0, InProgress: Number(row.InProgress) || 0,
+        PartRequest: Number(row.PartRequest) || 0, PendingOTP: Number(row.PendingOTP) || 0,
+        Closed: Number(row.Closed) || 0
+      };
+    });
+  } else deptList.forEach(function(r) {
     const bname = r.branchName || 'Unmapped';
 
     if (!branchStats[bname]) {
@@ -8373,11 +8437,19 @@ function deptStatusBadge(t) {
 
 function deptDrill(type, val) {
   deptDrillFilter = { type: type, val: val };
-  renderDeptList();
+  deptCurrentPage = 1;
+  if (deptUsesServerPaging) {
+    departmentApi.fetchDepartmentComplaints().then(() => renderDeptList()).catch(e => showToast('❌ Could not load tickets: ' + e.message, 'danger'));
+  } else renderDeptList();
   document.getElementById('deptListBody').closest('.card').scrollIntoView({ behavior: 'smooth' });
 }
 
-function clearDeptDrill() { deptDrillFilter = null; renderDeptList(); }
+function clearDeptDrill() {
+  deptDrillFilter = null;
+  deptCurrentPage = 1;
+  if (deptUsesServerPaging) departmentApi.fetchDepartmentComplaints().then(() => renderDeptList()).catch(e => showToast('❌ Could not load tickets: ' + e.message, 'danger'));
+  else renderDeptList();
+}
 
 function toggleSelectAllDept(master) {
   const checked = master ? !!master.checked : false;
@@ -8554,10 +8626,20 @@ function setDeptSort(key) {
     deptSortOrder = (key === 'businessDays' || key === 'createdDate' || key === 'resolvedAt' || key === 'resolutionDate') ? 'desc' : 'asc';
   }
   deptCurrentPage = 1;
-  renderDeptList();
+  if (deptUsesServerPaging) departmentApi.fetchDepartmentComplaints().then(() => renderDeptList()).catch(e => showToast('❌ Could not sort tickets: ' + e.message, 'danger'));
+  else renderDeptList();
 }
 
 function changeDeptPage(action) {
+  if (deptUsesServerPaging) {
+    const totalPages = (deptPageMeta && deptPageMeta.totalPages) || 1;
+    if (action === 'first') deptCurrentPage = 1;
+    else if (action === 'prev') deptCurrentPage = Math.max(1, deptCurrentPage - 1);
+    else if (action === 'next') deptCurrentPage = Math.min(totalPages, deptCurrentPage + 1);
+    else if (action === 'last') deptCurrentPage = totalPages;
+    departmentApi.fetchDepartmentComplaints().then(() => renderDeptList()).catch(e => showToast('❌ Could not load tickets: ' + e.message, 'danger'));
+    return;
+  }
   const rows = getFilteredDeptComplaints();
   const total = rows.length;
   const pageSize = deptPageSize === -1 ? total : deptPageSize;
@@ -8573,8 +8655,15 @@ function changeDeptPage(action) {
 
 function changeDeptPageSize(val) {
   deptPageSize = parseInt(val, 10);
+  if (deptUsesServerPaging && deptPageSize === -1) {
+    deptPageSize = 200;
+    const select = document.getElementById('deptPageSizeSelect');
+    if (select) select.value = '200';
+    showToast('Showing up to 200 tickets per page to keep the dashboard responsive.', 'info');
+  }
   deptCurrentPage = 1;
-  renderDeptList();
+  if (deptUsesServerPaging) departmentApi.fetchDepartmentComplaints().then(() => renderDeptList()).catch(e => showToast('❌ Could not load tickets: ' + e.message, 'danger'));
+  else renderDeptList();
 }
 
 let deptSearchTimer = null;
@@ -8582,7 +8671,8 @@ function onDeptSearchInput() {
   clearTimeout(deptSearchTimer);
   deptSearchTimer = setTimeout(() => {
     deptCurrentPage = 1;
-    renderDeptList();
+    if (deptUsesServerPaging) departmentApi.fetchDepartmentComplaints().then(() => renderDeptList()).catch(e => showToast('❌ Could not search tickets: ' + e.message, 'danger'));
+    else renderDeptList();
   }, 100);
 }
 
@@ -8750,8 +8840,8 @@ function renderDeptList() {
     }
   }
 
-  const rows = getFilteredDeptComplaints();
-  const totalRows = rows.length;
+  const rows = deptUsesServerPaging ? deptList : getFilteredDeptComplaints();
+  const totalRows = deptUsesServerPaging ? Number((deptPageMeta && deptPageMeta.total) || 0) : rows.length;
 
   label.textContent = labelText + ' · ' + totalRows.toLocaleString() + ' ticket(s)';
   clearBtn.style.display = deptDrillFilter ? '' : 'none';
@@ -8783,14 +8873,14 @@ function renderDeptList() {
   }
 
   // Calculate pagination
-  const pageSize = deptPageSize === -1 ? totalRows : deptPageSize;
-  const totalPages = Math.max(1, Math.ceil(totalRows / (pageSize || 1)));
+  const pageSize = deptUsesServerPaging ? Number((deptPageMeta && deptPageMeta.pageSize) || deptPageSize) : (deptPageSize === -1 ? totalRows : deptPageSize);
+  const totalPages = deptUsesServerPaging ? Number((deptPageMeta && deptPageMeta.totalPages) || 1) : Math.max(1, Math.ceil(totalRows / (pageSize || 1)));
   if (deptCurrentPage > totalPages) deptCurrentPage = totalPages;
   if (deptCurrentPage < 1) deptCurrentPage = 1;
 
-  const startIdx = (deptCurrentPage - 1) * pageSize;
-  const endIdx = Math.min(startIdx + pageSize, totalRows);
-  const pagedRows = rows.slice(startIdx, endIdx);
+  const startIdx = deptUsesServerPaging ? Number((deptPageMeta && (deptPageMeta.page - 1) * deptPageMeta.pageSize) || 0) : (deptCurrentPage - 1) * pageSize;
+  const endIdx = deptUsesServerPaging ? Math.min(startIdx + rows.length, totalRows) : Math.min(startIdx + pageSize, totalRows);
+  const pagedRows = deptUsesServerPaging ? rows : rows.slice(startIdx, endIdx);
 
   if (paginationBar) {
     paginationBar.style.display = 'flex';
@@ -8945,8 +9035,29 @@ function viewDeptDetails(ticketId) {
   document.getElementById('deptDetailModal').classList.add('show');
 }
 
-function downloadDeptReport() {
-  const rows = getFilteredDeptComplaints();
+async function downloadDeptReport() {
+  let rows;
+  if (deptUsesServerPaging) {
+    try {
+      showToast('⏳ Preparing the complete filtered report…', 'info');
+      const url = GOOGLE_SCRIPT_URL + '?action=get_department_complaints_list&authToken=' + encodeURIComponent(adminAuthToken());
+      const allRows = await adminApi.request(url, { timeoutMs: 45000, attempts: 2, dedup: true, cacheKey: 'get_department_complaints_list:export', prefix: 'DEPEXPORT' });
+      if (!Array.isArray(allRows)) throw new Error('Server returned invalid data format');
+      const visiblePage = deptList;
+      const wasServerPaged = deptUsesServerPaging;
+      try {
+        deptList = allRows;
+        deptUsesServerPaging = false;
+        rows = getFilteredDeptComplaints();
+      } finally {
+        deptList = visiblePage;
+        deptUsesServerPaging = wasServerPaged;
+      }
+    } catch (e) {
+      showToast('❌ Could not prepare the report: ' + e.message, 'danger');
+      return;
+    }
+  } else rows = getFilteredDeptComplaints();
 
   if (rows.length === 0) {
     showToast('⚠️ No department complaints data available to download', 'warn');
@@ -9064,7 +9175,9 @@ function updateDeptTrendChartFiltered() {
     const d = parseDateString(r.createdDate);
     if (!d) return;
     const dateStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-    counts[dateStr] = (counts[dateStr] || 0) + 1;
+    // Server summaries carry one compact record per date with its count;
+    // local mode still supplies individual tickets and therefore counts as 1.
+    counts[dateStr] = (counts[dateStr] || 0) + (Number(r.count) || 1);
   });
 
   // Sort dates

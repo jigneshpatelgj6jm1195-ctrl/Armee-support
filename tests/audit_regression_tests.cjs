@@ -376,6 +376,44 @@ async function test(name, fn) {
     assert.deepEqual(out.items.map(row => row.ticketId), ['N-1']);
   });
 
+  await test('department summary preserves pendency, aging, first-attended flow, and compact trend counts', () => {
+    const c = makeContext();
+    const out = c.getDepartmentDashboardSummary_([
+      { ticketId: 'P', district: 'North', branchId: 'B1', branchName: 'One', internalStatus: 'Pending', businessDays: 1, createdDate: '2026-09-18' },
+      { ticketId: 'I', district: 'North', branchId: 'B1', branchName: 'One', internalStatus: 'InProgress', businessDays: 4, createdDate: '2026-09-18', resolvedAt: '2026-09-18' },
+      { ticketId: 'O', district: 'South', branchId: '', branchName: 'Unmapped', internalStatus: 'PendingOTP', businessDays: 9, createdDate: '2026-09-17', resolutionDate: '2026-09-18' },
+      { ticketId: 'C', district: 'South', branchId: 'B2', branchName: 'Two', internalStatus: 'Closed', closureType: 'ClosedWithOTP', businessDays: 8, createdDate: '2026-09-17', resolvedAt: '2026-09-18', resolutionDate: '2026-09-19' },
+    ], { flowDate: '2026-09-18' });
+    assert.deepEqual(JSON.parse(JSON.stringify(out.dashboard.pendency)), {
+      total: 4, pending: 1, inProgress: 1, partRequest: 0, pendingOtp: 1, closedWithOTP: 1, closedWithoutOTP: 0
+    });
+    assert.deepEqual(JSON.parse(JSON.stringify(out.dashboard.branches.find(row => row.branchId === 'B1').department)), { '0-2': 1, '3-5': 1, '6+': 0 });
+    assert.equal(out.dashboard.branches.some(row => row.branchId === 'B2'), false);
+    assert.deepEqual(JSON.parse(JSON.stringify(out.dashboard.unmapped.department)), { '0-2': 0, '3-5': 0, '6+': 0 });
+    assert.deepEqual(JSON.parse(JSON.stringify(out.todayFlow.find(row => row.branchName === 'One'))), {
+      branchName: 'One', inflow: 2, InProgress: 1, PartRequest: 0, PendingOTP: 0, Closed: 0
+    });
+    assert.equal(out.todayFlow.find(row => row.branchName === 'Two').Closed, 1);
+    assert.deepEqual(JSON.parse(JSON.stringify(out.trend)), [{ createdDate: '2026-09-17', count: 2 }, { createdDate: '2026-09-18', count: 2 }]);
+  });
+
+  await test('department summary applies district authorization before calculating aggregates', () => {
+    const c = makeContext();
+    c.SpreadsheetApp = { openById: () => makeSpreadsheet([]) };
+    c.verifyAuthToken_ = token => token === 'district-token' ? { email: 'north@example.test', role: 'district_admin' } : null;
+    c.getAuthorizedDistrictMap_ = () => ({ NORTH: true });
+    c.getCachedDepartmentComplaints_ = () => [
+      { ticketId: 'N-1', district: 'North', internalStatus: 'Pending', businessDays: 1, createdDate: '2026-09-18' },
+      { ticketId: 'S-1', district: 'South', internalStatus: 'Closed', businessDays: 1, createdDate: '2026-09-18' },
+    ];
+    const out = JSON.parse(c.doGet({ parameter: {
+      action: 'get_department_dashboard_summary', authToken: 'district-token', flowDate: '2026-09-18'
+    } }).text);
+    assert.equal(out.dashboard.pendency.total, 1);
+    assert.equal(out.dashboard.pendency.pending, 1);
+    assert.deepEqual(out.trend, [{ createdDate: '2026-09-18', count: 1 }]);
+  });
+
   await test('complaint list rejects anonymous reads and filters district access', () => {
     const c = makeContext();
     const headers = vm.runInContext('HEADERS', c);
@@ -527,6 +565,7 @@ async function test(name, fn) {
   await test('large dashboard charts do not force one tick per record', () => {
     assert.equal(/stepSize\s*:\s*1/.test(adminSource), false);
     assert.ok((adminSource.match(/precision\s*:\s*0/g) || []).length >= 8);
+    assert.match(adminSource, /\+ \(Number\(r\.count\) \|\| 1\)/);
   });
 
   await test('local branch summary resolves without contacting production', () => {
@@ -547,7 +586,15 @@ async function test(name, fn) {
     const block = extractBlock(adminSource, 'async fetchDepartmentComplaints(forceNetwork = false)');
     assert.match(block, /if \(isLocal\(\)\)/);
     assert.match(block, /fetchRequiredArray\('\/deptlist\.json'/);
-    assert.ok(block.indexOf('if (isLocal())') < block.indexOf("const url = GOOGLE_SCRIPT_URL"));
+    assert.ok(block.indexOf('if (isLocal())') < block.indexOf('const summaryUrl = GOOGLE_SCRIPT_URL'));
+  });
+
+  await test('production department dashboard loads a compact summary before a bounded ticket page', () => {
+    const block = extractBlock(adminSource, 'async fetchDepartmentComplaints(forceNetwork = false)');
+    assert.match(block, /get_department_dashboard_summary/);
+    assert.match(block, /get_department_complaints_page/);
+    assert.ok(block.indexOf('const summary = await') < block.indexOf('const page = await'));
+    assert.doesNotMatch(block, /get_department_complaints_list&authToken/);
   });
 
   await test('large complaint tables render a bounded page', () => {

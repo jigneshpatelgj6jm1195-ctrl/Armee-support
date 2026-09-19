@@ -866,6 +866,15 @@ function doGet(e) {
       return ContentService.createTextOutput(JSON.stringify(dashboard)).setMimeType(ContentService.MimeType.JSON);
     }
 
+    if (action === 'get_department_dashboard_summary') {
+      var dashboardSummaryAuth = requireAdminAuth_(e.parameter, false);
+      if (dashboardSummaryAuth) return ContentService.createTextOutput(JSON.stringify(dashboardSummaryAuth))
+                                                      .setMimeType(ContentService.MimeType.JSON);
+      var scopedDashboardRows = filterRowsForAdminDistricts_(ss, getCachedDepartmentComplaints_(ss), e.parameter.authToken);
+      return ContentService.createTextOutput(JSON.stringify(getDepartmentDashboardSummary_(scopedDashboardRows, e.parameter)))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
     if (action === 'get_district_offices') {
       var officeAuth = requireAdminAuth_(e.parameter, false);
       if (officeAuth) return ContentService.createTextOutput(JSON.stringify(officeAuth))
@@ -3992,11 +4001,28 @@ function getDepartmentComplaintsPage_(rows, parameters) {
   var search = String(parameters.search || '').trim().toLowerCase();
   var status = String(parameters.status || '').trim();
   var branchId = String(parameters.branchId || '').trim();
+  var unmappedOnly = String(parameters.unmappedOnly || '').toLowerCase() === 'true';
   var activeOnly = String(parameters.activeOnly || '').toLowerCase() === 'true';
+  var flowType = String(parameters.flowType || '').trim();
+  var flowDate = String(parameters.flowDate || '').trim();
+  var flowBranchName = String(parameters.flowBranchName || '').trim();
+  var flowStatus = String(parameters.flowStatus || '').trim();
+  var closedWithOtp = String(parameters.closedWithOtp || '').toLowerCase();
   var filtered = (rows || []).filter(function(row) {
     if (activeOnly && (row.internalStatus === 'Closed' || row.internalStatus === 'PendingOTP')) return false;
     if (status && row.internalStatus !== status) return false;
     if (branchId && String(row.branchId || '') !== branchId) return false;
+    if (unmappedOnly && String(row.branchId || '').trim()) return false;
+    if (closedWithOtp === 'true' && !(row.internalStatus === 'Closed' && row.closureType === 'ClosedWithOTP')) return false;
+    if (closedWithOtp === 'false' && !(row.internalStatus === 'Closed' && row.closureType !== 'ClosedWithOTP')) return false;
+    if (flowType === 'inflow' && departmentDateKey_(row.createdDate) !== flowDate) return false;
+    if (flowType === 'outflow') {
+      var outflowDate = departmentDateKey_(row.resolvedAt) || departmentDateKey_(row.resolutionDate);
+      if (outflowDate !== flowDate || row.internalStatus === 'Pending') return false;
+      if (flowStatus && flowStatus !== 'ALL' && row.internalStatus !== flowStatus) return false;
+    }
+    if ((flowType === 'inflow' || flowType === 'outflow') && flowBranchName && flowBranchName !== 'ALL' &&
+        String(row.branchName || 'Unmapped') !== flowBranchName) return false;
     if (!search) return true;
     var fields = [
       row.ticketId, row.school, row.schoolId, row.serialNumber, row.district,
@@ -4042,6 +4068,103 @@ function getDepartmentComplaintsPage_(rows, parameters) {
     status: 'ok', items: filtered.slice(start, start + pageSize), total: total,
     page: page, pageSize: pageSize, totalPages: totalPages, hasMore: page < totalPages,
     sortKey: sortKey, sortOrder: sortOrder
+  };
+}
+
+function departmentDateKey_(value) {
+  if (!value) return '';
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return value.getFullYear() + '-' + ('0' + (value.getMonth() + 1)).slice(-2) + '-' + ('0' + value.getDate()).slice(-2);
+  }
+  var raw = String(value).trim();
+  var iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return iso[1] + '-' + iso[2] + '-' + iso[3];
+  var indian = raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/);
+  if (indian) return indian[3] + '-' + ('0' + indian[2]).slice(-2) + '-' + ('0' + indian[1]).slice(-2);
+  var parsed = new Date(raw);
+  if (isNaN(parsed.getTime())) return '';
+  return parsed.getFullYear() + '-' + ('0' + (parsed.getMonth() + 1)).slice(-2) + '-' + ('0' + parsed.getDate()).slice(-2);
+}
+
+/**
+ * Compact dashboard data calculated from the same district-authorized snapshot
+ * as paging. Its shape matches the browser's former full-list calculation.
+ */
+function getDepartmentDashboardSummary_(rows, parameters) {
+  rows = Array.isArray(rows) ? rows : [];
+  parameters = parameters || {};
+  var pendency = {
+    total: 0, pending: 0, inProgress: 0, partRequest: 0, pendingOtp: 0,
+    closedWithOTP: 0, closedWithoutOTP: 0
+  };
+  var branchMap = {};
+  var districtOfficesMap = {};
+  var trendMap = {};
+  var flowDate = String(parameters.flowDate || departmentDateKey_(new Date()));
+  var flowMap = {};
+
+  rows.forEach(function(row) {
+    var status = String(row.internalStatus || 'Pending');
+    pendency.total++;
+    if (status === 'Closed') {
+      if (row.closureType === 'ClosedWithOTP') pendency.closedWithOTP++;
+      else pendency.closedWithoutOTP++;
+    } else if (status === 'PartRequest') pendency.partRequest++;
+    else if (status === 'PendingOTP') pendency.pendingOtp++;
+    else if (status === 'InProgress') pendency.inProgress++;
+    else pendency.pending++;
+
+    var createdDate = departmentDateKey_(row.createdDate);
+    if (createdDate) trendMap[createdDate] = (trendMap[createdDate] || 0) + 1;
+
+    var branchId = String(row.branchId || 'UNMAPPED');
+    var branchName = String(row.branchName || 'Unmapped');
+    var district = String(row.district || 'Unmapped');
+    if (status !== 'Closed' && status !== 'PendingOTP') {
+      if (!branchMap[branchId]) {
+        branchMap[branchId] = {
+          branchId: branchId, branchName: branchName, status: 'Active',
+          department: { '0-2': 0, '3-5': 0, '6+': 0 }
+        };
+      }
+      if (!districtOfficesMap[district]) {
+        districtOfficesMap[district] = {
+          name: district, department: { '0-2': 0, '3-5': 0, '6+': 0 }
+        };
+      }
+      var bucket = Number(row.businessDays) >= 6 ? '6+' : (Number(row.businessDays) >= 3 ? '3-5' : '0-2');
+      branchMap[branchId].department[bucket]++;
+      districtOfficesMap[district].department[bucket]++;
+    }
+
+    if (!flowMap[branchName]) {
+      flowMap[branchName] = { branchName: branchName, inflow: 0, InProgress: 0, PartRequest: 0, PendingOTP: 0, Closed: 0 };
+    }
+    if (createdDate === flowDate) flowMap[branchName].inflow++;
+    var outDate = departmentDateKey_(row.resolvedAt) || departmentDateKey_(row.resolutionDate);
+    if (outDate === flowDate && status !== 'Pending' && flowMap[branchName][status] !== undefined) {
+      flowMap[branchName][status]++;
+    }
+  });
+
+  var branches = [];
+  var unmapped = { department: { '0-2': 0, '3-5': 0, '6+': 0 } };
+  Object.keys(branchMap).forEach(function(branchId) {
+    if (branchId === 'UNMAPPED') unmapped.department = branchMap[branchId].department;
+    else branches.push(branchMap[branchId]);
+  });
+  var flow = Object.keys(flowMap).map(function(branchName) { return flowMap[branchName]; });
+  flow.sort(function(left, right) {
+    var leftTotal = left.inflow + left.InProgress + left.PartRequest + left.PendingOTP + left.Closed;
+    var rightTotal = right.inflow + right.InProgress + right.PartRequest + right.PendingOTP + right.Closed;
+    return rightTotal - leftTotal || left.branchName.localeCompare(right.branchName);
+  });
+  var trend = Object.keys(trendMap).sort().map(function(date) { return { createdDate: date, count: trendMap[date] }; });
+  return {
+    status: 'ok',
+    dashboard: { pendency: pendency, branches: branches, unmapped: unmapped,
+      districtOffices: Object.keys(districtOfficesMap).map(function(name) { return districtOfficesMap[name]; }) },
+    todayFlow: flow, trend: trend, flowDate: flowDate
   };
 }
 
