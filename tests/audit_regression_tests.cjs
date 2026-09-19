@@ -647,6 +647,14 @@ async function test(name, fn) {
     assert.match(block, /adminApi\.request\('\/complaints\.json'/);
   });
 
+  await test('failed complaint refresh retains the last successful data and labels an initial empty result as unavailable', () => {
+    const block = extractBlock(adminSource, 'async function loadComplaints()');
+    assert.match(block, /const previousComplaints = Array\.isArray\(complaintsList\)/);
+    assert.match(block, /Showing the last successfully loaded data/);
+    assert.match(block, /unavailable data, not confirmed zero calls/);
+    assert.match(adminSource, /id="complaintsLoadNotice"/);
+  });
+
   await test('consolidated dashboard does not treat one department page as complete data', () => {
     const block = extractBlock(adminSource, 'async function loadUnifiedDashboard()');
     assert.match(block, /deptUsesServerPaging \? unifiedDepartmentRows : deptList/);

@@ -499,6 +499,7 @@ tr:hover td { background: #f8fafc; }
 
   <!-- ================= TAB: DASHBOARD ================= -->
   <div class="tab-content active" id="tab-dash">
+    <div id="complaintsLoadNotice" role="alert" style="display:none;margin-bottom:14px;padding:11px 14px;border:1px solid #fecaca;border-radius:9px;background:#fef2f2;color:#991b1b;font-size:0.82rem;"></div>
     <!-- Filters Row -->
     <div class="card" style="padding: 16px; margin-bottom: 20px;">
       <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;">
@@ -2692,6 +2693,15 @@ function isDuplicateComplaint(c) {
 
 async function loadComplaints() {
   const isLocalhost = isLocal();
+  const previousComplaints = Array.isArray(complaintsList) ? complaintsList : [];
+  const previousSchoolComplaints = Array.isArray(window.parentSchoolComplaintsList) ? window.parentSchoolComplaintsList : [];
+  const setLoadNotice = (message) => {
+    const notice = document.getElementById('complaintsLoadNotice');
+    if (!notice) return;
+    notice.textContent = message || '';
+    notice.style.display = message ? '' : 'none';
+  };
+  setLoadNotice('');
   logToDebug(`loadComplaints() initiated (isLocalhost = ${isLocalhost}, onLine = ${navigator.onLine})`, 'info');
   try {
     if (GOOGLE_SCRIPT_URL && !isLocalhost && navigator.onLine) {
@@ -2762,9 +2772,19 @@ async function loadComplaints() {
     } catch (fallbackErr) {
       console.error('Offline fallback failed:', fallbackErr);
       logToDebug(`Offline fallback failed: ${fallbackErr.message}`, 'error');
-      complaintsList = [];
-      window.parentComplaintsList = [];
-      window.parentSchoolComplaintsList = [];
+      if (previousComplaints.length || previousSchoolComplaints.length) {
+        complaintsList = previousComplaints;
+        window.parentComplaintsList = previousComplaints;
+        window.parentSchoolComplaintsList = previousSchoolComplaints;
+        const message = 'Could not refresh live calls. Showing the last successfully loaded data.';
+        setLoadNotice(message);
+        showToast('⚠️ ' + message, 'warn');
+      } else {
+        complaintsList = [];
+        window.parentComplaintsList = [];
+        window.parentSchoolComplaintsList = [];
+        setLoadNotice('Could not load calls. The displayed zero values are unavailable data, not confirmed zero calls. Use Retry after checking the connection.');
+      }
     }
   }
   renderDashboard();
