@@ -607,6 +607,7 @@ async function test(name, fn) {
       deptList: [], deptDash: null, deptDrillFilter: null, deptPageSize: 50, deptCurrentPage: 1,
       deptSortKey: 'createdDate', deptSortOrder: 'desc',
       deptPageMeta: null, deptTodayFlow: [], deptTrendData: [], deptUsesServerPaging: false,
+      unifiedDepartmentRows: null,
       DEPT_CACHE_STORAGE_PREFIX: 'test:', DEPT_CACHE_MAX_AGE_MS: 900000,
       GOOGLE_SCRIPT_URL: 'https://backend.example.test/exec',
       document: { getElementById: id => ({ value: id === 'todayFlowDatePicker' ? '2026-09-19' : '' }) },
@@ -633,6 +634,14 @@ async function test(name, fn) {
     assert.match(requests[1], /activeOnly=true/);
     assert.equal(vm.runInContext('deptList[0].ticketId', c), 'T-1');
     assert.equal(vm.runInContext('deptUsesServerPaging', c), true);
+  });
+
+  await test('consolidated dashboard does not treat one department page as complete data', () => {
+    const block = extractBlock(adminSource, 'async function loadUnifiedDashboard()');
+    assert.match(block, /deptUsesServerPaging \? unifiedDepartmentRows : deptList/);
+    assert.match(block, /get_department_complaints_list/);
+    assert.match(block, /unifiedDeptData = d;\s*unifiedDepartmentRows = d;/);
+    assert.doesNotMatch(block, /departmentApi\.fetchDepartmentComplaints\(\)/);
   });
 
   await test('large complaint tables render a bounded page', () => {

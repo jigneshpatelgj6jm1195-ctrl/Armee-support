@@ -7501,6 +7501,9 @@ const UNIFIED_TAG_STYLE = {
 let unifiedRows = [];
 let unifiedTagFilter = null;
 let unifiedCurrentPage = 1;
+// The consolidated screen has different requirements from the paged Department
+// screen: it must count every source before showing cross-system totals.
+let unifiedDepartmentRows = null;
 
 // Collapse every spelling variant onto one tag.
 function unifiedTag(rawStatus) {
@@ -7531,10 +7534,11 @@ async function loadUnifiedDashboard() {
     // (the backend intermittently returns an error page), the consolidated view
     // silently showed Department only, which is exactly the wrong answer to
     // "how many calls are pending".
+    let unifiedDeptData = deptUsesServerPaging ? unifiedDepartmentRows : deptList;
     const need = {
       School:     !Array.isArray(window.parentSchoolComplaintsList) || !window.parentSchoolComplaintsList.length,
       Advance:    !Array.isArray(complaintsList) || !complaintsList.length,
-      Department: !Array.isArray(deptList) || !deptList.length
+      Department: !Array.isArray(unifiedDeptData) || !unifiedDeptData.length
     };
     const failed = [];
     const jobs = [];
@@ -7553,8 +7557,8 @@ async function loadUnifiedDashboard() {
           .catch(() => { failed.push('Advance'); complaintsList = complaintsList || []; }));
       if (need.Department) jobs.push(
         fetchRequiredArray('/deptlist.json', 'Local department complaints')
-          .then(d => { deptList = d; })
-          .catch(() => { failed.push('Department'); deptList = deptList || []; }));
+          .then(d => { unifiedDeptData = d; unifiedDepartmentRows = d; })
+          .catch(() => { failed.push('Department'); unifiedDeptData = unifiedDeptData || []; }));
     } else {
       if (need.School) jobs.push(
         fetchJsonWithRetry(GOOGLE_SCRIPT_URL + '?action=get_all_school_complaints&authToken=' + encodeURIComponent(adminAuthToken()), 3)
@@ -7565,12 +7569,20 @@ async function loadUnifiedDashboard() {
           .then(d => { complaintsList = normalizeComplaintStatuses(Array.isArray(d) ? d : []); })
           .catch(() => { failed.push('Advance'); complaintsList = complaintsList || []; }));
       if (need.Department) jobs.push(
-        departmentApi.fetchDepartmentComplaints()
-          .catch(() => { failed.push('Department'); deptList = deptList || []; }));
+        // Ordinary Department browsing is paged. The consolidated screen is
+        // intentionally a complete cross-system report, so fetch the full
+        // authorized list here only instead of counting the visible page.
+        adminApi.request(GOOGLE_SCRIPT_URL + '?action=get_department_complaints_list&authToken=' + encodeURIComponent(adminAuthToken()), {
+          timeoutMs: 45000, attempts: 2, dedup: true, cacheKey: 'get_department_complaints_list:unified', prefix: 'UNIDEPT'
+        }).then(d => {
+          if (!Array.isArray(d)) throw new Error('Server returned invalid department data');
+          unifiedDeptData = d;
+          unifiedDepartmentRows = d;
+        }).catch(() => { failed.push('Department'); unifiedDeptData = unifiedDeptData || []; }));
     }
     if (jobs.length) await Promise.all(jobs);
 
-    const dept = deptList;
+    const dept = unifiedDeptData;
     window._unifiedFailedSources = failed;
 
     const rows = [];
@@ -8013,6 +8025,10 @@ const departmentApi = {
       deptTrendData = Array.isArray(summary.trend) ? summary.trend : [];
       deptList = page.items;
       deptPageMeta = page;
+      // Any fresh Department response may reflect a post-mutation cache
+      // invalidation, so do not let the consolidated report reuse its older
+      // complete snapshot.
+      unifiedDepartmentRows = null;
       return deptList;
     }
     throw new Error('Server returned invalid data format');
