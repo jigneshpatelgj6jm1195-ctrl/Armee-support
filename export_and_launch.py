@@ -286,6 +286,45 @@ class FormHandler(http.server.SimpleHTTPRequestHandler):
                     db.pop(dise)
                     updated = 1
                 print(f"  [DELETE] School with DISE {dise} (project: {project_filter or 'all'}) deleted")
+        elif field == 'replaced':
+            old_dise = str(data.get('oldDise', '')).strip()
+            old_project = str(data.get('oldProject', '')).strip()
+            if not old_dise or not old_project:
+                self._respond(400, {'error': 'Original DISE and project are required for replacement'})
+                return
+            try:
+                school_obj = json.loads(new_value)
+            except Exception as pe:
+                self._respond(400, {'error': f'Invalid replacement school JSON payload: {pe}'})
+                return
+            if not isinstance(school_obj, dict) or str(school_obj.get('dise', '')).strip() != dise:
+                self._respond(400, {'error': 'Replacement school DISE does not match request'})
+                return
+
+            # Build the complete replacement in memory, then write the JSON
+            # file once. A failed request therefore cannot leave the original
+            # school deleted without its replacement.
+            old_entries = db.get(old_dise, [])
+            if not isinstance(old_entries, list):
+                old_entries = [old_entries]
+            remaining_old = [x for x in old_entries if str(x.get('project')).strip().upper() != old_project.upper()]
+            if len(remaining_old) == len(old_entries):
+                self._respond(404, {'error': f'Original school {old_dise}/{old_project} not found'})
+                return
+            if remaining_old:
+                db[old_dise] = remaining_old
+            else:
+                db.pop(old_dise, None)
+
+            new_entries = db.get(dise, [])
+            if not isinstance(new_entries, list):
+                new_entries = [new_entries]
+            new_project = str(school_obj.get('project', '')).strip().upper()
+            new_entries = [x for x in new_entries if str(x.get('project')).strip().upper() != new_project]
+            new_entries.append(school_obj)
+            db[dise] = new_entries
+            updated = 1
+            print(f"  [REPLACE] School {old_dise}/{old_project} replaced with {dise}/{school_obj.get('project')}")
         elif field == 'added':
             try:
                 school_obj = json.loads(new_value)

@@ -479,6 +479,17 @@ function doPost(e) {
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
+    if (data.action === 'replace_school_record') {
+      var authErrSchoolReplace = requireAdminAuth_(data, true);
+      if (authErrSchoolReplace) return ContentService.createTextOutput(JSON.stringify(authErrSchoolReplace))
+                                                      .setMimeType(ContentService.MimeType.JSON);
+      var replacement = replaceSchoolRecord(ss, data);
+      if (replacement.error) return ContentService.createTextOutput(JSON.stringify(replacement))
+                                                    .setMimeType(ContentService.MimeType.JSON);
+      return ContentService.createTextOutput(JSON.stringify({ status: 'ok' }))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+
     if (data.action === 'update_school_complaint_status') {
       var authErrS = requireAdminAuth_(data, false); // any admin can update
       if (authErrS) return ContentService.createTextOutput(JSON.stringify(authErrS))
@@ -2132,7 +2143,7 @@ function saveMasterData(ss, data) {
   sheet.getRange(1, 1).setValue(JSON.stringify(data));
 }
 
-function updateSchoolField(ss, update) {
+function getSchoolUpdatesSheet_(ss) {
   var sheet = ss.getSheetByName('SchoolUpdates');
   if (!sheet) {
     sheet = ss.insertSheet('SchoolUpdates');
@@ -2140,14 +2151,52 @@ function updateSchoolField(ss, update) {
     sheet.getRange(1, 1, 1, 6).setBackground('#1a56db').setFontColor('#ffffff').setFontWeight('bold');
     sheet.setFrozenRows(1);
   }
-  sheet.appendRow([
-    update.dise || '',
-    update.field || '',
-    update.newValue || '',
-    update.oldValue || '',
-    new Date().toISOString(),
-    update.project || ''
+  return sheet;
+}
+
+function updateSchoolFields_(ss, updates) {
+  if (!Array.isArray(updates) || !updates.length) return;
+  var sheet = getSchoolUpdatesSheet_(ss);
+  var timestamp = new Date().toISOString();
+  var rows = updates.map(function(update) {
+    return [
+      update.dise || '',
+      update.field || '',
+      update.newValue || '',
+      update.oldValue || '',
+      timestamp,
+      update.project || ''
+    ];
+  });
+  sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, 6).setValues(rows);
+}
+
+function updateSchoolField(ss, update) {
+  updateSchoolFields_(ss, [update]);
+}
+
+function replaceSchoolRecord(ss, data) {
+  var oldDise = String(data.oldDise || '').trim();
+  var oldProject = String(data.oldProject || '').trim();
+  var record = data.newRecord;
+  if (!oldDise || !oldProject || !record || typeof record !== 'object') {
+    return { status: 'error', error: true, message: 'Original school identity and replacement record are required' };
+  }
+  var newDise = String(record.dise || '').trim();
+  var newProject = String(record.project || '').trim();
+  var newSchool = String(record.school || record.name || '').trim();
+  if (!newDise || !newProject || !newSchool) {
+    return { status: 'error', error: true, message: 'Replacement school DISE, project, and name are required' };
+  }
+
+  // One range write publishes the delete/add pair together while the request
+  // lock is held. Clients never need to send a destructive request before the
+  // replacement record has passed validation.
+  updateSchoolFields_(ss, [
+    { dise: oldDise, field: 'deleted', oldValue: oldProject, project: oldProject },
+    { dise: newDise, field: 'added', newValue: JSON.stringify(record), project: newProject }
   ]);
+  return { status: 'ok' };
 }
 
 function getSchoolUpdates(ss) {

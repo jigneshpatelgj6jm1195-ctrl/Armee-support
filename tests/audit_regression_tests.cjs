@@ -212,6 +212,22 @@ async function test(name, fn) {
     assert.equal(s.rows.length, 2);
   });
 
+  await test('school identity replacement records delete and add together after validation', () => {
+    const c = makeContext();
+    const ss = makeSpreadsheet([]);
+    const out = c.replaceSchoolRecord(ss, {
+      oldDise: 'OLD-DISE',
+      oldProject: 'ICT',
+      newRecord: { dise: 'NEW-DISE', project: 'GK', school: 'Replacement School' },
+    });
+    const updates = ss.getSheetByName('SchoolUpdates');
+    assert.equal(out.status, 'ok');
+    assert.equal(updates.rows.length, 3);
+    assert.deepEqual(JSON.parse(JSON.stringify(updates.rows[1].slice(0, 2))), ['OLD-DISE', 'deleted']);
+    assert.deepEqual(JSON.parse(JSON.stringify(updates.rows[2].slice(0, 2))), ['NEW-DISE', 'added']);
+    assert.equal(c.replaceSchoolRecord(ss, { oldDise: 'OLD-DISE', oldProject: 'ICT', newRecord: { dise: '', project: 'GK' } }).status, 'error');
+  });
+
   await test('master save migrates plaintext passwords to non-exported hashes', () => {
     const c = makeContext();
     const existing = {
@@ -744,6 +760,16 @@ async function test(name, fn) {
     assert.match(block, /postJsonWithDeadline\([\s\S]*?action: 'update_school'/);
     assert.match(block, /timeoutMs: 15000/);
     assert.match(block, /timeoutMs: 30000/);
+    assert.doesNotMatch(block, /await fetch\(/);
+  });
+
+  await test('school identity edits use one replacement request instead of delete then add', () => {
+    const block = extractBlock(adminSource, 'async function submitSchoolModal()');
+    assert.match(block, /action: 'replace_school_record'/);
+    assert.match(block, /field: 'replaced'/);
+    assert.match(block, /oldDise: origDise/);
+    assert.match(block, /oldProject: origProj/);
+    assert.equal((block.match(/postJsonWithDeadline/g) || []).length, 4);
     assert.doesNotMatch(block, /await fetch\(/);
   });
 
