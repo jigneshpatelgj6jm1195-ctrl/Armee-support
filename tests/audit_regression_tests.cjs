@@ -655,6 +655,13 @@ async function test(name, fn) {
     assert.match(adminSource, /id="complaintsLoadNotice"/);
   });
 
+  await test('production complaint failures do not request the intentionally absent local JSON fallback', () => {
+    const block = extractBlock(adminSource, 'async function loadComplaints()');
+    assert.match(block, /if \(!isLocalhost\) \{\s*restorePriorData\(\);/);
+    assert.match(block, /Production calls cannot be loaded while the browser is offline/);
+    assert.equal((block.match(/local_complaints:fallback/g) || []).length, 1);
+  });
+
   await test('consolidated dashboard does not treat one department page as complete data', () => {
     const block = extractBlock(adminSource, 'async function loadUnifiedDashboard()');
     assert.match(block, /deptUsesServerPaging \? unifiedDepartmentRows : deptList/);

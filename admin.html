@@ -2701,6 +2701,21 @@ async function loadComplaints() {
     notice.textContent = message || '';
     notice.style.display = message ? '' : 'none';
   };
+  const restorePriorData = () => {
+    if (previousComplaints.length || previousSchoolComplaints.length) {
+      complaintsList = previousComplaints;
+      window.parentComplaintsList = previousComplaints;
+      window.parentSchoolComplaintsList = previousSchoolComplaints;
+      const message = 'Could not refresh live calls. Showing the last successfully loaded data.';
+      setLoadNotice(message);
+      showToast('⚠️ ' + message, 'warn');
+    } else {
+      complaintsList = [];
+      window.parentComplaintsList = [];
+      window.parentSchoolComplaintsList = [];
+      setLoadNotice('Could not load calls. The displayed zero values are unavailable data, not confirmed zero calls. Use Retry after checking the connection.');
+    }
+  };
   setLoadNotice('');
   logToDebug(`loadComplaints() initiated (isLocalhost = ${isLocalhost}, onLine = ${navigator.onLine})`, 'info');
   try {
@@ -2745,8 +2760,8 @@ async function loadComplaints() {
       } else if (!Array.isArray(window.parentSchoolComplaintsList)) {
         window.parentSchoolComplaintsList = [];
       }
-    } else {
-      logToDebug(`Fetching local/offline complaints from /complaints.json...`, 'api');
+    } else if (isLocalhost) {
+      logToDebug(`Fetching local complaints from /complaints.json...`, 'api');
       const data = await adminApi.request('/complaints.json', { timeoutMs: 5000, attempts: 1, dedup: true, cacheKey: 'local_complaints', prefix: 'LOCAL' });
       const sizeKB = (new Blob([JSON.stringify(data)]).size / 1024).toFixed(2);
       document.getElementById('debugResponseSize').textContent = sizeKB + ' KB';
@@ -2755,13 +2770,17 @@ async function loadComplaints() {
       window.parentComplaintsList = complaintsList;
       window.parentSchoolComplaintsList = [];
       logToDebug(`Loaded ${complaintsList.length} complaints from local JSON.`, 'success');
+    } else {
+      throw new Error('Production calls cannot be loaded while the browser is offline.');
     }
   } catch (e) {
     console.error('Failed to load live complaints:', e);
     logToDebug(`Complaints loading failed: ${e.message}`, 'error');
-    showToast('⚠️ Live data fetch error: ' + e.message + '. Trying offline fallback...', 'warn');
-    try {
-      logToDebug(`Attempting fallback load from local /complaints.json...`, 'info');
+    if (!isLocalhost) {
+      restorePriorData();
+    } else try {
+      showToast('⚠️ Local data fetch error: ' + e.message + '. Retrying once…', 'warn');
+      logToDebug(`Retrying local /complaints.json...`, 'info');
       const data = await adminApi.request('/complaints.json', { timeoutMs: 5000, attempts: 1, dedup: true, cacheKey: 'local_complaints:fallback', prefix: 'LOCAL' });
       const sizeKB = (new Blob([JSON.stringify(data)]).size / 1024).toFixed(2);
       document.getElementById('debugResponseSize').textContent = sizeKB + ' KB';
@@ -2770,21 +2789,9 @@ async function loadComplaints() {
       window.parentSchoolComplaintsList = [];
       logToDebug(`Fallback loaded ${complaintsList.length} complaints from local JSON.`, 'success');
     } catch (fallbackErr) {
-      console.error('Offline fallback failed:', fallbackErr);
-      logToDebug(`Offline fallback failed: ${fallbackErr.message}`, 'error');
-      if (previousComplaints.length || previousSchoolComplaints.length) {
-        complaintsList = previousComplaints;
-        window.parentComplaintsList = previousComplaints;
-        window.parentSchoolComplaintsList = previousSchoolComplaints;
-        const message = 'Could not refresh live calls. Showing the last successfully loaded data.';
-        setLoadNotice(message);
-        showToast('⚠️ ' + message, 'warn');
-      } else {
-        complaintsList = [];
-        window.parentComplaintsList = [];
-        window.parentSchoolComplaintsList = [];
-        setLoadNotice('Could not load calls. The displayed zero values are unavailable data, not confirmed zero calls. Use Retry after checking the connection.');
-      }
+      console.error('Local fallback failed:', fallbackErr);
+      logToDebug(`Local fallback failed: ${fallbackErr.message}`, 'error');
+      restorePriorData();
     }
   }
   renderDashboard();
