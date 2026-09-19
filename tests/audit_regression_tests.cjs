@@ -774,6 +774,17 @@ async function test(name, fn) {
     assert.doesNotMatch(singleBlock, /await fetch\(/);
   });
 
+  await test('school DISE and project maintenance updates use bounded confirmed requests', () => {
+    const diseBlock = extractBlock(adminSource, 'async function promptUpdateDiseCode(srNo, currentDise, schoolName)');
+    const healBlock = extractBlock(adminSource, 'async function autoHealSchoolDiseCodes()');
+    const projectBlock = extractBlock(adminSource, 'async function runFixProjectCodes()');
+    for (const block of [diseBlock, healBlock, projectBlock]) {
+      assert.match(block, /postJsonWithDeadline\(/);
+      assert.match(block, /timeoutMs: 30000/);
+      assert.doesNotMatch(block, /await fetch\(/);
+    }
+  });
+
   await test('complaint deletion changes local data only after a confirmed server response', () => {
     const block = extractBlock(adminSource, 'async function deleteComplaint(origIndex)');
     assert.match(block, /const updatedComplaints = complaintsList\.filter/);

@@ -3707,16 +3707,15 @@ async function promptUpdateDiseCode(srNo, currentDise, schoolName) {
   const token = typeof adminAuthToken === 'function' ? adminAuthToken() : '';
   try {
     showToast('⏳ Updating DISE code...', 'info');
-    const res = await fetch(GOOGLE_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({
+    const out = await postJsonWithDeadline(
+      GOOGLE_SCRIPT_URL,
+      {
         action: 'update_school_complaint_dise_bulk',
         updates: [{ srNo: srNo, dise: newDise }],
         authToken: token
-      })
-    });
-    const out = await res.json();
+      },
+      { timeoutMs: 30000 }
+    );
     if (out.status === 'ok') {
       showToast('✅ DISE Code updated successfully!', 'success');
       await loadComplaints();
@@ -3765,16 +3764,15 @@ async function autoHealSchoolDiseCodes() {
 
   console.log(`[AUTO-HEAL] Sending ${Object.keys(nameMap).length} targeted school name→DISE mappings to backend...`);
   try {
-    const res = await fetch(GOOGLE_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({
+    const out = await postJsonWithDeadline(
+      GOOGLE_SCRIPT_URL,
+      {
         action: 'heal_school_dise_by_name',
         nameMap: nameMap,
         authToken: adminAuthToken()
-      })
-    });
-    const out = await res.json();
+      },
+      { timeoutMs: 30000 }
+    );
     if (out.status === 'ok') {
       if (out.updatedCount > 0) {
         logToDebug(`[AUTO-HEAL] Healed ${out.updatedCount} blank DISE codes in Google Sheet!`, 'success');
@@ -3795,12 +3793,11 @@ async function runFixProjectCodes() {
   if (!confirm('This will update the Project column for ALL rows in SchoolComplaintMaster:\n\n  IFP / Laptop  →  GK\n  CPU / TFT     →  ICT\n\nProceed?')) return;
   showToast('⏳ Fixing Project codes on Google Sheet...', 'info');
   try {
-    const res = await fetch(GOOGLE_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ action: 'fix_school_project_by_equipment', authToken: adminAuthToken() })
-    });
-    const out = await res.json();
+    const out = await postJsonWithDeadline(
+      GOOGLE_SCRIPT_URL,
+      { action: 'fix_school_project_by_equipment', authToken: adminAuthToken() },
+      { timeoutMs: 30000 }
+    );
     if (out.status === 'ok') {
       showToast(`✅ Fixed ${out.updatedCount} Project values in Google Sheet!`, 'success');
       logToDebug(`[FIX PROJECT] Updated ${out.updatedCount} rows.`, 'success');
