@@ -2955,37 +2955,29 @@ async function saveAll() {
 
   if (local) {
     try {
-      const res = await fetch('/update_master', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(masterDataForBrowserCache(masterData)),
+      const out = await postJsonWithDeadline('/update_master', masterDataForBrowserCache(masterData), {
+        timeoutMs: 15000,
+        headers: { 'Content-Type': 'application/json' }
       });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
+      if (!out || !out.ok) throw new Error((out && out.error) || 'Local server rejected the master data');
       masterSynced = true;
       clearMasterSecretsInPlace(masterData);
     } catch (e) {
       syncErrors.push('master data: ' + e.message);
     }
     try {
-      const res = await fetch('/update_complaints', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(complaintsList),
+      const out = await postJsonWithDeadline('/update_complaints', complaintsList, {
+        timeoutMs: 15000,
+        headers: { 'Content-Type': 'application/json' }
       });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
+      if (!out || !out.ok) throw new Error((out && out.error) || 'Local server rejected the complaints');
       complaintsSynced = true;
     } catch (e) {
       syncErrors.push('complaints: ' + e.message);
     }
   } else if (GOOGLE_SCRIPT_URL && navigator.onLine) {
     const postAndConfirm = async payload => {
-      const res = await fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const out = await res.json();
+      const out = await postJsonWithDeadline(GOOGLE_SCRIPT_URL, payload, { timeoutMs: 45000 });
       if (!out || out.status !== 'ok') throw new Error((out && out.message) || 'Server rejected the save');
       return out;
     };

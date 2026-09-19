@@ -551,12 +551,21 @@ async function test(name, fn) {
       updateSaveBar() {},
       showToast: (message, type) => messages.push({ message, type }),
       fetch: async () => { throw new Error('synthetic network failure'); },
+      postJsonWithDeadline: async () => { throw new Error('synthetic network failure'); },
     });
     vm.runInContext(extractBlock(adminSource, 'async function saveAll'), context);
     await vm.runInContext('saveAll()', context);
     assert.equal(context.isDirty, true);
     assert.equal(messages.some(m => m.type === 'success'), false);
     assert.equal(messages.some(m => m.type === 'warn'), true);
+  });
+
+  await test('save data uses bounded confirmed requests for local and live writes', () => {
+    const block = extractBlock(adminSource, 'async function saveAll()');
+    assert.match(block, /postJsonWithDeadline\('\/update_master'/);
+    assert.match(block, /postJsonWithDeadline\('\/update_complaints'/);
+    assert.match(block, /postJsonWithDeadline\(GOOGLE_SCRIPT_URL, payload, \{ timeoutMs: 45000 \}\)/);
+    assert.doesNotMatch(block, /const res = await fetch\(/);
   });
 
   await test('downloadable source contains no embedded import or fallback admin secret', () => {
