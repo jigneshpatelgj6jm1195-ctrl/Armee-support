@@ -597,6 +597,44 @@ async function test(name, fn) {
     assert.doesNotMatch(block, /get_department_complaints_list&authToken/);
   });
 
+  await test('production department client requests a scoped summary then one bounded page', async () => {
+    const block = extractBlock(adminSource, 'const departmentApi = {');
+    const requests = [];
+    const c = vm.createContext({
+      URLSearchParams,
+      Date,
+      currentUser: { email: 'admin@example.test' },
+      deptList: [], deptDash: null, deptDrillFilter: null, deptPageSize: 50, deptCurrentPage: 1,
+      deptSortKey: 'createdDate', deptSortOrder: 'desc',
+      deptPageMeta: null, deptTodayFlow: [], deptTrendData: [], deptUsesServerPaging: false,
+      DEPT_CACHE_STORAGE_PREFIX: 'test:', DEPT_CACHE_MAX_AGE_MS: 900000,
+      GOOGLE_SCRIPT_URL: 'https://backend.example.test/exec',
+      document: { getElementById: id => ({ value: id === 'todayFlowDatePicker' ? '2026-09-19' : '' }) },
+      localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+      isLocal: () => false,
+      adminAuthToken: () => 'test-token',
+      adminApi: { request: async url => {
+        requests.push(url);
+        if (url.includes('get_department_dashboard_summary')) {
+          return { status: 'ok', dashboard: { pendency: {} }, todayFlow: [], trend: [] };
+        }
+        return { status: 'ok', items: [{ ticketId: 'T-1' }], total: 1, page: 1, pageSize: 50, totalPages: 1 };
+      } },
+      filterByUserDistricts: rows => rows,
+      logToDebug() {}, console,
+    });
+    vm.runInContext("function deptCacheStorageKey(){return 'test:admin';} function deptLocalDateKey(){return '2026-09-19';}\n" + block, c);
+    await vm.runInContext('departmentApi.fetchDepartmentComplaints()', c);
+    assert.equal(requests.length, 2);
+    assert.match(requests[0], /action=get_department_dashboard_summary/);
+    assert.match(requests[0], /flowDate=2026-09-19/);
+    assert.match(requests[1], /action=get_department_complaints_page/);
+    assert.match(requests[1], /pageSize=50/);
+    assert.match(requests[1], /activeOnly=true/);
+    assert.equal(vm.runInContext('deptList[0].ticketId', c), 'T-1');
+    assert.equal(vm.runInContext('deptUsesServerPaging', c), true);
+  });
+
   await test('large complaint tables render a bounded page', () => {
     const complaintsBlock = extractBlock(adminSource, 'function renderComplaintsTable');
     const unifiedBlock = extractBlock(adminSource, 'function renderUnifiedList');
