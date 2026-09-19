@@ -709,11 +709,23 @@ async function test(name, fn) {
 
   await test('pending-OTP finalization uses the authenticated department resolution POST', () => {
     const block = extractBlock(adminSource, 'async function finalizePendingOtp(ticketId)');
-    assert.match(block, /method: 'POST'/);
+    assert.match(block, /postJsonWithDeadline\(/);
     assert.match(block, /action: 'resolve_department_complaint'/);
     assert.match(block, /resolutionAction: 'finalize_otp'/);
     assert.match(block, /authToken: adminAuthToken\(\)/);
     assert.doesNotMatch(block, /action=finalize_pending_otp/);
+  });
+
+  await test('live login and pending-OTP finalization use a bounded confirmed JSON POST', () => {
+    const loginBlock = extractBlock(adminSource, 'async function submitAdminLogin()');
+    const otpBlock = extractBlock(adminSource, 'async function finalizePendingOtp(ticketId)');
+    const start = adminSource.indexOf('async function postJsonWithDeadline(url, payload, options = {})');
+    const postBlock = adminSource.slice(start, adminSource.indexOf('/* ─────────────── DEPARTMENT DASHBOARD', start));
+    assert.ok(start >= 0, 'postJsonWithDeadline helper must exist');
+    assert.match(loginBlock, /postJsonWithDeadline\([\s\S]*?timeoutMs: 20000/);
+    assert.match(otpBlock, /postJsonWithDeadline\([\s\S]*?timeoutMs: 30000/);
+    assert.match(postBlock, /const text = await response\.text\(\)/);
+    assert.match(postBlock, /Request timed out after/);
   });
 
   await test('consolidated dashboard does not treat one department page as complete data', () => {

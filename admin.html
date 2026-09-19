@@ -6188,12 +6188,11 @@ async function submitAdminLogin() {
 
   if (!isLocal() && GOOGLE_SCRIPT_URL && navigator.onLine) {
     try {
-      const res = await fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({ action: 'login', email: email, password: pass }),
-      });
-      const out = await res.json();
+      const out = await postJsonWithDeadline(
+        GOOGLE_SCRIPT_URL,
+        { action: 'login', email: email, password: pass },
+        { timeoutMs: 20000 }
+      );
       if (out.status === 'ok' && out.user) {
         user = out.user;
         window.__adminAuthToken = out.authToken || '';
@@ -7984,6 +7983,36 @@ async function fetchJsonWithRetry(url, attempts) {
   return adminApi.request(url, { attempts: attempts || 3, dedup: true });
 }
 
+// POST requests change operational data or authenticate a user, so they must
+// receive a confirmed JSON response. Keep the deadline active through parsing
+// just as the read client does, otherwise a stalled response body can leave a
+// button disabled forever.
+async function postJsonWithDeadline(url, payload, options = {}) {
+  const timeoutMs = options.timeoutMs || 30000;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'text/plain' }, options.headers || {}),
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    const text = await response.text();
+    if (!response.ok) throw new Error('Server returned HTTP ' + response.status);
+    try {
+      return JSON.parse(text);
+    } catch (_) {
+      throw new Error('Server returned an invalid response');
+    }
+  } catch (e) {
+    if (e && e.name === 'AbortError') throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s`);
+    throw e;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 /* ─────────────── DEPARTMENT DASHBOARD SERVICE & SMART CACHING ─────────────── */
 let deptDash = null, deptList = [], deptDrillFilter = null;
 let deptPageSize = 50, deptCurrentPage = 1, deptSortKey = 'createdDate', deptSortOrder = 'desc';
@@ -9014,10 +9043,9 @@ async function finalizePendingOtp(ticketId) {
   btn.disabled = true;
   btn.textContent = '⏳ Closing…';
   try {
-    const response = await fetch(GOOGLE_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({
+    const res = await postJsonWithDeadline(
+      GOOGLE_SCRIPT_URL,
+      {
         action: 'resolve_department_complaint',
         ticketId: ticketId,
         resolutionAction: 'finalize_otp',
@@ -9025,10 +9053,9 @@ async function finalizePendingOtp(ticketId) {
         resolvedBy: (currentUser && currentUser.name) || 'admin',
         source: 'admin_portal',
         authToken: adminAuthToken()
-      })
-    });
-    if (!response.ok) throw new Error('Server returned HTTP ' + response.status);
-    const res = await response.json();
+      },
+      { timeoutMs: 30000 }
+    );
     if (!res || res.status !== 'ok') throw new Error((res && res.message) || 'Server rejected OTP finalization');
     showToast('✅ Ticket ' + ticketId + ' closed with OTP!', 'success');
     loadDeptDashboard();
