@@ -728,6 +728,16 @@ async function test(name, fn) {
     assert.match(postBlock, /Request timed out after/);
   });
 
+  await test('complaint deletion changes local data only after a confirmed server response', () => {
+    const block = extractBlock(adminSource, 'async function deleteComplaint(origIndex)');
+    assert.match(block, /const updatedComplaints = complaintsList\.filter/);
+    assert.match(block, /postJsonWithDeadline\('\/update_complaints', updatedComplaints/);
+    assert.match(block, /action: 'delete_complaint'/);
+    assert.match(block, /result\.status !== 'ok'/);
+    assert.match(block, /complaintsList = updatedComplaints/);
+    assert.doesNotMatch(block, /mode: 'no-cors'/);
+  });
+
   await test('archive operations use bounded requests and do not label a failed list load as empty data', () => {
     const listBlock = extractBlock(adminSource, 'async function renderArchiveManager()');
     const archiveBlock = extractBlock(adminSource, 'async function archiveDataRange()');

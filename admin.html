@@ -6573,59 +6573,58 @@ async function deleteComplaint(origIndex) {
     return;
   }
 
-  // Remove from memory
-  complaintsList.splice(origIndex, 1);
+  const updatedComplaints = complaintsList.filter((_, index) => index !== origIndex);
 
-  // Re-render UI immediately for real-time visual update
-  renderDashboard();
-  renderComplaintsTable();
-  markDirty();
-
-  // Save to localStorage immediately
-  try {
-    localStorage.setItem(LS_COMPLAINTS_KEY, JSON.stringify(complaintsList));
-  } catch (err) {
-    showToast('⚠️ Could not update local storage cache: ' + err.message, 'warn');
-  }
-
-  // Sync with backend
+  // Confirm the server-side delete before changing the screen or the local
+  // cache. An optimistic removal followed by an opaque request can make a
+  // live complaint disappear from the operator's view even when it was never
+  // deleted from Google Sheets.
   const local = isLocal();
   if (local) {
     try {
-      const res = await fetch('/update_complaints', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(complaintsList),
+      const result = await postJsonWithDeadline('/update_complaints', updatedComplaints, {
+        timeoutMs: 15000,
+        headers: { 'Content-Type': 'application/json' }
       });
-      if (res.ok) {
-        showToast('🗑️ Complaint deleted successfully locally!', 'success');
-      } else {
-        throw new Error('HTTP ' + res.status);
-      }
+      if (!result || !result.ok) throw new Error((result && result.error) || 'Local server rejected the delete');
     } catch (err) {
-      showToast('⚠️ Local server sync failed: ' + err.message, 'warn');
+      showToast('❌ Complaint was not deleted: ' + err.message, 'danger');
+      return;
     }
   } else if (GOOGLE_SCRIPT_URL && navigator.onLine) {
     try {
       showToast('📡 Deleting complaint from Google Sheet...', 'info');
-      // POST deletion action directly to Google Apps Script
-      await fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({ 
+      const result = await postJsonWithDeadline(
+        GOOGLE_SCRIPT_URL,
+        {
           action: 'delete_complaint',
           caseId: c.caseId,
           submittedAt: c.submittedAt,
           dise: c.dise,
           authToken: adminAuthToken()
-        }),
-      });
-      showToast('🗑️ Complaint deleted from Google Sheet!', 'success');
+        },
+        { timeoutMs: 30000 }
+      );
+      if (!result || result.status !== 'ok') throw new Error((result && result.message) || 'Complaint was not found or could not be deleted');
     } catch (err) {
-      showToast('⚠️ Sync to Google Sheet failed: ' + err.message, 'warn');
+      showToast('❌ Complaint was not deleted: ' + err.message, 'danger');
+      return;
     }
+  } else {
+    showToast('⚠️ Complaint was not deleted because the server is unavailable.', 'warn');
+    return;
   }
+
+  complaintsList = updatedComplaints;
+  try {
+    localStorage.setItem(LS_COMPLAINTS_KEY, JSON.stringify(complaintsList));
+  } catch (err) {
+    showToast('⚠️ Complaint deleted, but the local cache could not be updated: ' + err.message, 'warn');
+  }
+  renderDashboard();
+  renderComplaintsTable();
+  markDirty();
+  showToast(local ? '🗑️ Complaint deleted successfully locally!' : '🗑️ Complaint deleted from Google Sheet!', 'success');
 }
 
 /* ─────────────── EDIT COMPLAINT MODAL CONTROLLERS ─────────────── */
