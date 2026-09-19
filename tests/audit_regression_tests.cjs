@@ -664,6 +664,14 @@ async function test(name, fn) {
     assert.match(block, /Retained the previous school list after a failed refresh/);
   });
 
+  await test('branch summary labels a failed mapping refresh as unavailable instead of zero data', () => {
+    const loadBlock = extractBlock(adminSource, 'async function ensureBranchDataLoaded()');
+    const renderBlock = extractBlock(adminSource, 'async function renderBranchSummary(complaints)');
+    assert.match(loadBlock, /branchLoadError = 'Branch mapping data is temporarily unavailable/);
+    assert.match(loadBlock, /Branch totals are not shown as zero/);
+    assert.match(renderBlock, /if \(branchLoadError\)/);
+  });
+
   await test('production complaint failures do not request the intentionally absent local JSON fallback', () => {
     const block = extractBlock(adminSource, 'async function loadComplaints()');
     assert.match(block, /if \(!isLocalhost\) \{\s*restorePriorData\(\);/);

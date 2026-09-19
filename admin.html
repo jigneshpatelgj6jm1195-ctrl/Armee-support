@@ -3891,6 +3891,7 @@ function renderChart(id, config) {
 }
 
 let branchLoadingPromise = null;
+let branchLoadError = '';
 async function fetchRequiredArray(url, label) {
   const data = await adminApi.request(url, {
     timeoutMs: 12000,
@@ -3912,6 +3913,7 @@ async function ensureBranchDataLoaded() {
   if (isLocal()) {
     bmBranches = [];
     bmAliases = [];
+    branchLoadError = '';
     window.parentBmBranches = bmBranches;
     window.parentBmAliases = bmAliases;
     return;
@@ -3925,6 +3927,7 @@ async function ensureBranchDataLoaded() {
       ]);
       bmBranches = Array.isArray(branches) ? branches : [];
       bmAliases = Array.isArray(aliases) ? aliases : [];
+      branchLoadError = '';
       window.parentBmBranches = bmBranches;
       window.parentBmAliases = bmAliases;
       logToDebug(`Loaded ${bmBranches.length} branches and ${bmAliases.length} alias mappings for dashboard summary.`, 'success');
@@ -3932,6 +3935,8 @@ async function ensureBranchDataLoaded() {
       if (typeof renderSchoolDash === 'function') renderSchoolDash();
     } catch (e) {
       console.error('Failed to load branch mapping data:', e);
+      branchLoadError = 'Branch mapping data is temporarily unavailable. Branch totals are not shown as zero.';
+      logToDebug(`Branch mapping data loading failed: ${e.message}`, 'warning');
     } finally {
       branchLoadingPromise = null;
     }
@@ -3961,6 +3966,11 @@ async function renderBranchSummary(complaints) {
   if (!body) return;
   
   await ensureBranchDataLoaded();
+
+  if (branchLoadError) {
+    body.innerHTML = `<tr><td colspan="2" style="text-align:center;color:#b45309;">⚠️ ${esc(branchLoadError)}</td></tr>`;
+    return;
+  }
   
   const activeBranches = bmBranches.filter(b => b.status === 'Active');
   if (activeBranches.length === 0) {
