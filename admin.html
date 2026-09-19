@@ -5676,7 +5676,7 @@ async function renderArchiveManager() {
     }
     logToDebug(`Archive list loading failed: ${e.message}`, 'warning');
   }
-  
+
   if (archiveLoadError && archiveList.length === 0) {
     tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#b45309;">⚠️ ${esc(archiveLoadError)}</td></tr>`;
     return;
