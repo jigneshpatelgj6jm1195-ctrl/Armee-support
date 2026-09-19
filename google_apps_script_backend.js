@@ -1720,6 +1720,19 @@ function handleLogin(ss, data) {
   var pass  = String(data.password || '');
   if (!email || !pass) return { status: 'error', message: 'Email and password required' };
 
+  // The original Super Admin account is held in Script Properties, never in
+  // browser code or the deployed source. It remains available while regular
+  // Access Control accounts are maintained in MasterData.
+  var bootstrapAdmin = getBootstrapSuperAdmin_();
+  if (bootstrapAdmin && email === bootstrapAdmin.email &&
+      hashPassword_(pass, bootstrapAdmin.passwordSalt) === bootstrapAdmin.passwordHash) {
+    var bootstrapUser = {
+      id: 'USR100', name: 'Super Admin', email: bootstrapAdmin.email,
+      role: 'super_admin', assignedDistricts: ['ALL'], status: 'active'
+    };
+    return { status: 'ok', user: bootstrapUser, authToken: issueAuthToken_(bootstrapUser) };
+  }
+
   var storedMaster = getMasterData(ss);
   var users = storedMaster.accessUsers || [];
   for (var i = 0; i < users.length; i++) {
@@ -1745,6 +1758,15 @@ function handleLogin(ss, data) {
     }
   }
   return { status: 'error', message: 'Invalid email, password, or account inactive' };
+}
+
+function getBootstrapSuperAdmin_() {
+  var props = PropertiesService.getScriptProperties();
+  var email = String(props.getProperty('BOOTSTRAP_SUPER_ADMIN_EMAIL') || '').trim().toLowerCase();
+  var passwordHash = String(props.getProperty('BOOTSTRAP_SUPER_ADMIN_PASSWORD_HASH') || '');
+  var passwordSalt = String(props.getProperty('BOOTSTRAP_SUPER_ADMIN_PASSWORD_SALT') || '');
+  if (!email || !passwordHash || !passwordSalt) return null;
+  return { email: email, passwordHash: passwordHash, passwordSalt: passwordSalt };
 }
 
 function hashPassword_(password, salt) {

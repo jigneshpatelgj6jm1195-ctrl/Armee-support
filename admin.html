@@ -44,6 +44,27 @@ body {
 }
 #localFileWarning, .header, .footer { grid-column: 1 / -1; }
 
+/* The Admin Panel is private. Until a browser session has been accepted, do
+   not render the dashboard, menu, totals, or empty placeholders behind the
+   login form. This also prevents a slow first request from briefly exposing
+   the application shell to an unauthenticated visitor. */
+body.auth-pending {
+  display: block;
+  background: #f4f7f5;
+}
+body.auth-pending > :not(#adminLoginModal):not(.toast):not(script) {
+  display: none !important;
+}
+body.auth-pending > #adminLoginModal {
+  display: flex;
+  background: linear-gradient(135deg, #0b4026, #0e7c45);
+  z-index: 1000;
+}
+body.auth-pending > #adminLoginModal .modal {
+  max-width: 430px;
+  padding: 34px;
+}
+
 /* ═══════════════ BRAND HEADER ═══════════════ */
 .header {
   background: var(--grad);
@@ -444,7 +465,7 @@ tr:hover td { background: #f8fafc; }
 }
 </style>
 </head>
-<body>
+<body class="auth-pending">
 
 <!-- Local File Protocol Warning Banner -->
 <div id="localFileWarning" style="display:none; background:#fee2e2; color:#b91c1c; border-bottom:1px solid #fca5a5; padding:10px 20px; font-size:0.85rem; text-align:center; font-weight:bold; z-index:2000; position:relative;">
@@ -2361,11 +2382,11 @@ tr:hover td { background: #f8fafc; }
     </div>
     <div class="field">
       <label for="loginEmail">Email Address</label>
-      <input type="text" id="loginEmail" placeholder="Enter your email" onkeydown="if(event.key==='Enter') submitAdminLogin()" />
+      <input type="email" id="loginEmail" placeholder="Enter your email" autocomplete="username" autocapitalize="none" spellcheck="false" onkeydown="if(event.key==='Enter') submitAdminLogin()" />
     </div>
     <div class="field">
       <label for="loginPassword">Password</label>
-      <input type="password" id="loginPassword" placeholder="Enter password" onkeydown="if(event.key==='Enter') submitAdminLogin()" />
+      <input type="password" id="loginPassword" placeholder="Enter password" autocomplete="current-password" onkeydown="if(event.key==='Enter') submitAdminLogin()" />
     </div>
     <div style="height:12px;"></div>
     <button class="btn btn-primary" id="btnSubmitLogin" style="width: 100%; justify-content: center;" onclick="submitAdminLogin()">Login</button>
@@ -2459,15 +2480,17 @@ window.addEventListener('DOMContentLoaded', async () => {
     logToDebug('Running under file:// protocol. Local file requests will be blocked by browser CORS security.', 'warning');
   }
 
-  // Always load the master data first, so access users list is available for login!
-  await loadData();
-
   const session = getSession();
   if (!session) {
     showLoginModal();
     return;
   }
-  
+
+  // A valid browser session is required before *any* application data or
+  // dashboard shell becomes visible.
+  document.body.classList.remove('auth-pending');
+  await loadData();
+
   updateUserProfileUI(session);
   renderNavigationMenu();
   applyUrlModule();
@@ -6230,6 +6253,7 @@ async function submitAdminLogin() {
       timestamp: Date.now()
     };
     localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    document.body.classList.remove('auth-pending');
     closeModal('adminLoginModal');
     updateUserProfileUI(user);
     renderNavigationMenu();

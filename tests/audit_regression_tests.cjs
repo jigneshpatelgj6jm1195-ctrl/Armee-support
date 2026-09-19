@@ -265,6 +265,15 @@ async function test(name, fn) {
     assert.equal(JSON.parse(sheet.rows[0][0]).accessUsers[0].role, 'super_admin');
   });
 
+  await test('bootstrap Super Admin is protected by Script Properties, not source code', () => {
+    const loginBlock = extractBlock(backendSource, 'function handleLogin(ss, data)');
+    const bootstrapBlock = extractBlock(backendSource, 'function getBootstrapSuperAdmin_()');
+    assert.match(loginBlock, /getBootstrapSuperAdmin_\(\)/);
+    assert.match(bootstrapBlock, /PropertiesService\.getScriptProperties\(\)/);
+    assert.match(bootstrapBlock, /BOOTSTRAP_SUPER_ADMIN_PASSWORD_HASH/);
+    assert.doesNotMatch(backendSource, /fdJr-nJq5-QJJX/);
+  });
+
   await test('stable submission ID prevents duplicate after log failure', () => {
     const c = makeContext();
     const headers = vm.runInContext('HEADERS', c);
@@ -753,6 +762,16 @@ async function test(name, fn) {
     assert.match(otpBlock, /postJsonWithDeadline\([\s\S]*?timeoutMs: 30000/);
     assert.match(postBlock, /const text = await response\.text\(\)/);
     assert.match(postBlock, /Request timed out after/);
+  });
+
+  await test('Admin content stays hidden until a valid session is available', () => {
+    const initBlock = extractBlock(adminSource, "window.addEventListener('DOMContentLoaded', async () =>");
+    const loginBlock = extractBlock(adminSource, 'async function submitAdminLogin()');
+    assert.match(adminSource, /<body class="auth-pending">/);
+    assert.match(adminSource, /body\.auth-pending > :not\(#adminLoginModal\):not\(\.toast\):not\(script\)/);
+    assert.ok(initBlock.indexOf('const session = getSession()') < initBlock.indexOf('await loadData()'), 'session must be checked before loading application data');
+    assert.match(initBlock, /document\.body\.classList\.remove\('auth-pending'\);/);
+    assert.match(loginBlock, /localStorage\.setItem\(SESSION_KEY, JSON\.stringify\(session\)\);\s*document\.body\.classList\.remove\('auth-pending'\);/);
   });
 
   await test('School Master uploads use bounded requests for both local files and live records', () => {
