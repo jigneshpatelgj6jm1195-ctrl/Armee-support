@@ -3566,18 +3566,17 @@ async function bulkUpdateSchoolStatus(status) {
   const token = typeof adminAuthToken === 'function' ? adminAuthToken() : '';
   
   try {
-    const res = await fetch(GOOGLE_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({
+    const out = await postJsonWithDeadline(
+      GOOGLE_SCRIPT_URL,
+      {
         action: 'update_school_complaint_status',
         srNos: srNos,
         status: status,
         suspectedPart: chosenPartBulk,
         authToken: token
-      })
-    });
-    const out = await res.json();
+      },
+      { timeoutMs: 30000 }
+    );
     if (out.status === 'ok') {
       showToast(`✅ Successfully updated ${out.updatedCount} school complaint(s)!`, 'success');
     } else {
@@ -3656,18 +3655,17 @@ async function updateSingleSchoolStatus(srNo, status) {
 
   const token = typeof adminAuthToken === 'function' ? adminAuthToken() : '';
   try {
-    const res = await fetch(GOOGLE_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({
+    const out = await postJsonWithDeadline(
+      GOOGLE_SCRIPT_URL,
+      {
         action: 'update_school_complaint_status',
         srNos: [srNo],
         status: status,
         suspectedPart: chosenPart,
         authToken: token
-      })
-    });
-    const out = await res.json();
+      },
+      { timeoutMs: 30000 }
+    );
     if (out.status === 'ok') {
       showToast(`✅ Successfully updated school complaint status!`, 'success');
     } else {

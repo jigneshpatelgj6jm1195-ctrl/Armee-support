@@ -763,6 +763,17 @@ async function test(name, fn) {
     assert.match(emailDelete, /postJsonWithDeadline\([\s\S]*?timeoutMs: 30000/);
   });
 
+  await test('school complaint status updates use bounded confirmed requests', () => {
+    const bulkBlock = extractBlock(adminSource, 'async function bulkUpdateSchoolStatus(status)');
+    const singleBlock = extractBlock(adminSource, 'async function updateSingleSchoolStatus(srNo, status)');
+    assert.match(bulkBlock, /postJsonWithDeadline\([\s\S]*?action: 'update_school_complaint_status'/);
+    assert.match(singleBlock, /postJsonWithDeadline\([\s\S]*?action: 'update_school_complaint_status'/);
+    assert.match(bulkBlock, /timeoutMs: 30000/);
+    assert.match(singleBlock, /timeoutMs: 30000/);
+    assert.doesNotMatch(bulkBlock, /await fetch\(/);
+    assert.doesNotMatch(singleBlock, /await fetch\(/);
+  });
+
   await test('complaint deletion changes local data only after a confirmed server response', () => {
     const block = extractBlock(adminSource, 'async function deleteComplaint(origIndex)');
     assert.match(block, /const updatedComplaints = complaintsList\.filter/);
