@@ -87,6 +87,13 @@ function makeContext() {
       base64DecodeWebSafe(value) { return Array.from(Buffer.from(String(value), 'base64url')); },
       newBlob(value) { return { getDataAsString: () => bytes(value).toString('utf8') }; },
       getUuid() { uuidCounter += 1; return `00000000-0000-4000-8000-${String(uuidCounter).padStart(12, '0')}`; },
+      formatDate(value, timeZone) {
+        const parts = new Intl.DateTimeFormat('en-CA', {
+          timeZone, year: 'numeric', month: '2-digit', day: '2-digit'
+        }).formatToParts(new Date(value));
+        const part = type => parts.find(item => item.type === type).value;
+        return `${part('year')}-${part('month')}-${part('day')}`;
+      },
     },
   });
   vm.runInContext(backendSource, context);
@@ -420,6 +427,16 @@ async function test(name, fn) {
     });
     assert.equal(out.todayFlow.find(row => row.branchName === 'Two').Closed, 1);
     assert.deepEqual(JSON.parse(JSON.stringify(out.trend)), [{ createdDate: '2026-09-17', count: 2 }, { createdDate: '2026-09-18', count: 2 }]);
+  });
+
+  await test('department inflow uses the India business date for logged timestamps', () => {
+    const c = makeContext();
+    const justAfterMidnightInIndia = vm.runInContext("new Date('2026-09-18T18:30:00.000Z')", c);
+    assert.equal(c.departmentDateKey_(justAfterMidnightInIndia), '2026-09-19');
+    const out = c.getDepartmentDashboardSummary_([
+      { ticketId: 'IST-1', district: 'North', branchId: 'B1', branchName: 'One', internalStatus: 'Pending', businessDays: 0, createdDate: justAfterMidnightInIndia }
+    ], { flowDate: '2026-09-19' });
+    assert.equal(out.todayFlow[0].inflow, 1);
   });
 
   await test('department summary applies district authorization before calculating aggregates', () => {

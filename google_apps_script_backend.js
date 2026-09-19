@@ -26,6 +26,10 @@ const SHEET_TAB_NAME = 'Complaints';
 // -- DEPARTMENT COMPLAINT IMPORT (ssgujarat.org scrape/bulk-upload) --
 const DEPT_SHEET_TAB_NAME = 'DepartmentComplaints';
 const RES_SHEET_TAB_NAME = 'DepartmentResolutions';
+// Department complaints are logged and reviewed against the India business day.
+// A Sheets Date is an absolute instant, so native getDate() can otherwise move
+// a late-evening UTC value into the previous calendar day.
+const OPERATIONS_TIME_ZONE = 'Asia/Kolkata';
 // Set once via: run setImportKey("your-long-random-secret") from the Apps Script editor.
 // Any doPost with action=import_department_complaints must send the same value as importKey.
 
@@ -4144,17 +4148,19 @@ function getDepartmentComplaintsPage_(rows, parameters) {
 
 function departmentDateKey_(value) {
   if (!value) return '';
-  if (value instanceof Date && !isNaN(value.getTime())) {
-    return value.getFullYear() + '-' + ('0' + (value.getMonth() + 1)).slice(-2) + '-' + ('0' + value.getDate()).slice(-2);
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, OPERATIONS_TIME_ZONE, 'yyyy-MM-dd');
   }
   var raw = String(value).trim();
   var iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return iso[1] + '-' + iso[2] + '-' + iso[3];
+  // Plain calendar dates already express the intended business day. Timestamp
+  // values with a timezone must be converted to India time before comparison.
+  if (iso && !/(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw)) return iso[1] + '-' + iso[2] + '-' + iso[3];
   var indian = raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/);
   if (indian) return indian[3] + '-' + ('0' + indian[2]).slice(-2) + '-' + ('0' + indian[1]).slice(-2);
   var parsed = new Date(raw);
   if (isNaN(parsed.getTime())) return '';
-  return parsed.getFullYear() + '-' + ('0' + (parsed.getMonth() + 1)).slice(-2) + '-' + ('0' + parsed.getDate()).slice(-2);
+  return Utilities.formatDate(parsed, OPERATIONS_TIME_ZONE, 'yyyy-MM-dd');
 }
 
 /**
