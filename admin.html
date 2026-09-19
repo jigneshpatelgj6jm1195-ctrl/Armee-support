@@ -7509,22 +7509,15 @@ async function runAcerMapping() {
         `;
 
         try {
-          const res = await fetch(GOOGLE_SCRIPT_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify({
+          out = await postJsonWithDeadline(
+            GOOGLE_SCRIPT_URL,
+            {
               action: 'bulk_acer_mapping',
               authToken: adminAuthToken(),
               mappings: chunk
-            }),
-          });
-
-          const text = await res.text();
-          try {
-            out = JSON.parse(text);
-          } catch (jsonErr) {
-            throw new Error(`Invalid response (${text.slice(0, 80)}...)`);
-          }
+            },
+            { timeoutMs: 60000 }
+          );
 
           if (out.status !== 'ok') {
             throw new Error(out.message || 'Server rejected the mapping');

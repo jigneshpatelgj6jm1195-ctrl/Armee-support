@@ -804,6 +804,14 @@ async function test(name, fn) {
     }
   });
 
+  await test('Acer mapping batches retain retries while using bounded confirmed requests', () => {
+    const block = extractBlock(adminSource, 'async function runAcerMapping()');
+    assert.match(block, /const maxAttempts = 3/);
+    assert.match(block, /postJsonWithDeadline\([\s\S]*?action: 'bulk_acer_mapping'/);
+    assert.match(block, /timeoutMs: 60000/);
+    assert.doesNotMatch(block, /const res = await fetch\(GOOGLE_SCRIPT_URL/);
+  });
+
   await test('complaint deletion changes local data only after a confirmed server response', () => {
     const block = extractBlock(adminSource, 'async function deleteComplaint(origIndex)');
     assert.match(block, /const updatedComplaints = complaintsList\.filter/);
