@@ -749,9 +749,21 @@ async function test(name, fn) {
     const postBlock = adminSource.slice(start, adminSource.indexOf('/* ─────────────── DEPARTMENT DASHBOARD', start));
     assert.ok(start >= 0, 'postJsonWithDeadline helper must exist');
     assert.match(loginBlock, /postJsonWithDeadline\([\s\S]*?timeoutMs: 20000/);
+    assert.match(loginBlock, /postJsonWithDeadline\('\/local_login'[\s\S]*?timeoutMs: 15000/);
     assert.match(otpBlock, /postJsonWithDeadline\([\s\S]*?timeoutMs: 30000/);
     assert.match(postBlock, /const text = await response\.text\(\)/);
     assert.match(postBlock, /Request timed out after/);
+  });
+
+  await test('School Master uploads use bounded requests for both local files and live records', () => {
+    const block = extractBlock(adminSource, 'async function uploadSchoolExcel(event)');
+    const bodyHelper = extractBlock(adminSource, 'async function postBodyWithDeadline(url, body, options)');
+    assert.match(block, /postBodyWithDeadline\('\/upload_school_excel', file, \{ timeoutMs: 60000 \}\)/);
+    assert.match(block, /postJsonWithDeadline\(GOOGLE_SCRIPT_URL, \{[\s\S]*?action: 'import_school_master'/);
+    assert.match(block, /timeoutMs: 60000/);
+    assert.doesNotMatch(block, /await fetch\(/);
+    assert.match(bodyHelper, /const text = await response\.text\(\)/);
+    assert.match(bodyHelper, /Request timed out after/);
   });
 
   await test('admin delete unlock uses configured authentication with a bounded request', () => {
