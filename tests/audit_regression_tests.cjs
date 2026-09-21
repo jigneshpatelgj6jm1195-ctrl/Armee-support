@@ -133,6 +133,27 @@ async function test(name, fn) {
 }
 
 (async () => {
+  await test('slow admin refreshes never overlap and release the guard after failure', async () => {
+    let finish;
+    let loads = 0;
+    let deptLoads = 0;
+    const context = vm.createContext({
+      document: { querySelector: () => null }, currentTab: 'dept',
+      loadData: () => { loads++; return new Promise(resolve => { finish = resolve; }); },
+      loadDeptDashboard: async () => { deptLoads++; throw new Error('offline'); },
+      loadComplaints: async () => { throw new Error('Unexpected full complaint refresh'); },
+      showToast() {}
+    });
+    vm.runInContext('let refreshInProgress = false;\n' + extractBlock(adminSource, 'async function silentRefreshData()'), context);
+    const first = context.silentRefreshData();
+    await context.silentRefreshData();
+    assert.equal(loads, 1);
+    finish();
+    await first;
+    assert.equal(deptLoads, 1);
+    assert.equal(vm.runInContext('refreshInProgress', context), false);
+  });
+
   await test('archive uses Archived column and preserves serial photo formula', () => {
     const c = makeContext();
     const headers = vm.runInContext('HEADERS', c);

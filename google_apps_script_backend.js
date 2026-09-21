@@ -2539,6 +2539,7 @@ function importDepartmentComplaints(ss, data) {
 
   var now = new Date();
   var insertedRows = [];
+  var insertedResolutions = [];
   var updatedCount = 0;
   var existingRowsChanged = false;
   var duplicateInputCount = 0;
@@ -2597,7 +2598,7 @@ function importDepartmentComplaints(ss, data) {
     insertedRows.push(newRow);
 
     var owningAdmin = getOwningDistrictAdmin(ss, r.District);
-    resSheet.appendRow([ticketId, 'Pending', '', '', '', '', '', '', owningAdmin ? owningAdmin.name : '']);
+    insertedResolutions.push([ticketId, 'Pending', '', '', '', '', '', '', owningAdmin ? owningAdmin.name : '']);
 
     if (owningAdmin) {
       if (!newByAdmin[owningAdmin.email]) {
@@ -2620,6 +2621,9 @@ function importDepartmentComplaints(ss, data) {
     });
   }
 
+  if (insertedResolutions.length) {
+    resSheet.getRange(resSheet.getLastRow() + 1, 1, insertedResolutions.length, 9).setValues(insertedResolutions);
+  }
   if (existingRowsChanged) {
     sheet.getRange(2, 1, existingRows.length, DEPT_HEADERS.length).setValues(existingRows);
   }

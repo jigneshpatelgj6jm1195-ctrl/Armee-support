@@ -1416,34 +1416,41 @@ function applyMasterData(data) {
 }
 
 // ── Cross-device real-time polling ───────────────────────────────────────────
-// Polls Google Apps Script every 15 s. Fetches ONLY a lightweight version
+// Polls Google Apps Script every 5–6 minutes. Fetches ONLY a lightweight version
 // timestamp first; only pulls full data when the version actually changed.
 let _pollTimer = null;
+let _masterPollInProgress = false;
 
 function startMasterDataPolling() {
   if (isLocal() || !GOOGLE_SCRIPT_URL) return; // not needed locally
   if (_pollTimer) clearInterval(_pollTimer);
 
   _pollTimer = setInterval(async () => {
-    if (!navigator.onLine) return;
+    if (!navigator.onLine || document.hidden || _masterPollInProgress) return;
+    _masterPollInProgress = true;
+    const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(), 30000);
     try {
       // Fetch just the version (very fast — Google Apps Script returns a tiny JSON)
-      const res = await fetch(GOOGLE_SCRIPT_URL + '?action=get_master_version&t=' + Date.now());
+      const res = await fetch(GOOGLE_SCRIPT_URL + '?action=get_master_version&t=' + Date.now(), { signal: controller.signal });
       if (!res.ok) return;
       const versionData = await res.json();
       const serverVersion = versionData.v || versionData._v || '';
       if (!serverVersion || serverVersion === _masterFingerprint) return;
 
       // Version changed — fetch the full master data
-      const full = await fetch(GOOGLE_SCRIPT_URL + '?action=get_master&t=' + Date.now());
+      const full = await fetch(GOOGLE_SCRIPT_URL + '?action=get_master&t=' + Date.now(), { signal: controller.signal });
       if (!full.ok) return;
       const data = await full.json();
       if (!data || !data.equipment || data.equipment.length === 0) return;
 
       applyMasterData(data);
       showToast('🔄 Equipment list updated by admin');
-    } catch (_) {}
-  }, 300000); // every 5 minutes
+    } catch (_) {} finally {
+      clearTimeout(deadline);
+      _masterPollInProgress = false;
+    }
+  }, 300000 + Math.floor(Math.random() * 60000));
 }
 
 

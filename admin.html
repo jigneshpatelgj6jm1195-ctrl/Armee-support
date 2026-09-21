@@ -6311,14 +6311,15 @@ function filterByUserDistricts(complaints) {
 
 /* ─────────────── AUTO REFRESH ─────────────── */
 let refreshInterval = null;
+let refreshInProgress = false;
 
 function startAutoRefresh() {
   stopAutoRefresh();
   refreshInterval = setInterval(async () => {
-    if (!isDirty) {
+    if (!isDirty && !refreshInProgress && !document.hidden && navigator.onLine && getSession()) {
       await silentRefreshData();
     }
-  }, 120000);
+  }, 180000 + Math.floor(Math.random() * 60000));
 }
 
 function stopAutoRefresh() {
@@ -6329,6 +6330,8 @@ function stopAutoRefresh() {
 }
 
 async function silentRefreshData() {
+  if (refreshInProgress) return;
+  refreshInProgress = true;
   const liveDot = document.querySelector('#liveIndicator span');
   if (liveDot) {
     liveDot.style.background = '#e2e8f0';
@@ -6336,10 +6339,13 @@ async function silentRefreshData() {
   
   try {
     await loadData();
-    await loadComplaints();
+    if (currentTab === 'dept') await loadDeptDashboard();
+    else await loadComplaints();
     showToast('🔄 Data refreshed silently', 'success');
   } catch (e) {
     showToast('⚠️ Silent refresh failed: ' + e.message, 'warn');
+  } finally {
+    refreshInProgress = false;
   }
   
   if (liveDot) {
