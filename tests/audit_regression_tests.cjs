@@ -182,6 +182,30 @@ async function test(name, fn) {
     assert.equal(resolutions.rows.length, 2);
   });
 
+  await test('school complaint import writes an upload batch without row-by-row sheet calls', () => {
+    const c = makeContext();
+    c.requireImportOrAdmin_ = () => null;
+    const complaints = makeSheet('Complaints', [Array(40).fill('')]);
+    const master = makeSheet('SchoolComplaintMaster', [Array(23).fill('')]);
+    const upload = makeSheet('SchoolComplaintUpload', [Array(13).fill('')]);
+    const matchLog = makeSheet('SchoolComplaintMatchLog', [Array(9).fill('')]);
+    const exceptions = makeSheet('SchoolComplaintExceptions', [Array(5).fill('')]);
+    const out = c.importSchoolComplaints(makeSpreadsheet([complaints, master, upload, matchLog, exceptions]), {
+      uploadId: 'UPLOAD-TEST', importDate: '2026-09-19', finalChunk: false,
+      records: [
+        { serialNumber: 'SERIAL-1', customerName: 'School One', equipment: 'CPU' },
+        { serialNumber: '', customerName: 'School Missing Serial' },
+      ],
+    });
+    assert.equal(out.status, 'ok');
+    assert.equal(out.masterCount, 1);
+    assert.equal(out.exceptionCount, 1);
+    assert.equal(master.rows.length, 2);
+    assert.equal(upload.rows.length, 3);
+    assert.equal(upload.rows[1][0], 'UPLOAD-TEST');
+    assert.equal(exceptions.rows.length, 2);
+  });
+
   await test('DISE healer never overwrites an existing value', () => {
     const c = makeContext();
     const row = Array(19).fill(''); row[0] = 1; row[2] = 'ORIGINAL';
@@ -849,6 +873,10 @@ async function test(name, fn) {
       assert.match(block, /postJsonWithDeadline\([\s\S]*?timeoutMs: 60000/);
       assert.doesNotMatch(block, /await fetch\(/);
     }
+    assert.match(schoolBlock, /const batchSize = 50/);
+    assert.match(schoolBlock, /schoolParsedRows\.slice\(/);
+    assert.match(schoolBlock, /out\.retryable/);
+    assert.match(schoolBlock, /finalChunk:/);
   });
 
   await test('department ticket status updates use bounded confirmed requests', () => {

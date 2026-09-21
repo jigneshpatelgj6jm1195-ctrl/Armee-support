@@ -7129,20 +7129,48 @@ async function runSchoolUpload() {
   result.textContent = `⏳ Uploading and matching records…`;
 
   try {
-    const out = await postJsonWithDeadline(
-      GOOGLE_SCRIPT_URL,
-      {
-        action: 'import_school_complaints',
-        authToken: adminAuthToken(),
-        importDate: importDate,
-        records: schoolParsedRows
-      },
-      { timeoutMs: 60000 }
-    );
-    if (out.status !== 'ok') throw new Error(out.message || 'Server rejected the upload');
+    const batchSize = 50;
+    const totalBatches = Math.ceil(schoolParsedRows.length / batchSize);
+    const uploadId = 'SCHOOL-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+    const totals = { masterCount: 0, importedCount: 0, skippedCount: 0, exceptionCount: 0 };
+
+    for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+      const batchOffset = batchIndex * batchSize;
+      const records = schoolParsedRows.slice(batchOffset, batchOffset + batchSize);
+      result.textContent = `⏳ Processing batch ${batchIndex + 1} of ${totalBatches}… (${Math.min(batchOffset + records.length, schoolParsedRows.length)} / ${schoolParsedRows.length} rows)`;
+
+      let out = null;
+      const maxAttempts = 3;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        out = await postJsonWithDeadline(
+          GOOGLE_SCRIPT_URL,
+          {
+            action: 'import_school_complaints',
+            authToken: adminAuthToken(),
+            importDate: importDate,
+            uploadId: uploadId,
+            batchOffset: batchOffset,
+            finalChunk: batchIndex === totalBatches - 1,
+            records: records
+          },
+          { timeoutMs: 60000 }
+        );
+        if (out.status === 'ok') break;
+        if (!out.retryable || attempt === maxAttempts) {
+          throw new Error(out.message || 'Server rejected the upload');
+        }
+        result.textContent = `⏳ Server is busy. Retrying batch ${batchIndex + 1} of ${totalBatches}…`;
+        await new Promise(resolve => setTimeout(resolve, attempt * 2000));
+      }
+
+      totals.masterCount += Number(out.masterCount) || 0;
+      totals.importedCount += Number(out.importedCount) || 0;
+      totals.skippedCount += Number(out.skippedCount) || 0;
+      totals.exceptionCount += Number(out.exceptionCount) || 0;
+    }
 
     result.style.background = '#f0fdf4'; result.style.color = '#166534'; result.style.border = '1.5px solid #bbf7d0';
-    result.textContent = `✅ Success! Saved to Master: ${out.masterCount || 0}, New tickets created: ${out.importedCount || 0}, Skipped (within 30 days): ${out.skippedCount || 0}, Errors: ${out.exceptionCount || 0}. Check SchoolComplaintMaster, SchoolComplaintMatchLog tabs in Google Sheet.`;
+    result.textContent = `✅ Success! Saved to Master: ${totals.masterCount}, New tickets created: ${totals.importedCount}, Skipped (within 30 days): ${totals.skippedCount}, Errors: ${totals.exceptionCount}. Check SchoolComplaintMaster, SchoolComplaintMatchLog tabs in Google Sheet.`;
     showToast('✅ School complaints processed successfully!', 'success');
   } catch (err) {
     result.style.background = '#fef2f2'; result.style.color = '#b91c1c'; result.style.border = '1.5px solid #fecaca';

@@ -4976,13 +4976,15 @@ function importSchoolComplaints(ss, data) {
 
   var masterSheet = ss.getSheetByName('SchoolComplaintMaster');
   var complaintsSheet = ss.getSheetByName('Complaints');
+  var uploadSheet = ss.getSheetByName('SchoolComplaintUpload');
   var matchLogSheet = ss.getSheetByName('SchoolComplaintMatchLog');
   var exceptionsSheet = ss.getSheetByName('SchoolComplaintExceptions');
   
-  if (!masterSheet || !complaintsSheet || !matchLogSheet || !exceptionsSheet) {
+  if (!masterSheet || !complaintsSheet || !uploadSheet || !matchLogSheet || !exceptionsSheet) {
     getOrCreateSchoolComplaintSheets(ss);
     masterSheet = ss.getSheetByName('SchoolComplaintMaster');
     complaintsSheet = ss.getSheetByName('Complaints');
+    uploadSheet = ss.getSheetByName('SchoolComplaintUpload');
     matchLogSheet = ss.getSheetByName('SchoolComplaintMatchLog');
     exceptionsSheet = ss.getSheetByName('SchoolComplaintExceptions');
   }
@@ -4995,6 +4997,8 @@ function importSchoolComplaints(ss, data) {
 
   var now = new Date();
   var importDate = data.importDate || now.toISOString().split('T')[0];
+  var uploadId = String(data.uploadId || ('SCHOOL-' + now.getTime()));
+  var batchOffset = Math.max(0, Number(data.batchOffset) || 0);
   
   // Calculate 30 days window from the selected import date
   var importDateTime = new Date(importDate + 'T12:00:00Z');
@@ -5017,10 +5021,14 @@ function importSchoolComplaints(ss, data) {
     }
   }
 
-  // 2. Build lookup of existing serials in SchoolComplaintMaster to avoid duplicate rows
+  // 2. Read the current master once. The old importer searched the full sheet
+  // again for every record and wrote cells one by one, which made medium-sized
+  // uploads hold the global write lock for too long.
   var masterSerialsMap = {};
+  var masterRows = [];
+  var initialMasterLastRow = masterSheet.getLastRow();
   if (masterSheet.getLastRow() > 1) {
-    var masterRows = masterSheet.getRange(2, 1, masterSheet.getLastRow() - 1, Math.max(16, masterSheet.getLastColumn())).getValues();
+    masterRows = masterSheet.getRange(2, 1, masterSheet.getLastRow() - 1, 19).getValues();
     for (var m = 0; m < masterRows.length; m++) {
       var s = String(masterRows[m][13] || '').trim().toUpperCase(); // Column 14 (index 13)
       if (s) {
@@ -5029,12 +5037,40 @@ function importSchoolComplaints(ss, data) {
     }
   }
 
-  // 3. Process records
+  var schoolNameDiseRows = masterRows.map(function(row) {
+    return { name: String(row[6] || '').trim().toLowerCase(), dise: String(row[2] || '').trim() };
+  }).filter(function(row) { return row.name && row.dise; });
+  function findDiseInLoadedMaster_(schoolName) {
+    var query = String(schoolName || '').trim().toLowerCase();
+    if (!query) return '';
+    for (var dIdx = 0; dIdx < schoolNameDiseRows.length; dIdx++) {
+      var candidate = schoolNameDiseRows[dIdx];
+      if (candidate.name === query || query.indexOf(candidate.name) !== -1 || candidate.name.indexOf(query) !== -1) {
+        return candidate.dise;
+      }
+    }
+    return '';
+  }
+
+  var uploadRows = [];
+  var newMasterRows = [];
+  var matchLogRows = [];
+  var exceptionRows = [];
+  var masterChanged = false;
+
+  // 3. Process records in memory, then write each sheet once.
   for (var i = 0; i < records.length; i++) {
     var rec = records[i];
+    var recordNumber = batchOffset + i;
+    uploadRows.push([
+      uploadId, now, rec.serialNumber || rec.serial || '', rec.customerName || '',
+      rec.contactPerson || '', rec.mobile || '', rec.address || '', rec.pincode || '',
+      rec.cityName || '', rec.nearbyMajorCity || '', rec.state || '',
+      rec.equipment || '', rec.problem || ''
+    ]);
     var serial = String(rec.serialNumber || rec.serial || '').trim();
     if (!serial) {
-      exceptionsSheet.appendRow(['EX-' + Date.now() + '-' + i, now.toISOString(), '', 'Missing Serial Number', JSON.stringify(rec)]);
+      exceptionRows.push(['EX-' + now.getTime() + '-' + recordNumber, now, '', 'Missing Serial Number', JSON.stringify(rec)]);
       exceptionCount++;
       continue;
     }
@@ -5044,9 +5080,9 @@ function importSchoolComplaints(ss, data) {
 
     // CHECK: If serial already has an active complaint within 30 days of the import date -> SKIP
     if (lastDate && lastDate >= thirtyDaysAgo && lastDate <= importDateTime) {
-      matchLogSheet.appendRow([
-        'LOG-' + Date.now() + '-' + i,
-        now.toISOString(),
+      matchLogRows.push([
+        'LOG-' + now.getTime() + '-' + recordNumber,
+        now,
         '',
         serial,
         'Duplicate within 30 days - Skipped',
@@ -5063,16 +5099,23 @@ function importSchoolComplaints(ss, data) {
     var masterRowIndex = masterSerialsMap[serialKey];
     if (masterRowIndex) {
       // Exists in Master! Reset status/suspectedPart to blank and update Import Date
-      masterSheet.getRange(masterRowIndex, 17).setValue(''); // Status
-      masterSheet.getRange(masterRowIndex, 18).setValue(''); // Suspected Part
-      masterSheet.getRange(masterRowIndex, 19).setValue(importDate); // Import Date
+      var existingRow;
+      if (masterRowIndex <= initialMasterLastRow) {
+        existingRow = masterRows[masterRowIndex - 2];
+        masterChanged = true;
+      } else {
+        existingRow = newMasterRows[masterRowIndex - initialMasterLastRow - 1];
+      }
+      existingRow[16] = ''; // Status
+      existingRow[17] = ''; // Suspected Part
+      existingRow[18] = importDate; // Import Date
       masterCount++;
     } else {
-      // New Serial! Attempt to match DISE code by school name
-      var diseCode = findDiseCodeBySchoolName(ss, rec.customerName);
-      var masterSrNo = masterSheet.getLastRow() + 1;
-      masterSheet.appendRow([
-        masterSrNo - 1,                        // SR No.
+      // New Serial! Match DISE against the already-loaded master data.
+      var diseCode = findDiseInLoadedMaster_(rec.customerName);
+      var masterRowNumber = initialMasterLastRow + newMasterRows.length + 1;
+      newMasterRows.push([
+        masterRowNumber - 1,                   // SR No.
         'ICT',                               // Project
         diseCode,                            // DISE Code
         '',                                  // School Code
@@ -5095,13 +5138,30 @@ function importSchoolComplaints(ss, data) {
       masterCount++;
       
       // Update our map in case there are duplicates within the same batch
-      masterSerialsMap[serialKey] = masterSrNo;
+      masterSerialsMap[serialKey] = masterRowNumber;
     }
     importedCount++;
   }
 
-  // 4. Sync status/suspectedPart of SchoolComplaintMaster with Complaints sheet
-  syncSchoolComplaintMasterStatus(ss);
+  if (uploadRows.length) {
+    uploadSheet.getRange(uploadSheet.getLastRow() + 1, 1, uploadRows.length, 13).setValues(uploadRows);
+  }
+  if (masterChanged && masterRows.length) {
+    masterSheet.getRange(2, 1, masterRows.length, 19).setValues(masterRows);
+  }
+  if (newMasterRows.length) {
+    masterSheet.getRange(initialMasterLastRow + 1, 1, newMasterRows.length, 19).setValues(newMasterRows);
+  }
+  if (matchLogRows.length) {
+    matchLogSheet.getRange(matchLogSheet.getLastRow() + 1, 1, matchLogRows.length, 9).setValues(matchLogRows);
+  }
+  if (exceptionRows.length) {
+    exceptionsSheet.getRange(exceptionsSheet.getLastRow() + 1, 1, exceptionRows.length, 5).setValues(exceptionRows);
+  }
+
+  // Sync once after the final browser batch. Older one-request clients omit
+  // finalChunk and retain the original behavior.
+  if (data.finalChunk !== false) syncSchoolComplaintMasterStatus(ss);
 
   return {
     status: 'ok',
