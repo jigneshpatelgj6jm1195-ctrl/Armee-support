@@ -431,7 +431,69 @@ function cacheInvalidate(key) {
 
 // ═══════════════ MAIN HANDLERS ═══════════════
 
+// Actions that manage their own lock. Their slow read/auth/photo work runs
+// BEFORE the lock, and the lock is held only for the few-row write, so one
+// department update no longer waits behind (or blocks) every other request.
+var SELF_LOCKING_ACTIONS = { resolve_department_complaint: true, field_update_school_contact: true };
+
+function jsonOut_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function withScriptLock_(waitMs, fn) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(waitMs)) {
+    return { status: 'error', retryable: true, code: 'busy',
+             message: 'Server is busy with another update. Please retry in a few seconds.' };
+  }
+  try {
+    var out = fn();
+    SpreadsheetApp.flush(); // commit before the next lock holder reads
+    return out;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function handleSelfLockingPost_(data) {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+
+  if (data.action === 'resolve_department_complaint') {
+    var authErrDept = requireDepartmentTicketAuth_(ss, data);
+    if (authErrDept) return jsonOut_(authErrDept);
+    // Drive uploads are slow and touch no sheet, so they run outside the lock.
+    var uploaded = prepareDepartmentResolutionPhotos_(data);
+    var result = withScriptLock_(40000, function() {
+      return resolveDepartmentComplaint(ss, data, uploaded);
+    });
+    if (result && result.status === 'ok') cacheInvalidate(DEPT_LIST_CACHE_KEY);
+    return jsonOut_(result);
+  }
+
+  if (data.action === 'field_update_school_contact') {
+    var check = validateFieldSchoolContact_(data);
+    if (check.error) return jsonOut_(check.error);
+    return jsonOut_(withScriptLock_(20000, function() {
+      return saveFieldSchoolContact_(ss, check.update);
+    }));
+  }
+
+  return jsonOut_({ status: 'error', message: 'Unknown action: ' + data.action });
+}
+
 function doPost(e) {
+  var preData = null;
+  try { preData = JSON.parse(e.postData.contents); } catch (parseErr) {}
+  if (preData && SELF_LOCKING_ACTIONS[preData.action]) {
+    try {
+      return handleSelfLockingPost_(preData);
+    } catch (fastErr) {
+      var fastMsg = fastErr ? fastErr.toString() : 'Unknown error';
+      var fastTransient = /lock|busy|quota|exceeded|timeout|rate|service invoked too many times|try again/i.test(fastMsg);
+      return jsonOut_({ status: 'error', retryable: fastTransient, message: fastMsg });
+    }
+  }
+
   var lock = LockService.getScriptLock();
   try {
     // Wait for up to 30 seconds to acquire lock
@@ -608,15 +670,6 @@ function doPost(e) {
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
-    if (data.action === 'resolve_department_complaint') {
-      var authErrDept = requireDepartmentTicketAuth_(ss, data);
-      if (authErrDept) return ContentService.createTextOutput(JSON.stringify(authErrDept))
-                                             .setMimeType(ContentService.MimeType.JSON);
-      var resolveResult = resolveDepartmentComplaint(ss, data);
-      return ContentService.createTextOutput(JSON.stringify(resolveResult))
-                           .setMimeType(ContentService.MimeType.JSON);
-    }
-
     if (data.action === 'add_branch_email') {
       var authErrBranchEmail = requireAdminAuth_(data, true);
       if (authErrBranchEmail) return ContentService.createTextOutput(JSON.stringify(authErrBranchEmail))
@@ -786,7 +839,9 @@ function doPost(e) {
 function doGet(e) {
   try {
     var action = e.parameter.action;
+    var openStartedAt = new Date().getTime();
     var ss     = SpreadsheetApp.openById(SHEET_ID);
+    var openMs = new Date().getTime() - openStartedAt;
 
     if (action === 'get_master') {
       var masterData = getMasterData(ss);
@@ -997,12 +1052,31 @@ function doGet(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
+    // Lightweight status probe (one row) so the admin panel can confirm whether
+    // an update that timed out on the client actually reached the sheet.
+    if (action === 'get_department_ticket_status') {
+      var statusAuth = requireAdminAuth_(e.parameter, false);
+      if (statusAuth) return ContentService.createTextOutput(JSON.stringify(statusAuth))
+                                           .setMimeType(ContentService.MimeType.JSON);
+      var statusSheet = ss.getSheetByName(RES_SHEET_TAB_NAME);
+      var statusRes = statusSheet ? getResolutionForTicket_(statusSheet, e.parameter.ticketId) : null;
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'ok',
+        ticketId: String(e.parameter.ticketId || '').trim(),
+        internalStatus: statusRes ? statusRes.internalStatus : 'Pending',
+        closureType: statusRes ? statusRes.closureType : '',
+        suspectedPart: statusRes ? statusRes.suspectedPart : '',
+        serialNumber: statusRes ? statusRes.serialNumber : ''
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     if (action === 'health' || action === 'health_check') {
       return ContentService.createTextOutput(JSON.stringify({
         status: 'ok',
         service: 'Armee Complaint Management Backend',
-        version: '1.2.0',
+        version: '1.3.0',
         timestamp: new Date().toISOString(),
+        spreadsheetOpenMs: openMs,
         deptCacheWarm: !!cacheGetLarge(DEPT_LIST_CACHE_KEY)
       })).setMimeType(ContentService.MimeType.JSON);
     }
@@ -1968,8 +2042,9 @@ function filterSchoolSrNosForAdmin_(ss, srNos, authToken) {
 function requireDepartmentTicketAuth_(ss, data) {
   var ticketId = String(data.ticketId || '').trim();
   var sheet = ss.getSheetByName(DEPT_SHEET_TAB_NAME);
-  if (!sheet || sheet.getLastRow() < 2) return { status: 'error', code: 'not_found', message: 'Ticket not found.' };
-  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 10).getValues();
+  if (!ticketId || !sheet || sheet.getLastRow() < 2) return { status: 'error', code: 'not_found', message: 'Ticket not found.' };
+  var foundRow = findRowInColumn_(sheet, 10, ticketId);
+  var rows = foundRow > 0 ? sheet.getRange(foundRow, 1, 1, 10).getValues() : [];
   for (var i = 0; i < rows.length; i++) {
     if (String(rows[i][9] || '').trim() === ticketId) {
       var schoolId = String(rows[i][7] || '').trim();
@@ -2262,6 +2337,69 @@ function replaceSchoolRecord(ss, data) {
     { dise: newDise, field: 'added', newValue: JSON.stringify(record), project: newProject }
   ]);
   return { status: 'ok' };
+}
+
+var SCHOOL_UPDATE_AUDIT_HEADERS = ['Modified By', 'Modified Phone', 'Source'];
+
+/**
+ * Validates a principal/contact correction sent from the public field form.
+ * Only these two fields can be changed from the field, never school identity.
+ */
+function validateFieldSchoolContact_(data) {
+  var dise = String(data.dise || '').trim();
+  var field = String(data.field || '').trim();
+  var value = String(data.newValue || '').replace(/\s+/g, ' ').trim();
+  var by = String(data.modifiedBy || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+  var byPhone = String(data.modifiedPhone || '').replace(/\D/g, '').slice(-10);
+
+  function fail(msg) { return { error: { status: 'error', code: 'invalid', message: msg } }; }
+  if (!/^[A-Za-z0-9-]{3,20}$/.test(dise)) return fail('Invalid DISE code.');
+  if (field !== 'principal' && field !== 'mobile') return fail('Only Principal Name and Contact Number can be edited.');
+  if (!by || !/^\d{10}$/.test(byPhone)) return fail('Set your name and phone in your profile before editing.');
+
+  if (field === 'principal') {
+    value = value.toUpperCase();
+    if (value.length < 3 || value.length > 100 || !/^[\p{L}\p{M}\d .,'()\/-]+$/u.test(value) ||
+        !/^\p{L}/u.test(value) || (value.match(/\p{L}/gu) || []).length < 3) {
+      return fail('Enter a valid principal name (3-100 characters).');
+    }
+  } else {
+    value = value.replace(/\D/g, '');
+    if (value.length === 12 && value.indexOf('91') === 0) value = value.slice(2);
+    if (!/^[6-9]\d{9}$/.test(value)) return fail('Contact number must be a valid 10-digit mobile number.');
+  }
+
+  // Abuse guard: max 40 edits per engineer phone per hour.
+  try {
+    var cache = CacheService.getScriptCache();
+    var key = 'fsc_rate_' + byPhone;
+    var used = parseInt(cache.get(key) || '0', 10) || 0;
+    if (used >= 40) return { error: { status: 'error', code: 'rate_limited', message: 'Too many edits. Please try again later.' } };
+    cache.put(key, String(used + 1), 3600);
+  } catch (rateErr) {}
+
+  return { update: {
+    dise: dise, field: field, newValue: value,
+    oldValue: String(data.oldValue || '').trim().slice(0, 100),
+    modifiedBy: by, modifiedPhone: byPhone
+  } };
+}
+
+/** Appends the correction to SchoolUpdates (the same log every client applies). */
+function saveFieldSchoolContact_(ss, update) {
+  var sheet = getSchoolUpdatesSheet_(ss);
+  var header = sheet.getRange(1, 7, 1, 3).getValues()[0];
+  if (String(header[0] || '') !== SCHOOL_UPDATE_AUDIT_HEADERS[0]) {
+    sheet.getRange(1, 7, 1, 3).setValues([SCHOOL_UPDATE_AUDIT_HEADERS])
+         .setBackground('#1a56db').setFontColor('#ffffff').setFontWeight('bold');
+  }
+  var updatedAt = new Date().toISOString();
+  sheet.getRange(sheet.getLastRow() + 1, 1, 1, 9).setValues([[
+    update.dise, update.field, update.newValue, update.oldValue, updatedAt,
+    '', // Project blank = applies to every project row of this DISE
+    update.modifiedBy, update.modifiedPhone, 'field_form'
+  ]]);
+  return { status: 'ok', field: update.field, newValue: update.newValue, updatedAt: updatedAt };
 }
 
 function getSchoolUpdates(ss) {
@@ -2769,16 +2907,11 @@ function syncDepartmentToComplaints(ss, ticketId) {
   var mainSheet = ss.getSheetByName('Complaints');
   if (!deptSheet || !mainSheet) return;
 
-  // 1. Find the department complaint row
+  // 1. Find the department complaint row (single-row read)
   var deptRow = null;
-  if (deptSheet.getLastRow() > 1) {
-    var deptRows = deptSheet.getRange(2, 1, deptSheet.getLastRow() - 1, deptSheet.getLastColumn()).getValues();
-    for (var i = 0; i < deptRows.length; i++) {
-      if (String(deptRows[i][9] || '').trim() === ticketId) {
-        deptRow = deptRows[i];
-        break;
-      }
-    }
+  var deptRowNumber = findRowInColumn_(deptSheet, 10, ticketId);
+  if (deptRowNumber > 1) {
+    deptRow = deptSheet.getRange(deptRowNumber, 1, 1, Math.max(deptSheet.getLastColumn(), DEPT_HEADERS.length)).getValues()[0];
   }
   if (!deptRow) {
     Logger.log('syncDepartmentToComplaints: ticketId ' + ticketId + ' not found in DepartmentComplaints.');
@@ -2787,14 +2920,9 @@ function syncDepartmentToComplaints(ss, ticketId) {
 
   // 2. Find the resolution row (if any)
   var resRow = null;
-  if (resSheet && resSheet.getLastRow() > 1) {
-    var resRows = resSheet.getRange(2, 1, resSheet.getLastRow() - 1, resSheet.getLastColumn()).getValues();
-    for (var j = 0; j < resRows.length; j++) {
-      if (String(resRows[j][0] || '').trim() === ticketId) {
-        resRow = resRows[j];
-        break;
-      }
-    }
+  var resRowNumber = resSheet ? findRowInColumn_(resSheet, 1, ticketId) : -1;
+  if (resRowNumber > 1) {
+    resRow = resSheet.getRange(resRowNumber, 1, 1, Math.max(resSheet.getLastColumn(), RES_HEADERS.length)).getValues()[0];
   }
 
   // Gather values
@@ -2811,17 +2939,7 @@ function syncDepartmentToComplaints(ss, ticketId) {
   var resolvedAt = resRow ? String(resRow[7] || '').trim() : '';
 
   // 3. Find if it already exists in the main Complaints sheet (Case ID is TicketId)
-  var mainRowIndex = -1;
-  var mainRows = [];
-  if (mainSheet.getLastRow() > 1) {
-    mainRows = mainSheet.getRange(2, 1, mainSheet.getLastRow() - 1, mainSheet.getLastColumn()).getValues();
-    for (var k = 0; k < mainRows.length; k++) {
-      if (String(mainRows[k][24] || '').trim() === ticketId) {
-        mainRowIndex = k + 2; // 2-indexed row number
-        break;
-      }
-    }
-  }
+  var mainRowIndex = findRowInColumn_(mainSheet, 25, ticketId); // Column Y: Case ID
 
   // Generate Photo Formulas
   var photoPreview = partPhotoUrl ? '=IMAGE("' + partPhotoUrl + '")' : '';
@@ -2837,37 +2955,38 @@ function syncDepartmentToComplaints(ss, ticketId) {
       return;
     }
 
-    // Update existing row
-    var existingSerial = String(mainRows[mainRowIndex - 2][17] || '').trim();
-    var existingSerialPhoto = String(mainRows[mainRowIndex - 2][33] || '').trim();
+    // Update existing row with ONE write covering columns P..AK (16..37).
+    // Formulas already in the row are carried over so untouched photo
+    // preview cells keep working.
+    var FIRST_COL = 16, WIDTH = 22; // columns 16..37
+    var span = mainSheet.getRange(mainRowIndex, FIRST_COL, 1, WIDTH);
+    var cur = span.getValues()[0];
+    var curFormulas = span.getFormulas()[0];
+    var out = [];
+    for (var c = 0; c < WIDTH; c++) out.push(curFormulas[c] ? curFormulas[c] : cur[c]);
+    var put = function(col, value) { out[col - FIRST_COL] = value; };
 
-    mainSheet.getRange(mainRowIndex, 24).setValue(status); // Status
-    mainSheet.getRange(mainRowIndex, 16).setValue(equipment);
-    mainSheet.getRange(mainRowIndex, 17).setValue(nature);
-    
-    if (serialNumber || !existingSerial) {
-      mainSheet.getRange(mainRowIndex, 18).setValue(serialNumber);
-    }
-    
-    mainSheet.getRange(mainRowIndex, 19).setValue(quantity);
-    mainSheet.getRange(mainRowIndex, 21).setValue(suspectedPart);
-    
-    // Photos & Formulas
-    mainSheet.getRange(mainRowIndex, 28).setValue(photoPreview); 
-    mainSheet.getRange(mainRowIndex, 29).setValue(viewPhoto); 
-    mainSheet.getRange(mainRowIndex, 30).setValue(partPhotoUrl); 
-    
+    var existingSerial = String(cur[18 - FIRST_COL] || '').trim();
+    var existingSerialPhoto = String(cur[34 - FIRST_COL] || '').trim();
+
+    put(24, status); // Status
+    put(16, equipment);
+    put(17, nature);
+    if (serialNumber || !existingSerial) put(18, serialNumber);
+    put(19, quantity);
+    put(21, suspectedPart);
+    put(28, photoPreview);
+    put(29, viewPhoto);
+    put(30, partPhotoUrl);
     if (serialPhotoUrl || !existingSerialPhoto) {
-      mainSheet.getRange(mainRowIndex, 32).setValue(serialPhotoPreview); 
-      mainSheet.getRange(mainRowIndex, 33).setValue(viewSerialPhoto); 
-      mainSheet.getRange(mainRowIndex, 34).setValue(serialPhotoUrl); 
+      put(32, serialPhotoPreview);
+      put(33, viewSerialPhoto);
+      put(34, serialPhotoUrl);
     }
-    
-    mainSheet.getRange(mainRowIndex, 36).setValue(otp);
-    mainSheet.getRange(mainRowIndex, 37).setValue(closureType);
-    if (resolvedAt) {
-      mainSheet.getRange(mainRowIndex, 20).setValue(resolvedAt);
-    }
+    put(36, otp);
+    put(37, closureType);
+    if (resolvedAt) put(20, resolvedAt);
+    span.setValues([out]);
     
     Logger.log('syncDepartmentToComplaints: Updated existing ticket ' + ticketId + ' in Complaints sheet.');
   } else {
@@ -3214,6 +3333,96 @@ function sendBranchComplaintDigestEmails(ss, newByBranch) {
   }
 }
 
+/**
+ * Returns the sheet row number whose cell in column `col` equals `value`
+ * (trimmed), or -1. Uses TextFinder (server-side search) first and falls back
+ * to reading that ONE column, so it never pulls whole-sheet data.
+ */
+function findRowInColumn_(sheet, col, value) {
+  var target = String(value || '').trim();
+  var lastRow = sheet ? sheet.getLastRow() : 0;
+  if (!target || lastRow < 2) return -1;
+  var range = sheet.getRange(2, col, lastRow - 1, 1);
+  try {
+    var hit = range.createTextFinder(target).matchEntireCell(true).matchCase(true).findNext();
+    if (hit) return hit.getRow();
+  } catch (finderErr) {}
+  var values = range.getValues();
+  for (var i = 0; i < values.length; i++) {
+    if (String(values[i][0] || '').trim() === target) return i + 2;
+  }
+  return -1;
+}
+
+function resRowToObject_(row, rowNumber) {
+  var rawAcerId = String(row[17] || '').trim();
+  var rawAcerSt = String(row[18] || '').trim();
+  return {
+    internalStatus: row[1] || 'Pending',
+    closureType: row[2] || '',
+    otpValue: row[3] || '',
+    resolvedBy: row[4] || '',
+    technicianName: row[5] || '',
+    diagnosisNotes: row[6] || '',
+    resolvedAt: row[7] || '',
+    owningDistrictAdmin: row[8] || '',
+    equipment: row[9] || '',
+    natureOfComplaint: row[10] || '',
+    quantity: row[11] || 1,
+    resolutionDate: row[12] || '',
+    serialNumber: row[13] || '',
+    serialPhotoUrl: row[14] || '',
+    suspectedPart: row[15] || '',
+    suspectedPartPhotoUrl: row[16] || '',
+    acerCaseId: isStatusWord(rawAcerId) ? '' : rawAcerId,
+    acerCaseStatus: isStatusWord(rawAcerId) ? rawAcerId : rawAcerSt,
+    rowNumber: rowNumber
+  };
+}
+
+/** Reads ONE resolution row by ticket id (instead of the whole sheet). */
+function getResolutionForTicket_(resSheet, ticketId) {
+  var rowNumber = findRowInColumn_(resSheet, 1, ticketId);
+  if (rowNumber < 2) return null;
+  var row = resSheet.getRange(rowNumber, 1, 1, RES_HEADERS.length).getValues()[0];
+  return resRowToObject_(row, rowNumber);
+}
+
+/** Rewrites/formats the header row only when it is actually out of date. */
+function ensureResHeaders_(sheet) {
+  var current = sheet.getRange(1, 1, 1, RES_HEADERS.length).getValues()[0];
+  for (var i = 0; i < RES_HEADERS.length; i++) {
+    if (String(current[i] || '') !== RES_HEADERS[i]) { setupResHeaders(sheet); return; }
+  }
+}
+
+/** Uploads resolution photos to Drive. Called before the lock is taken. */
+function prepareDepartmentResolutionPhotos_(data) {
+  var uploaded = { serialPhotoUrl: '', suspectedPartPhotoUrl: '' };
+  var ticketId = String(data.ticketId || '').trim();
+  var now = new Date().toISOString();
+  if (data.serialPhoto) {
+    try {
+      var sres = uploadPhotoToDrive(data.serialPhoto, ticketId + '_' + new Date().getTime() + '_serial.jpg',
+                                    getPhotoFolder('Department', now));
+      if (sres) uploaded.serialPhotoUrl = sres.openUrl;
+    } catch (e) {
+      Logger.log('Error uploading serial photo for department resolution: ' + e.toString());
+    }
+  }
+  if (data.suspectedPartPhoto) {
+    try {
+      var pres = uploadPhotoToDrive(data.suspectedPartPhoto, ticketId + '_' + new Date().getTime() + '_suspected.jpg',
+                                    getPhotoFolder('Department', now));
+      if (pres) uploaded.suspectedPartPhotoUrl = pres.openUrl;
+    } catch (e2) {
+      Logger.log('Error uploading suspected photo for department resolution: ' + e2.toString());
+    }
+  }
+  uploaded.done = true;
+  return uploaded;
+}
+
 function getResolutionsMap(ss) {
   var sheet = ss.getSheetByName(RES_SHEET_TAB_NAME);
   var map = {};
@@ -3223,29 +3432,7 @@ function getResolutionsMap(ss) {
     var row = rows[i];
     var ticketId = String(row[0] || '').trim();
     if (!ticketId) continue;
-    var rawAcerId = String(row[17] || '').trim();
-    var rawAcerSt = String(row[18] || '').trim();
-    map[ticketId] = {
-      internalStatus: row[1] || 'Pending',
-      closureType: row[2] || '',
-      otpValue: row[3] || '',
-      resolvedBy: row[4] || '',
-      technicianName: row[5] || '',
-      diagnosisNotes: row[6] || '',
-      resolvedAt: row[7] || '',
-      owningDistrictAdmin: row[8] || '',
-      equipment: row[9] || '',
-      natureOfComplaint: row[10] || '',
-      quantity: row[11] || 1,
-      resolutionDate: row[12] || '',
-      serialNumber: row[13] || '',
-      serialPhotoUrl: row[14] || '',
-      suspectedPart: row[15] || '',
-      suspectedPartPhotoUrl: row[16] || '',
-      acerCaseId: isStatusWord(rawAcerId) ? '' : rawAcerId,
-      acerCaseStatus: isStatusWord(rawAcerId) ? rawAcerId : rawAcerSt,
-      rowNumber: i + 2
-    };
+    map[ticketId] = resRowToObject_(row, i + 2);
   }
   return map;
 }
@@ -3289,15 +3476,14 @@ function getDepartmentComplaintsForSchool(ss, dise) {
  * 'closed_without_otp' leaves InternalStatus='PendingOTP' until a later 'finalize_otp' call
  * (made from admin.html once the separately-collected OTP is on hand) closes it for good.
  */
-function resolveDepartmentComplaint(ss, data) {
+function resolveDepartmentComplaint(ss, data, uploaded) {
   var ticketId = String(data.ticketId || '').trim();
   if (!ticketId) return { status: 'error', message: 'ticketId is required' };
 
   var resSheet = getOrCreateResSheet(ss);
-  setupResHeaders(resSheet); // Ensure headers are migrated automatically
+  ensureResHeaders_(resSheet); // cheap check; formats only when headers changed
 
-  var map = getResolutionsMap(ss);
-  var existing = map[ticketId];
+  var existing = getResolutionForTicket_(resSheet, ticketId);
   var now = new Date().toISOString();
   var action = data.resolutionAction;
 
@@ -3350,7 +3536,9 @@ function resolveDepartmentComplaint(ss, data) {
 
   // Handle Serial Number Photo upload to Google Drive if provided
   var serialPhotoUrl = '';
-  if (data.serialPhoto) {
+  if (uploaded && uploaded.serialPhotoUrl) {
+    serialPhotoUrl = uploaded.serialPhotoUrl;
+  } else if (data.serialPhoto && !(uploaded && uploaded.done)) {
     try {
       var folder = getPhotoFolder("Department", now);
       var sfname = ticketId + '_' + new Date().getTime() + '_serial.jpg';
@@ -3367,7 +3555,9 @@ function resolveDepartmentComplaint(ss, data) {
 
   // Handle Suspected Part Photo upload to Google Drive if provided
   var suspectedPartPhotoUrl = '';
-  if (data.suspectedPartPhoto) {
+  if (uploaded && uploaded.suspectedPartPhotoUrl) {
+    suspectedPartPhotoUrl = uploaded.suspectedPartPhotoUrl;
+  } else if (data.suspectedPartPhoto && !(uploaded && uploaded.done)) {
     try {
       var folder = getPhotoFolder("Department", now);
       var sfname = ticketId + '_' + new Date().getTime() + '_suspected.jpg';

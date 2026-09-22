@@ -25,6 +25,19 @@ function range(sheet, row, col, nr = 1, nc = 1) {
       return this;
     },
     setValue(value) { return this.setValues([[value]]); },
+    createTextFinder(text) {
+      const values = this.getValues();
+      return {
+        matchEntireCell() { return this; },
+        matchCase() { return this; },
+        findNext() {
+          for (let r = 0; r < nr; r++) for (let c = 0; c < nc; c++) {
+            if (String(values[r][c]) === String(text)) return { getRow: () => row + r, getColumn: () => col + c };
+          }
+          return null;
+        },
+      };
+    },
   }, { get(target, prop) { return prop in target ? target[prop] : function () { return this; }; } });
 }
 
@@ -881,7 +894,7 @@ async function test(name, fn) {
 
   await test('pending-OTP finalization uses the authenticated department resolution POST', () => {
     const block = extractBlock(adminSource, 'async function finalizePendingOtp(ticketId)');
-    assert.match(block, /postJsonWithDeadline\(/);
+    assert.match(block, /postDepartmentResolution\(/);
     assert.match(block, /action: 'resolve_department_complaint'/);
     assert.match(block, /resolutionAction: 'finalize_otp'/);
     assert.match(block, /authToken: adminAuthToken\(\)/);
@@ -896,7 +909,7 @@ async function test(name, fn) {
     assert.ok(start >= 0, 'postJsonWithDeadline helper must exist');
     assert.match(loginBlock, /postJsonWithDeadline\([\s\S]*?timeoutMs: 20000/);
     assert.match(loginBlock, /postJsonWithDeadline\('\/local_login'[\s\S]*?timeoutMs: 15000/);
-    assert.match(otpBlock, /postJsonWithDeadline\([\s\S]*?timeoutMs: 30000/);
+    assert.match(otpBlock, /postDepartmentResolution\(/);
     assert.match(postBlock, /const text = await response\.text\(\)/);
     assert.match(postBlock, /Request timed out after/);
   });
@@ -978,9 +991,12 @@ async function test(name, fn) {
   await test('department ticket status updates use bounded confirmed requests', () => {
     const bulkBlock = extractBlock(adminSource, 'async function bulkUpdateDeptStatus(action)');
     const singleBlock = extractBlock(adminSource, 'async function submitDeptStatusUpdate(action)');
+    const helper = extractBlock(adminSource, 'async function postDepartmentResolution(payload, onSlow)');
+    assert.match(helper, /postJsonWithDeadline\(GOOGLE_SCRIPT_URL, payload, \{ timeoutMs: 90000 \}\)/);
+    assert.match(helper, /departmentUpdateLanded\(payload\)/, 'a timeout must be verified before reporting failure');
+    assert.match(helper, /out\.retryable && attempt < 2/, 'busy responses are retried once');
     for (const block of [bulkBlock, singleBlock]) {
-      assert.match(block, /postJsonWithDeadline\([\s\S]*?action: 'resolve_department_complaint'/);
-      assert.match(block, /timeoutMs: 30000/);
+      assert.match(block, /postDepartmentResolution\([\s\S]*?action: 'resolve_department_complaint'/);
       assert.doesNotMatch(block, /await fetch\(/);
     }
   });
@@ -1057,6 +1073,121 @@ async function test(name, fn) {
     assert.match(adminSource, /'unified':\s*'unified'/);
     assert.match(adminSource, /'branchemails':\s*'branchemails'/);
     assert.doesNotMatch(adminSource, /module=undefined/);
+  });
+
+  // ── Department update speed + lock scope ──
+  function deptFixture(c, opts = {}) {
+    const ticketId = '2026/016942', dise = '24221503186';
+    const deptRow = Array(30).fill('');
+    Object.assign(deptRow, { 0: 'ANAND', 2: 'UMRETH', 7: dise, 8: 'BAJIPURA PRIMARY SCHOOL', 9: ticketId, 12: 'IFP', 13: 'NO DISPLAY', 21: '2026-09-20' });
+    const dept = makeSheet('DepartmentComplaints', [Array(30).fill('H'), deptRow]);
+    const res = makeSheet('DepartmentResolutions', [vm.runInContext('RES_HEADERS', c).slice()]);
+    const mainRow = Array(37).fill('');
+    Object.assign(mainRow, { 0: 1, 17: 'OLDSERIAL', 23: 'Pending', 24: ticketId,
+      31: '=IMAGE("https://drive.google.com/old-serial")', 32: '=HYPERLINK("https://drive.google.com/old-serial", "🔗 View Serial Photo")', 33: 'https://drive.google.com/old-serial' });
+    const main = makeSheet('Complaints', [vm.runInContext('HEADERS', c).slice(), mainRow]);
+    const reads = [];
+    for (const sh of [dept, res, main]) {
+      const orig = sh.getRange.bind(sh);
+      sh.getRange = (...a) => { reads.push([sh.name, a[2] || 1, a[3] || 1]); return orig(...a); };
+    }
+    const db = makeSpreadsheet([dept, res, main]);
+    let locked = 0;
+    c.SpreadsheetApp = { openById: () => db, flush() {} };
+    c.LockService = { getScriptLock: () => ({
+      tryLock: () => { if (opts.busy) return false; locked++; return true; },
+      waitLock() { throw new Error('global lock must not be used for this action'); },
+      releaseLock() {} }) };
+    c.CacheService = { getScriptCache: () => ({ get: () => null, put() {}, removeAll() {} }) };
+    const token = c.issueDepartmentResolutionToken_(ticketId, dise);
+    return { ticketId, dise, dept, res, main, db, reads, token, lockedCount: () => locked };
+  }
+
+  await test('department status update bypasses the global lock and reads single rows only', () => {
+    const c = makeContext();
+    const f = deptFixture(c);
+    const out = JSON.parse(c.doPost({ postData: { contents: JSON.stringify({
+      action: 'resolve_department_complaint', ticketId: f.ticketId, portalToken: f.token,
+      resolutionAction: 'part_request', serialNumber: 'UM0979100431900CED0700',
+      suspectedPart: 'IFP PANEL', technicianName: 'Ayan', diagnosisNotes: 'panel glass damaged' }) } }).text);
+    assert.equal(out.status, 'ok');
+    assert.equal(out.internalStatus, 'PartRequest');
+    assert.equal(f.lockedCount(), 1);
+    assert.equal(f.res.rows.length, 2);
+    assert.equal(f.res.rows[1][15], 'IFP PANEL');
+    const m = f.main.rows[1];
+    assert.equal(m[23], 'PartRequest');
+    assert.equal(m[17], 'UM0979100431900CED0700');
+    assert.equal(m[20], 'IFP PANEL');
+    assert.match(String(m[31]), /^=IMAGE\("https:\/\/drive.google.com\/old-serial"\)$/, 'existing serial photo formula must survive');
+    const wide = f.reads.filter(([, nr, nc]) => nr > 1 && nc > 1);
+    assert.deepEqual(wide, [], 'no multi-row, multi-column sheet reads');
+  });
+
+  await test('department status update returns a retryable busy error instead of hanging', () => {
+    const c = makeContext();
+    const f = deptFixture(c, { busy: true });
+    const out = JSON.parse(c.doPost({ postData: { contents: JSON.stringify({
+      action: 'resolve_department_complaint', ticketId: f.ticketId, portalToken: f.token,
+      resolutionAction: 'in_progress' }) } }).text);
+    assert.equal(out.status, 'error');
+    assert.equal(out.retryable, true);
+    assert.equal(out.code, 'busy');
+    assert.equal(f.res.rows.length, 1);
+  });
+
+  // ── Field principal / contact corrections ──
+  function fieldPost(c, db, payload) {
+    c.SpreadsheetApp = { openById: () => db, flush() {} };
+    c.LockService = { getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }) };
+    c.CacheService = { getScriptCache: () => ({ get: () => null, put() {} }) };
+    return JSON.parse(c.doPost({ postData: { contents: JSON.stringify(Object.assign({
+      action: 'field_update_school_contact', dise: '24150800501', modifiedBy: 'Ronak', modifiedPhone: '9876543210'
+    }, payload)) } }).text);
+  }
+
+  await test('field form can correct principal name and contact number with an audit trail', () => {
+    const c = makeContext();
+    const db = makeSpreadsheet([]);
+    const a = fieldPost(c, db, { field: 'principal', newValue: '  Ashaben  k damor ', oldValue: 'OLD NAME' });
+    assert.equal(a.status, 'ok');
+    assert.equal(a.newValue, 'ASHABEN K DAMOR');
+    const b = fieldPost(c, db, { field: 'mobile', newValue: '+91 95378 53597' });
+    assert.equal(b.status, 'ok');
+    assert.equal(b.newValue, '9537853597');
+    const sheet = db.getSheetByName('SchoolUpdates');
+    assert.deepEqual(sheet.rows[1].slice(0, 4), ['24150800501', 'principal', 'ASHABEN K DAMOR', 'OLD NAME']);
+    assert.equal(sheet.rows[1][5], '', 'blank project applies to every project row');
+    assert.deepEqual(sheet.rows[1].slice(6, 9), ['Ronak', '9876543210', 'field_form']);
+    assert.equal(sheet.rows[0][6], 'Modified By');
+    const updates = c.getSchoolUpdates(db);
+    assert.equal(updates.length, 2);
+    assert.equal(updates[1].field, 'mobile');
+  });
+
+  await test('field form cannot change school identity or write invalid values', () => {
+    const c = makeContext();
+    const db = makeSpreadsheet([]);
+    for (const [payload, re] of [
+      [{ field: 'school', newValue: 'X SCHOOL' }, /Only Principal/],
+      [{ field: 'added', newValue: '{}' }, /Only Principal/],
+      [{ field: 'mobile', newValue: '12345' }, /10-digit/],
+      [{ field: 'principal', newValue: '=HYPERLINK("x")' }, /valid principal/],
+      [{ field: 'principal', newValue: 'ASHABEN', modifiedPhone: '' }, /profile/],
+      [{ field: 'principal', newValue: 'ASHABEN', dise: '../x' }, /DISE/],
+    ]) {
+      const out = fieldPost(c, db, payload);
+      assert.equal(out.status, 'error');
+      assert.match(out.message, re);
+    }
+    assert.equal(db.getSheetByName('SchoolUpdates'), null, 'nothing written for rejected edits');
+  });
+
+  await test('field form Edit buttons save to the live server', () => {
+    const block = extractBlock(indexSource, 'function openEditField(field)');
+    assert.doesNotMatch(block, /require an administrator/);
+    const sync = extractBlock(indexSource, 'async function postSchoolEdit(');
+    assert.match(sync, /field_update_school_contact/);
   });
 
   await test('all inline browser scripts compile', () => {

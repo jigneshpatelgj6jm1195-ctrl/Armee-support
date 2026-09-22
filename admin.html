@@ -8064,6 +8064,56 @@ async function postJsonWithDeadline(url, payload, options = {}) {
   }
 }
 
+// Department ticket status updates. The Apps Script backend can queue behind
+// other writes, so: allow up to 90s, retry once when the server says it is
+// busy, and after a client-side timeout check whether the update actually
+// reached the sheet before reporting a failure (avoids false "timed out"
+// errors and duplicate re-submissions).
+const DEPT_EXPECTED_STATUS = {
+  closed_with_otp: 'Closed', finalize_otp: 'Closed', closed_without_otp: 'PendingOTP',
+  part_request: 'PartRequest', in_progress: 'InProgress'
+};
+
+async function departmentUpdateLanded(payload) {
+  const expected = DEPT_EXPECTED_STATUS[payload.resolutionAction];
+  if (!expected) return false;
+  try {
+    const url = GOOGLE_SCRIPT_URL + '?action=get_department_ticket_status&ticketId=' +
+      encodeURIComponent(payload.ticketId) + '&authToken=' + encodeURIComponent(adminAuthToken());
+    const st = await adminApi.request(url, { timeoutMs: 30000, attempts: 2, dedup: false, prefix: 'DEPSTATUS' });
+    if (!st || st.status !== 'ok' || st.internalStatus !== expected) return false;
+    if (payload.resolutionAction === 'part_request' && payload.suspectedPart &&
+        String(st.suspectedPart || '') !== String(payload.suspectedPart)) return false;
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function postDepartmentResolution(payload, onSlow) {
+  const slowTimer = onSlow ? setTimeout(onSlow, 15000) : null;
+  try {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      let out;
+      try {
+        out = await postJsonWithDeadline(GOOGLE_SCRIPT_URL, payload, { timeoutMs: 90000 });
+      } catch (e) {
+        // The request may have completed on the server even though the browser
+        // stopped waiting. Confirm before telling the user it failed.
+        if (await departmentUpdateLanded(payload)) return { status: 'ok', verifiedAfterTimeout: true };
+        throw e;
+      }
+      if (out && out.status !== 'ok' && out.retryable && attempt < 2) {
+        await new Promise(r => setTimeout(r, 2500 + Math.random() * 1500));
+        continue;
+      }
+      return out;
+    }
+  } finally {
+    if (slowTimer) clearTimeout(slowTimer);
+  }
+}
+
 // Local spreadsheet uploads send a file rather than JSON, but they need the
 // same bounded response handling so an unavailable local server cannot leave
 // the upload screen waiting forever.
@@ -8692,18 +8742,14 @@ async function bulkUpdateDeptStatus(action) {
   
   for (const ticketId of ticketIds) {
     try {
-      const out = await postJsonWithDeadline(
-        GOOGLE_SCRIPT_URL,
-        {
+      const out = await postDepartmentResolution({
           action: 'resolve_department_complaint',
           ticketId: ticketId,
           resolutionAction: action,
           resolvedBy: (currentUser && currentUser.name) || 'admin',
           source: 'admin_portal',
           authToken: adminAuthToken()
-        },
-        { timeoutMs: 30000 }
-      );
+        });
       if (out.status === 'ok') {
         successCount++;
       } else {
@@ -8775,8 +8821,7 @@ async function submitDeptStatusUpdate(action) {
   const userName = (typeof currentUser !== 'undefined' && currentUser && currentUser.name) ? currentUser.name : 'admin';
 
   try {
-    const out = await postJsonWithDeadline(
-      GOOGLE_SCRIPT_URL,
+    const out = await postDepartmentResolution(
       {
         action: 'resolve_department_complaint',
         ticketId: ticketId,
@@ -8790,7 +8835,9 @@ async function submitDeptStatusUpdate(action) {
         source: 'admin_portal',
         authToken: adminAuthToken()
       },
-      { timeoutMs: 30000 }
+      () => {
+        if (block) block.innerHTML = '<div style="text-align:center;color:var(--primary);font-weight:bold;padding:10px;width:100%;">⏳ Server is busy — still saving, please keep this window open…</div>';
+      }
     );
     if (out.status !== 'ok') throw new Error(out.message || 'Server rejected the update');
     
@@ -9118,9 +9165,7 @@ async function finalizePendingOtp(ticketId) {
   btn.disabled = true;
   btn.textContent = '⏳ Closing…';
   try {
-    const res = await postJsonWithDeadline(
-      GOOGLE_SCRIPT_URL,
-      {
+    const res = await postDepartmentResolution({
         action: 'resolve_department_complaint',
         ticketId: ticketId,
         resolutionAction: 'finalize_otp',
@@ -9128,9 +9173,7 @@ async function finalizePendingOtp(ticketId) {
         resolvedBy: (currentUser && currentUser.name) || 'admin',
         source: 'admin_portal',
         authToken: adminAuthToken()
-      },
-      { timeoutMs: 30000 }
-    );
+      });
     if (!res || res.status !== 'ok') throw new Error((res && res.message) || 'Server rejected OTP finalization');
     showToast('✅ Ticket ' + ticketId + ' closed with OTP!', 'success');
     loadDeptDashboard();

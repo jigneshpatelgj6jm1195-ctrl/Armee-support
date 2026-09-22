@@ -4,7 +4,7 @@
    Offline queue: submissions stored in IndexedDB
 ═══════════════════════════════════════════════════════ */
 
-const CACHE_NAME = 'school-form-v43'; // v43: authenticated writes, signed school resolution and reliability fixes
+const CACHE_NAME = 'school-form-v44'; // v44: field principal/contact edits, faster department updates
 const STATIC_ASSETS = [
   './index.html',
   './school_data.json',

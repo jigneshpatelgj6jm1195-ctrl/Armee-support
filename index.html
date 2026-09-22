@@ -1015,10 +1015,11 @@ textarea { resize: none; min-height: 80px; }
         <label id="editFieldLabel">New Value</label>
         <input type="text" id="editFieldInput" autocomplete="off" />
       </div>
-      <button class="btn-submit-final" style="width:100%;margin-top:4px;" onclick="saveEditField()">💾 Save Changes</button>
+      <button class="btn-submit-final" id="editFieldSaveBtn" style="width:100%;margin-top:4px;" onclick="saveEditField()">💾 Save Changes</button>
       <div style="font-size:0.72rem;color:var(--muted);text-align:center;margin-top:10px;line-height:1.5;">
-        ✅ Changes are saved locally &amp; synced to the database<br>
-        📋 All edits are logged in the audit trail
+        ✅ Saved to the live database for every engineer &amp; the admin panel<br>
+        📶 No network? It is kept on this phone and synced automatically<br>
+        📋 Every edit is logged with your name &amp; phone
       </div>
     </div>
   </div>
@@ -1232,8 +1233,8 @@ let complaintGroup = null;
 /* ─────────────── INIT ─────────────── */
 document.addEventListener('DOMContentLoaded', async () => {
   registerSW();
-  await loadSchoolData();
-  await loadMasterData();
+  // Both calls wait on the Apps Script backend; run them side by side.
+  await Promise.all([loadSchoolData(), loadMasterData()]);
   startMasterDataPolling(); // cross-device real-time sync
 
   const user = getUser();
@@ -1246,6 +1247,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('fDate').value = todayDate();
 
   window.addEventListener('online',  updateNetworkStatus);
+  window.addEventListener('online',  () => flushPendingSchoolEdits());
+  flushPendingSchoolEdits();
   window.addEventListener('offline', updateNetworkStatus);
   updateNetworkStatus();
 
@@ -1303,9 +1306,13 @@ async function loadSchoolData() {
     const isLocalhost = isLocal();
     if (GOOGLE_SCRIPT_URL && !isLocalhost && navigator.onLine) {
       document.getElementById('loadingMsg').textContent = 'Syncing school updates…';
-      const resUpdates = await fetch(GOOGLE_SCRIPT_URL + '?action=get_school_updates');
-      if (resUpdates.ok) {
-        const updates = await resUpdates.json();
+      let updates = null;
+      try {
+        updates = await fetchJsonWithTimeout(GOOGLE_SCRIPT_URL + '?action=get_school_updates&t=' + Date.now(), 20000);
+      } catch (updErr) {
+        console.warn('School updates not loaded (will use saved data):', updErr);
+      }
+      {
         if (Array.isArray(updates)) {
           updates.forEach(update => {
             const field = update.field;
@@ -1369,13 +1376,10 @@ async function loadMasterData() {
   // 1. Try Google Apps Script (live, cross-device)
   if (!isLocalhost && GOOGLE_SCRIPT_URL && navigator.onLine) {
     try {
-      const res = await fetch(GOOGLE_SCRIPT_URL + '?action=get_master&t=' + Date.now());
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.equipment && data.equipment.length > 0) {
-          applyMasterData(data);
-          return;
-        }
+      const data = await fetchJsonWithTimeout(GOOGLE_SCRIPT_URL + '?action=get_master&t=' + Date.now(), 20000);
+      if (data && data.equipment && data.equipment.length > 0) {
+        applyMasterData(data);
+        return;
       }
     } catch (_) {}
   }
@@ -1656,6 +1660,24 @@ function getBuiltInMasterData() {
 }
 
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+/** fetch + JSON with a hard deadline, so a slow backend never freezes the form. */
+async function fetchJsonWithTimeout(url, timeoutMs, init) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs || 30000);
+  try {
+    const res = await fetch(url, Object.assign({}, init || {}, { signal: controller.signal }));
+    const text = await res.text();
+    if (!res.ok) throw new Error('Server returned HTTP ' + res.status);
+    if (text.trim().charAt(0) === '<') throw new Error('Server busy, please retry');
+    return JSON.parse(text);
+  } catch (e) {
+    if (e && e.name === 'AbortError') throw new Error('Request timed out after ' + Math.round((timeoutMs || 30000) / 1000) + 's');
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /* ─────────────── USER MANAGEMENT ─────────────── */
 function getUser() {
@@ -2171,6 +2193,17 @@ async function submitDeptResolution(i, action) {
       body: makePayload(token),
     });
     let out = await res.json();
+    if (out && out.status === 'error' && out.retryable) {
+      // Server was busy with another update; try once more before failing.
+      btn.textContent = '⏳ Server busy, retrying…';
+      await delay(3000);
+      res = await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: makePayload(token),
+      });
+      out = await res.json();
+    }
     if (out && out.status === 'error' && out.code === 'auth') {
       const diseVal = (document.getElementById('deptDiseInput') || {}).value || t.schoolId;
       if (diseVal) {
@@ -2277,10 +2310,36 @@ function updateUser() {
 }
 
 /* ─────────────── ✏️ EDIT PRINCIPAL / CONTACT ─────────────── */
+// Field engineers may correct ONLY the principal name and contact number.
+// Edits go to the live SchoolUpdates log (applied by every phone and the admin
+// panel on next load). Offline edits are queued on the phone and retried.
+const PENDING_SCHOOL_EDITS_KEY = 'pendingSchoolEdits';
+let _schoolEditFlushRunning = false;
+
+function profilePhone10(user) {
+  return String((user && user.phone) || '').replace(/\D/g, '').slice(-10);
+}
+
+function normalizeSchoolEditValue(field, raw) {
+  let v = String(raw || '').replace(/\s+/g, ' ').trim();
+  if (field === 'principal') {
+    v = v.toUpperCase();
+    const ok = v.length >= 3 && v.length <= 100 &&
+      /^\p{L}[\p{L}\p{M}\d .,'()\/-]*$/u.test(v) && (v.match(/\p{L}/gu) || []).length >= 3;
+    return ok ? { value: v } : { error: 'Enter a valid principal name (letters, 3–100 characters)' };
+  }
+  v = v.replace(/\D/g, '');
+  if (v.length === 12 && v.startsWith('91')) v = v.slice(2);
+  if (v.length === 11 && v.startsWith('0')) v = v.slice(1);
+  return /^[6-9]\d{9}$/.test(v) ? { value: v } : { error: 'Enter a valid 10-digit mobile number' };
+}
+
 function openEditField(field) {
   if (!foundRecord) { showToast('⚠️ No school selected', 'warn'); return; }
-  if (!isLocal()) {
-    showToast('🔒 School master changes require an administrator. Please report the correction to your coordinator.', 'warn');
+  const user = getUser() || {};
+  if (!user.name || profilePhone10(user).length !== 10) {
+    showToast('⚠️ Please set your name and 10-digit phone in your profile first', 'warn');
+    showUserSheet();
     return;
   }
   editFieldKey = field;
@@ -2295,7 +2354,10 @@ function openEditField(field) {
   inp.value = curVal;
   inp.inputMode = isPrincipal ? 'text' : 'numeric';
   inp.type = isPrincipal ? 'text' : 'tel';
-  inp.maxLength = isPrincipal ? 100 : 10;
+  inp.maxLength = isPrincipal ? 100 : 16;
+  inp.style.textTransform = isPrincipal ? 'uppercase' : '';
+  const btn = document.getElementById('editFieldSaveBtn');
+  if (btn) { btn.disabled = false; btn.textContent = '💾 Save Changes'; }
   document.getElementById('editFieldOverlay').classList.add('show');
   setTimeout(() => inp.focus(), 380);
 }
@@ -2305,58 +2367,144 @@ function closeEditFieldSheet(e) {
     document.getElementById('editFieldOverlay').classList.remove('show');
 }
 
-function saveEditField() {
-  const newVal = document.getElementById('editFieldInput').value.trim();
-  if (!newVal) { showToast('⚠️ Please enter a value', 'warn'); return; }
+/** Applies an edit to the open record, the in-memory school DB and the screen. */
+function applySchoolEditLocally(dise, dbField, newVal) {
+  const entries = SCHOOL_DB[dise];
+  const list = Array.isArray(entries) ? entries : (entries ? [entries] : []);
+  list.forEach(r => { if (String(r.dise) === String(dise)) r[dbField] = newVal; });
+  const complaints = SCHOOL_COMPLAINT_DB && SCHOOL_COMPLAINT_DB[dise];
+  (Array.isArray(complaints) ? complaints : []).forEach(r => { r[dbField] = newVal; });
+  if (foundRecord && String(foundRecord.dise) === String(dise)) {
+    foundRecord[dbField] = newVal;
+    const el = document.getElementById(dbField === 'principal' ? 's2Principal' : 's2Contact');
+    if (el) el.textContent = newVal;
+  }
+}
+
+async function saveEditField() {
+  if (!foundRecord) return;
   const isPrincipal = (editFieldKey === 'principal');
   const dbField = isPrincipal ? 'principal' : 'mobile';
-  const oldVal = foundRecord[dbField] || '';
+  const checked = normalizeSchoolEditValue(dbField, document.getElementById('editFieldInput').value);
+  if (checked.error) { showToast('⚠️ ' + checked.error, 'warn'); return; }
+  const newVal = checked.value;
+  const oldVal = String(foundRecord[dbField] || '');
+  const dise = String(foundRecord.dise || '').trim();
+  if (newVal === oldVal.trim()) {
+    document.getElementById('editFieldOverlay').classList.remove('show');
+    showToast('No change to save', 'info');
+    return;
+  }
 
-  // Audit log
+  // Audit log on this phone
   const user = getUser() || {};
-  const logs = JSON.parse(localStorage.getItem('schoolUpdateLog') || '[]');
-  logs.unshift({
-    dise:          foundRecord.dise,
-    school:        foundRecord.school,
-    field:         editFieldKey,
-    oldValue:      oldVal,
-    newValue:      newVal,
-    modifiedBy:    user.name  || 'Unknown',
-    modifiedPhone: user.phone || '',
-    modifiedAt:    new Date().toISOString(),
-  });
-  localStorage.setItem('schoolUpdateLog', JSON.stringify(logs.slice(0, 500)));
+  try {
+    const logs = JSON.parse(localStorage.getItem('schoolUpdateLog') || '[]');
+    logs.unshift({
+      dise, school: foundRecord.school, field: editFieldKey, oldValue: oldVal, newValue: newVal,
+      modifiedBy: user.name || 'Unknown', modifiedPhone: user.phone || '', modifiedAt: new Date().toISOString(),
+    });
+    localStorage.setItem('schoolUpdateLog', JSON.stringify(logs.slice(0, 500)));
+  } catch (_) {}
 
-  // Update live record
-  foundRecord[dbField] = newVal;
-  document.getElementById(isPrincipal ? 's2Principal' : 's2Contact').textContent = newVal;
+  applySchoolEditLocally(dise, dbField, newVal);
 
-  // Try to persist on server (non-blocking)
-  syncSchoolUpdate(foundRecord.dise, dbField, newVal, oldVal);
+  const btn = document.getElementById('editFieldSaveBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Saving…'; }
+  const result = await syncSchoolUpdate(dise, dbField, newVal, oldVal);
+  if (btn) { btn.disabled = false; btn.textContent = '💾 Save Changes'; }
 
-  document.getElementById('editFieldOverlay').classList.remove('show');
-  showToast(`✅ ${isPrincipal ? 'Principal' : 'Contact'} updated`, 'success');
+  const label = isPrincipal ? 'Principal' : 'Contact';
+  if (result.ok) {
+    document.getElementById('editFieldOverlay').classList.remove('show');
+    showToast(`✅ ${label} updated for everyone`, 'success');
+  } else if (result.queued) {
+    document.getElementById('editFieldOverlay').classList.remove('show');
+    showToast(`📶 ${label} saved on this phone — it will sync automatically`, 'warn');
+  } else {
+    applySchoolEditLocally(dise, dbField, oldVal); // server rejected: undo
+    showToast('❌ ' + (result.message || 'Could not save the change'), 'error');
+  }
+}
+
+function readPendingSchoolEdits() {
+  try { return JSON.parse(localStorage.getItem(PENDING_SCHOOL_EDITS_KEY) || '[]') || []; } catch (_) { return []; }
+}
+function writePendingSchoolEdits(list) {
+  try { localStorage.setItem(PENDING_SCHOOL_EDITS_KEY, JSON.stringify(list.slice(-100))); } catch (_) {}
+}
+function queueSchoolEdit(edit) {
+  // Keep only the latest pending value per school + field.
+  const list = readPendingSchoolEdits().filter(p => !(p.dise === edit.dise && p.field === edit.field));
+  list.push(edit);
+  writePendingSchoolEdits(list);
+}
+
+/** Sends one edit. Returns { ok } | { queued } | { ok:false, message } */
+async function postSchoolEdit(edit) {
+  const payload = {
+    action: 'field_update_school_contact',
+    dise: edit.dise, field: edit.field, newValue: edit.newValue, oldValue: edit.oldValue,
+    modifiedBy: edit.modifiedBy, modifiedPhone: edit.modifiedPhone,
+  };
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const out = await fetchJsonWithTimeout(GOOGLE_SCRIPT_URL, 45000, {
+        method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(payload),
+      });
+      if (out && out.status === 'ok') return { ok: true, value: out.newValue };
+      if (out && out.retryable && attempt < 2) { await delay(2000); continue; }
+      if (out && out.retryable) return { queued: true };
+      return { ok: false, message: (out && out.message) || 'Server rejected the change' };
+    } catch (e) {
+      if (attempt < 2 && navigator.onLine) { await delay(1500); continue; }
+      return { queued: true };
+    }
+  }
+  return { queued: true };
 }
 
 async function syncSchoolUpdate(dise, field, newValue, oldValue) {
-  const isLocalhost = isLocal();
-  try {
-    if (GOOGLE_SCRIPT_URL && !isLocalhost && navigator.onLine) {
-      throw new Error('Administrator authorization is required for school master changes.');
-    } else {
+  if (isLocal()) {
+    try {
       const res = await fetch('/update_school', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dise, field, newValue, oldValue }),
       });
-      if (res.ok) {
-        // Also update in-memory SCHOOL_DB
-        const entries = SCHOOL_DB[dise];
-        const list = Array.isArray(entries) ? entries : (entries ? [entries] : []);
-        list.forEach(r => { if (r.dise === dise) r[field] = newValue; });
-      }
+      return res.ok ? { ok: true } : { ok: false, message: 'Local server rejected the change' };
+    } catch (_) {
+      return { ok: false, message: 'Local server not reachable' };
     }
-  } catch (_) { /* offline — change is in audit log and foundRecord */ }
+  }
+  const user = getUser() || {};
+  const edit = { dise, field, newValue, oldValue, modifiedBy: user.name || '', modifiedPhone: profilePhone10(user), queuedAt: new Date().toISOString() };
+  if (!GOOGLE_SCRIPT_URL || !navigator.onLine) { queueSchoolEdit(edit); return { queued: true }; }
+  const result = await postSchoolEdit(edit);
+  if (result.queued) queueSchoolEdit(edit);
+  return result;
+}
+
+/** Re-applies queued edits locally and retries sending them. */
+async function flushPendingSchoolEdits() {
+  const pending = readPendingSchoolEdits();
+  if (!pending.length) return;
+  pending.forEach(p => applySchoolEditLocally(p.dise, p.field, p.newValue));
+  if (isLocal() || !GOOGLE_SCRIPT_URL || !navigator.onLine || _schoolEditFlushRunning) return;
+  _schoolEditFlushRunning = true;
+  let synced = 0;
+  try {
+    for (const edit of pending) {
+      const result = await postSchoolEdit(edit);
+      if (result.queued) break; // still offline/busy; try again later
+      const rest = readPendingSchoolEdits().filter(p => !(p.dise === edit.dise && p.field === edit.field && p.newValue === edit.newValue));
+      writePendingSchoolEdits(rest);
+      if (result.ok) synced++;
+    }
+  } finally {
+    _schoolEditFlushRunning = false;
+  }
+  if (synced) showToast(`✅ ${synced} pending school correction(s) synced`, 'success');
 }
 
 /* ─────────────── LOOKUP ─────────────── */
