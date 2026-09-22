@@ -2146,29 +2146,56 @@ async function submitDeptResolution(i, action) {
   const btn = document.getElementById('deptSubmit_' + i);
   btn.disabled = true; btn.textContent = '⏳ Sending…';
   try {
-    const res = await fetch(GOOGLE_SCRIPT_URL, {
+    let token = t.portalToken;
+    const makePayload = (tk) => JSON.stringify({
+      action: 'resolve_department_complaint',
+      ticketId: t.ticketId,
+      portalToken: tk,
+      resolutionAction: action,
+      otp: otp,
+      resolvedBy: (user.name || '') + ' (' + (user.phone || '') + ')',
+      technicianName: user.name || '',
+      diagnosisNotes: notes,
+      equipment: equip,
+      natureOfComplaint: nature,
+      quantity: parseInt(qty) || 1,
+      resolutionDate: date,
+      serialNumber: serial,
+      serialPhoto: serialPhoto,
+      suspectedPart: suspectedPart,
+      suspectedPartPhoto: suspectedPartPhoto
+    });
+    let res = await fetch(GOOGLE_SCRIPT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({
-        action: 'resolve_department_complaint',
-        ticketId: t.ticketId,
-        resolutionAction: action,
-        otp: otp,
-        resolvedBy: (user.name || '') + ' (' + (user.phone || '') + ')',
-        technicianName: user.name || '',
-        diagnosisNotes: notes,
-        equipment: equip,
-        natureOfComplaint: nature,
-        quantity: parseInt(qty) || 1,
-        resolutionDate: date,
-        serialNumber: serial,
-        serialPhoto: serialPhoto,
-        suspectedPart: suspectedPart,
-        suspectedPartPhoto: suspectedPartPhoto
-      }),
+      body: makePayload(token),
     });
-    const out = await res.json();
-    if (out.status !== 'ok') throw new Error(out.message || 'Server rejected the update');
+    let out = await res.json();
+    if (out && out.status === 'error' && out.code === 'auth') {
+      const diseVal = (document.getElementById('deptDiseInput') || {}).value || t.schoolId;
+      if (diseVal) {
+        try {
+          const refRes = await fetch(GOOGLE_SCRIPT_URL + '?action=get_department_complaint&dise=' + encodeURIComponent(String(diseVal).trim()) + '&t=' + Date.now());
+          if (refRes.ok) {
+            const freshTickets = await refRes.json();
+            if (Array.isArray(freshTickets)) {
+              const freshMatch = freshTickets.find(item => item && String(item.ticketId || '').trim() === String(t.ticketId || '').trim());
+              if (freshMatch && freshMatch.portalToken) {
+                t.portalToken = freshMatch.portalToken;
+                token = freshMatch.portalToken;
+                res = await fetch(GOOGLE_SCRIPT_URL, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'text/plain' },
+                  body: makePayload(token),
+                });
+                out = await res.json();
+              }
+            }
+          }
+        } catch (_) {}
+      }
+    }
+    if (out.status !== 'ok' && !out.duplicateIgnored) throw new Error(out.message || 'Server rejected the update');
     showToast('✅ Ticket ' + t.ticketId + ' updated!', 'success');
     searchDeptTickets(); // refresh the list
   } catch (e) {
@@ -3115,15 +3142,40 @@ async function proceedWithSubmission() {
 
   if (GOOGLE_SCRIPT_URL && navigator.onLine) {
     try {
-      const res = await fetch(GOOGLE_SCRIPT_URL, {
+      let res = await fetch(GOOGLE_SCRIPT_URL, {
         method: 'POST',
         mode: 'cors',
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify(complaint),
       });
       if (res.ok) {
-        const result = await res.json();
-        if (result && result.status === 'ok') {
+        let result = await res.json();
+        // If a school complaint resolution token expired while the form was open, refresh once
+        if (result && result.status === 'error' && result.code === 'auth' && isSchool && r?.dise && r?.srNo) {
+          try {
+            const refRes = await fetch(GOOGLE_SCRIPT_URL + '?action=get_school_complaints&dise=' + encodeURIComponent(r.dise) + '&t=' + Date.now());
+            if (refRes.ok) {
+              const freshList = await refRes.json();
+              if (Array.isArray(freshList)) {
+                const freshMatch = freshList.find(x => x && String(x.srNo) === String(r.srNo));
+                if (freshMatch && freshMatch.portalToken) {
+                  r.portalToken = freshMatch.portalToken;
+                  complaint.portalToken = freshMatch.portalToken;
+                  res = await fetch(GOOGLE_SCRIPT_URL, {
+                    method: 'POST',
+                    mode: 'cors',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: JSON.stringify(complaint),
+                  });
+                  if (res.ok) {
+                    result = await res.json();
+                  }
+                }
+              }
+            }
+          } catch (_) {}
+        }
+        if (result && (result.status === 'ok' || result.duplicateIgnored)) {
           submitted = true;
         } else if (result && result.retryable) {
           console.warn("Server is busy/locked. Caching for background retry.");
@@ -3133,8 +3185,9 @@ async function proceedWithSubmission() {
           // silently marking it submitted destroyed the complaint — the engineer
           // saw a success screen for something that was never saved. Keep it and
           // tell them instead.
-          console.error("Backend error submitting complaint:", result ? result.message : 'Unknown');
-          recordFailedSubmission(complaint, result ? result.message : 'Server rejected the complaint');
+          const errMsg = result ? (result.message || 'Server rejected the complaint') : 'Server rejected the complaint';
+          console.error("Backend error submitting complaint:", errMsg);
+          recordFailedSubmission(complaint, errMsg);
           fatalError = true;
           submitted = true; // keeps it out of the auto-retry queue; it is preserved above
         }
@@ -3187,8 +3240,9 @@ async function proceedWithSubmission() {
     // know it was not filed, and it is kept in failedSubmissions for a retry.
     document.getElementById('successIcon').textContent = '⚠️';
     document.getElementById('successTitle').textContent = 'NOT Submitted';
+    const reasonText = (complaint && complaint.failureReason) ? `\nReason: ${complaint.failureReason}\n` : '\n';
     document.getElementById('successMsg').textContent =
-      `The server rejected this complaint for ${r?.school}.\n` +
+      `The server rejected this complaint for ${r?.school || 'this school'}.${reasonText}` +
       `It has been saved on this phone — use "Retry now" at the bottom of the screen.\n` +
       `Please inform the office if it keeps failing.`;
     document.getElementById('successNextBtn').style.display = 'none';
@@ -3365,10 +3419,14 @@ function updateFailedBanner() {
       'align-items:center;justify-content:space-between;gap:10px;box-shadow:0 -2px 10px rgba(0,0,0,.25)';
     document.body.appendChild(el);
   }
+  const reasonSnippet = (failedSubmissions.length === 1 && failedSubmissions[0].failureReason)
+    ? ': ' + failedSubmissions[0].failureReason
+    : '';
   el.innerHTML =
-    '<span>⚠️ ' + failedSubmissions.length + ' complaint(s) were NOT saved to the server.</span>' +
+    '<span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:calc(100vw - 120px);">⚠️ ' +
+    failedSubmissions.length + ' complaint(s) NOT saved' + reasonSnippet + '</span>' +
     '<button onclick="retryFailedSubmissions()" style="background:#fff;color:#b91c1c;border:none;' +
-    'border-radius:8px;padding:6px 12px;font-weight:700;cursor:pointer;">Retry now</button>';
+    'border-radius:8px;padding:6px 12px;font-weight:700;cursor:pointer;flex-shrink:0;">Retry now</button>';
 }
 
 // Move failed items back into the normal offline queue and let it drain. Their
@@ -3416,6 +3474,22 @@ async function retryQueue() {
       // Retry remote Google Script
       if (GOOGLE_SCRIPT_URL) {
         try {
+          // If this is a school complaint and its token might be expired, refresh token before retrying
+          if (item.action === 'resolve_school_complaint_from_portal' && item.dise && item.srNo) {
+            try {
+              const refreshRes = await fetch(GOOGLE_SCRIPT_URL + '?action=get_school_complaints&dise=' + encodeURIComponent(item.dise) + '&t=' + Date.now());
+              if (refreshRes.ok) {
+                const freshList = await refreshRes.json();
+                if (Array.isArray(freshList)) {
+                  const freshMatch = freshList.find(x => x && String(x.srNo) === String(item.srNo));
+                  if (freshMatch && freshMatch.portalToken) {
+                    item.portalToken = freshMatch.portalToken;
+                  }
+                }
+              }
+            } catch (_) {}
+          }
+
           const res = await fetch(GOOGLE_SCRIPT_URL, {
             method: 'POST',
             mode: 'cors',
@@ -3424,7 +3498,7 @@ async function retryQueue() {
           });
           if (res.ok) {
             const result = await res.json();
-            if (result && result.status === 'ok') {
+            if (result && (result.status === 'ok' || result.duplicateIgnored)) {
               syncedRemote = true;
             } else if (result && result.retryable) {
               console.warn("Server is busy/locked during retry. Retaining in queue.");
@@ -3434,8 +3508,9 @@ async function retryQueue() {
               // Same trap as the first-attempt path: dropping the item avoids an
               // endless retry loop but destroys the complaint. Preserve it in
               // failedSubmissions and surface it instead of discarding silently.
-              console.error('Server rejected queued complaint:', result ? result.message : 'Unknown');
-              recordFailedSubmission(item, result ? result.message : 'Server rejected the complaint');
+              const errMsg = result ? (result.message || 'Server rejected the complaint') : 'Unknown';
+              console.error('Server rejected queued complaint:', errMsg);
+              recordFailedSubmission(item, errMsg);
               syncedRemote = true; // removes it from the auto-retry queue; preserved above
             }
           } else {

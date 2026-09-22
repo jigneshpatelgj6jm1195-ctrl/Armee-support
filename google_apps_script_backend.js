@@ -769,8 +769,10 @@ function doPost(e) {
                           .setMimeType(ContentService.MimeType.JSON);
 
   } catch (err) {
+    var errMsg = err ? err.toString() : 'Unknown error';
+    var isTransient = /lock|busy|quota|exceeded|timeout|rate|service invoked too many times|try again/i.test(errMsg);
     return ContentService
-      .createTextOutput(JSON.stringify({ status: 'error', message: err.toString() }))
+      .createTextOutput(JSON.stringify({ status: 'error', retryable: isTransient, message: errMsg }))
       .setMimeType(ContentService.MimeType.JSON);
   } finally {
     // Authentication, email and scraper-log calls do not change department
@@ -1850,6 +1852,37 @@ function verifyPortalResolutionToken_(token, srNo, dise, serialNumber) {
   }
 }
 
+// Department engineers do not sign in to the private admin panel. A successful
+// DISE lookup therefore returns a signed capability for one exact open ticket.
+// The token contains no personal data and cannot be used for another ticket.
+function issueDepartmentResolutionToken_(ticketId, schoolId) {
+  var payload = JSON.stringify({
+    ticketId: String(ticketId || '').trim(),
+    schoolId: String(schoolId || '').trim(),
+    exp: new Date().getTime() + 7 * 24 * 60 * 60 * 1000
+  });
+  var sig = Utilities.computeHmacSha256Signature(payload, getSessionSecret_());
+  return Utilities.base64EncodeWebSafe(payload) + '.' + Utilities.base64EncodeWebSafe(sig);
+}
+
+function verifyDepartmentResolutionToken_(token, ticketId, schoolId) {
+  try {
+    if (!token) return false;
+    var parts = String(token).split('.');
+    if (parts.length !== 2) return false;
+    var payload = Utilities.newBlob(Utilities.base64DecodeWebSafe(parts[0])).getDataAsString();
+    var expected = Utilities.base64EncodeWebSafe(
+      Utilities.computeHmacSha256Signature(payload, getSessionSecret_()));
+    if (expected !== parts[1]) return false;
+    var parsed = JSON.parse(payload);
+    if (new Date().getTime() > Number(parsed.exp || 0)) return false;
+    return String(parsed.ticketId || '').trim() === String(ticketId || '').trim() &&
+      String(parsed.schoolId || '').trim() === String(schoolId || '').trim();
+  } catch (e) {
+    return false;
+  }
+}
+
 // Guard for admin-only mutations. Returns null when authorized, or an error
 // response object to send back. superOnly restricts to super_admin.
 function requireAdminAuth_(data, superOnly) {
@@ -1933,17 +1966,23 @@ function filterSchoolSrNosForAdmin_(ss, srNos, authToken) {
 }
 
 function requireDepartmentTicketAuth_(ss, data) {
-  var authError = requireAdminAuth_(data, false);
-  if (authError) return authError;
-  var who = verifyAuthToken_(data.authToken);
-  if (who.role === 'super_admin') return null;
-  var allowed = getAuthorizedDistrictMap_(ss, who);
   var ticketId = String(data.ticketId || '').trim();
   var sheet = ss.getSheetByName(DEPT_SHEET_TAB_NAME);
   if (!sheet || sheet.getLastRow() < 2) return { status: 'error', code: 'not_found', message: 'Ticket not found.' };
   var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 10).getValues();
   for (var i = 0; i < rows.length; i++) {
     if (String(rows[i][9] || '').trim() === ticketId) {
+      var schoolId = String(rows[i][7] || '').trim();
+      var who = verifyAuthToken_(data.authToken);
+      if (!who) {
+        if (data && data.resolutionAction === 'finalize_otp') {
+          return { status: 'error', code: 'auth', message: 'Only administrators can finalize pending OTP tickets.' };
+        }
+        return verifyDepartmentResolutionToken_(data && data.portalToken, ticketId, schoolId) ? null :
+          { status: 'error', code: 'auth', message: 'This ticket link expired. Search the DISE code again and retry.' };
+      }
+      if (who.role === 'super_admin') return null;
+      var allowed = getAuthorizedDistrictMap_(ss, who);
       var district = String(rows[i][0] || '').trim().toUpperCase();
       return (allowed.ALL || allowed[district]) ? null :
         { status: 'error', code: 'forbidden', message: 'This ticket is outside your assigned districts.' };
@@ -3237,7 +3276,8 @@ function getDepartmentComplaintsForSchool(ss, dise) {
       contactName: row[16], phoneNumber: row[17], ticketStatus: row[19],
       createdDate: row[21], totalDaysOfTicket: row[29],
       internalStatus: res.internalStatus, closureType: res.closureType,
-      owningDistrictAdmin: res.owningDistrictAdmin
+      owningDistrictAdmin: res.owningDistrictAdmin,
+      portalToken: issueDepartmentResolutionToken_(ticketId, schoolId)
     });
   }
   return results;
@@ -3260,6 +3300,13 @@ function resolveDepartmentComplaint(ss, data) {
   var existing = map[ticketId];
   var now = new Date().toISOString();
   var action = data.resolutionAction;
+
+  if (existing && existing.internalStatus === 'Closed') {
+    if (action === 'closed_with_otp') {
+      return { status: 'ok', duplicateIgnored: true, internalStatus: 'Closed' };
+    }
+    return { status: 'error', code: 'conflict', message: 'This ticket has already been closed.' };
+  }
 
   if (action === 'closed_with_otp' || action === 'closed_without_otp' || action === 'part_request') {
     var serial = String(data.serialNumber || '').trim();

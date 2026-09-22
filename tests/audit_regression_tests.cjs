@@ -406,6 +406,81 @@ async function test(name, fn) {
     assert.equal(out.duplicateIgnored, true);
   });
 
+  await test('department resolution rejects missing portal token and unauthenticated access', () => {
+    const c = makeContext();
+    const row = ['SURAT', '', 'SURAT CORPO.', '', '', '', '', '24221503186', 'GURUKUL', '2026/016942'];
+    const s = makeSheet('DepartmentComplaints', [Array(10).fill(''), row]);
+    const db = makeSpreadsheet([s]);
+    const out = c.requireDepartmentTicketAuth_(db, { ticketId: '2026/016942' });
+    assert.equal(out.status, 'error');
+    assert.equal(out.code, 'auth');
+  });
+
+  await test('department resolution accepts a valid token bound to ticket and school', () => {
+    const c = makeContext();
+    const row = ['SURAT', '', 'SURAT CORPO.', '', '', '', '', '24221503186', 'GURUKUL', '2026/016942'];
+    const s = makeSheet('DepartmentComplaints', [Array(10).fill(''), row]);
+    const db = makeSpreadsheet([s]);
+    const token = c.issueDepartmentResolutionToken_('2026/016942', '24221503186');
+    const out = c.requireDepartmentTicketAuth_(db, {
+      ticketId: '2026/016942',
+      portalToken: token,
+      resolutionAction: 'closed_without_otp'
+    });
+    assert.equal(out, null);
+  });
+
+  await test('department resolution rejects finalize_otp without admin credentials', () => {
+    const c = makeContext();
+    const row = ['SURAT', '', 'SURAT CORPO.', '', '', '', '', '24221503186', 'GURUKUL', '2026/016942'];
+    const s = makeSheet('DepartmentComplaints', [Array(10).fill(''), row]);
+    const db = makeSpreadsheet([s]);
+    const token = c.issueDepartmentResolutionToken_('2026/016942', '24221503186');
+    const out = c.requireDepartmentTicketAuth_(db, {
+      ticketId: '2026/016942',
+      portalToken: token,
+      resolutionAction: 'finalize_otp'
+    });
+    assert.equal(out.status, 'error');
+    assert.equal(out.code, 'auth');
+    assert.match(out.message, /Only administrators/);
+  });
+
+  await test('department resolution rejects mismatched or expired portal token', () => {
+    const c = makeContext();
+    const row = ['SURAT', '', 'SURAT CORPO.', '', '', '', '', '24221503186', 'GURUKUL', '2026/016942'];
+    const s = makeSheet('DepartmentComplaints', [Array(10).fill(''), row]);
+    const db = makeSpreadsheet([s]);
+    const wrongTicketToken = c.issueDepartmentResolutionToken_('2026/999999', '24221503186');
+    const wrongSchoolToken = c.issueDepartmentResolutionToken_('2026/016942', '99999999999');
+    const out1 = c.requireDepartmentTicketAuth_(db, { ticketId: '2026/016942', portalToken: wrongTicketToken });
+    assert.equal(out1.code, 'auth');
+    const out2 = c.requireDepartmentTicketAuth_(db, { ticketId: '2026/016942', portalToken: wrongSchoolToken });
+    assert.equal(out2.code, 'auth');
+  });
+
+  await test('department resolution rejects modifying an already closed ticket', () => {
+    const c = makeContext();
+    const resHeaders = Array(19).fill('');
+    const closedRow = ['2026/016942', 'Closed', 'ClosedWithOTP', '1234', 'Tech', '', '', '', '', '', '', '', '', 'UD123', '', '', '', '', ''];
+    const resSheet = makeSheet('DepartmentResolutions', [resHeaders, closedRow]);
+    const compSheet = makeSheet('DepartmentComplaints', [Array(10).fill('')]);
+    const db = makeSpreadsheet([resSheet, compSheet]);
+    const outConflict = c.resolveDepartmentComplaint(db, {
+      ticketId: '2026/016942',
+      resolutionAction: 'closed_without_otp',
+      serialNumber: 'UD123'
+    });
+    assert.equal(outConflict.code, 'conflict');
+    const outDuplicate = c.resolveDepartmentComplaint(db, {
+      ticketId: '2026/016942',
+      resolutionAction: 'closed_with_otp',
+      serialNumber: 'UD123'
+    });
+    assert.equal(outDuplicate.duplicateIgnored, true);
+    assert.equal(outDuplicate.internalStatus, 'Closed');
+  });
+
   await test('sensitive department read rejects missing admin authentication', () => {
     const c = makeContext();
     c.SpreadsheetApp = { openById: () => makeSpreadsheet([]) };
