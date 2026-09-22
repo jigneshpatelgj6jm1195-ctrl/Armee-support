@@ -2,6 +2,7 @@ const assert = require('assert/strict');
 const crypto = require('crypto');
 const fs = require('fs');
 const vm = require('vm');
+const zlib = require('zlib');
 
 const backendSource = fs.readFileSync('google_apps_script_backend.js', 'utf8');
 const adminSource = fs.readFileSync('admin.html', 'utf8');
@@ -52,6 +53,7 @@ function makeSheet(name, rows) {
     getDataRange() { return range(this, 1, 1, this.getLastRow(), this.getLastColumn()); },
     appendRow(row) { this.rows.push(row.slice()); },
     deleteRow(n) { this.rows.splice(n - 1, 1); },
+    deleteRows(n, count) { this.rows.splice(n - 1, count); },
     clear() { this.rows = []; },
     setFrozenRows() {},
     setColumnWidth() {},
@@ -76,6 +78,7 @@ function bytes(value) {
 function makeContext() {
   const properties = new Map([['SESSION_SECRET', 'synthetic-test-secret'], ['IMPORT_KEY', 'synthetic-import-key']]);
   let uuidCounter = 0;
+  const cacheStore = new Map();
   const context = vm.createContext({
     console: { log() {}, warn() {}, error() {} },
     Logger: { log() {} },
@@ -83,7 +86,12 @@ function makeContext() {
       MimeType: { JSON: 'json' },
       createTextOutput(text) { return { text, setMimeType() { return this; } }; },
     },
-    LockService: { getScriptLock() { return { waitLock() {}, releaseLock() {} }; } },
+    LockService: { getScriptLock() { return { waitLock() {}, tryLock() { return true; }, releaseLock() {} }; } },
+    SpreadsheetApp: { flush() {} },
+    CacheService: { getScriptCache() { const m = cacheStore; return {
+      get: k => (m.has(k) ? m.get(k) : null), put: (k, v) => m.set(k, v),
+      getAll: ks => Object.fromEntries(ks.map(k => [k, m.has(k) ? m.get(k) : null])),
+      removeAll: ks => ks.forEach(k => m.delete(k)) }; } },
     PropertiesService: {
       getScriptProperties() {
         return { getProperty: k => properties.get(k) || null, setProperty: (k, v) => properties.set(k, v) };
@@ -98,7 +106,11 @@ function makeContext() {
       },
       base64EncodeWebSafe(value) { return bytes(value).toString('base64url'); },
       base64DecodeWebSafe(value) { return Array.from(Buffer.from(String(value), 'base64url')); },
-      newBlob(value) { return { getDataAsString: () => bytes(value).toString('utf8') }; },
+      newBlob(value) { return { getDataAsString: () => bytes(value).toString('utf8'), getBytes: () => Array.from(bytes(value)) }; },
+      gzip(blob) { const out = Array.from(zlib.gzipSync(Buffer.from(blob.getBytes()))); return { getBytes: () => out }; },
+      ungzip(blob) { const text = zlib.gunzipSync(Buffer.from(blob.getBytes())).toString('utf8'); return { getDataAsString: () => text }; },
+      base64Encode(value) { return bytes(value).toString('base64'); },
+      base64Decode(value) { return Array.from(Buffer.from(String(value), 'base64')); },
       getUuid() { uuidCounter += 1; return `00000000-0000-4000-8000-${String(uuidCounter).padStart(12, '0')}`; },
       formatDate(value, timeZone) {
         const parts = new Intl.DateTimeFormat('en-CA', {
@@ -821,25 +833,6 @@ async function test(name, fn) {
     assert.equal(vm.runInContext('deptUsesServerPaging', c), true);
   });
 
-  await test('main complaints loader applies deadlines and keeps school data optional', () => {
-    const block = extractBlock(adminSource, 'async function loadComplaints()');
-    assert.match(block, /action=get_all_school_complaints/);
-    assert.match(block, /action=get_complaints/);
-    assert.match(block, /timeoutMs: 45000/);
-    assert.match(block, /schoolPromise/);
-    assert.match(block, /\.catch\(schoolErr =>/);
-    assert.doesNotMatch(block, /fetch\(GOOGLE_SCRIPT_URL/);
-    assert.match(block, /adminApi\.request\('\/complaints\.json'/);
-  });
-
-  await test('failed complaint refresh retains the last successful data and labels an initial empty result as unavailable', () => {
-    const block = extractBlock(adminSource, 'async function loadComplaints()');
-    assert.match(block, /const previousComplaints = Array\.isArray\(complaintsList\)/);
-    assert.match(block, /Showing the last successfully loaded data/);
-    assert.match(block, /unavailable data, not confirmed zero calls/);
-    assert.match(adminSource, /id="complaintsLoadNotice"/);
-  });
-
   await test('school master refresh uses bounded API requests and retains prior data on failure', () => {
     const block = extractBlock(adminSource, 'async function loadSchoolList()');
     assert.match(block, /const previousSchoolDataRaw = schoolDataRaw/);
@@ -883,13 +876,6 @@ async function test(name, fn) {
     assert.match(loadBlock, /branchLoadError = 'Branch mapping data is temporarily unavailable/);
     assert.match(loadBlock, /Branch totals are not shown as zero/);
     assert.match(renderBlock, /if \(branchLoadError\)/);
-  });
-
-  await test('production complaint failures do not request the intentionally absent local JSON fallback', () => {
-    const block = extractBlock(adminSource, 'async function loadComplaints()');
-    assert.match(block, /if \(!isLocalhost\) \{\s*restorePriorData\(\);/);
-    assert.match(block, /Production calls cannot be loaded while the browser is offline/);
-    assert.equal((block.match(/local_complaints:fallback/g) || []).length, 1);
   });
 
   await test('pending-OTP finalization uses the authenticated department resolution POST', () => {
@@ -1045,7 +1031,8 @@ async function test(name, fn) {
     assert.match(listBlock, /cacheKey: 'get_archive_list'/);
     assert.match(listBlock, /const previousArchiveList = archiveList/);
     assert.match(listBlock, /Archive data is temporarily unavailable/);
-    assert.match(archiveBlock, /postJsonWithDeadline\([\s\S]*?timeoutMs: 60000/);
+    assert.match(archiveBlock, /postJsonWithDeadline\([\s\S]*?timeoutMs: 180000/);
+    assert.match(archiveBlock, /result.remaining/, 'bounded archive runs tell the user to continue');
     assert.match(restoreBlock, /postJsonWithDeadline\([\s\S]*?timeoutMs: 60000/);
   });
 
@@ -1188,6 +1175,314 @@ async function test(name, fn) {
     assert.doesNotMatch(block, /require an administrator/);
     const sync = extractBlock(indexSource, 'async function postSchoolEdit(');
     assert.match(sync, /field_update_school_contact/);
+  });
+
+  // ── Resilient complaint loading (behavioural: runs the real admin code) ──
+  function makeAdminLoader(responder) {
+    const start = adminSource.indexOf('/* ─────────────── COMPLAINT DATA SYNC (resilient)');
+    const end = adminSource.indexOf('async function loadSchoolList() {');
+    assert.ok(start > 0 && end > start, 'loader section must exist');
+    const els = {};
+    const el = id => (els[id] ??= { id, value: '', textContent: '', innerHTML: '', style: {}, classList: { toggle() {}, add() {}, remove() {} } });
+    const calls = [];
+    const ctx = vm.createContext({
+      console: { log() {}, warn() {}, error() {} },
+      document: { getElementById: el },
+      navigator: { onLine: true },
+      performance: { now: () => Date.now() },
+      setTimeout: (fn) => { fn(); return 0; },
+      GOOGLE_SCRIPT_URL: 'https://script.example/exec',
+      currentUser: { email: 'admin@example.com' },
+      isLocal: () => false,
+      logToDebug() {},
+      esc: v => String(v),
+      normalizeComplaintStatuses: list => list,
+      parseDateString: v => (v ? new Date(v) : null),
+      adminAuthToken: () => 'tok',
+      renderDashboard() { ctx.renders = (ctx.renders || 0) + 1; },
+      renderComplaintsTable() {},
+      openModal() {},
+      adminApi: { async request(url, opts) { calls.push({ url, opts }); return responder(url, calls.length); } },
+    });
+    ctx.window = ctx;
+    vm.runInContext('var complaintsList = [];\n' + adminSource.slice(start, end), ctx);
+    return { ctx, els, calls, state: () => vm.runInContext('complaintsLoadState', ctx),
+             list: () => vm.runInContext('complaintsList', ctx) };
+  }
+  const envelope = data => ({ success: true, data, count: data.length, warnings: [], warningCount: 0, meta: { activeCount: data.length, cache: 'miss' } });
+
+  await test('dashboard loads complaints through the v2 envelope with a 90s deadline', async () => {
+    const t = makeAdminLoader(url => envelope(url.includes('get_complaints') ? [{ caseId: 'C1', submittedAt: '2026-09-01' }] : []));
+    await t.ctx.loadComplaints();
+    assert.equal(t.state(), 'live');
+    assert.equal(t.list().length, 1);
+    assert.ok(t.calls.every(c => /[?&]v=2/.test(c.url) && c.opts.timeoutMs === 90000));
+    assert.equal(t.els.complaintsLoadNotice.style.display, 'none');
+  });
+
+  await test('the dashboard still works against the previous backend (bare array response)', async () => {
+    const t = makeAdminLoader(url => (url.includes('get_complaints') ? [{ caseId: 'C1' }] : []));
+    await t.ctx.loadComplaints();
+    assert.equal(t.state(), 'live');
+    assert.equal(t.list().length, 1);
+  });
+
+  await test('a legitimately empty active sheet is reported as loaded, not as a failure', async () => {
+    const t = makeAdminLoader(() => envelope([]));
+    await t.ctx.loadComplaints();
+    assert.equal(t.state(), 'live');
+    assert.match(t.els.complaintsLoadNotice.innerHTML, /Data loaded successfully\. 0 complaints/);
+  });
+
+  await test('an API failure with no earlier data is shown as unavailable, never as zero', async () => {
+    const t = makeAdminLoader(() => ({ success: false, error: { code: 'DATA_SOURCE_ERROR', message: 'Unable to read' } }));
+    await t.ctx.loadComplaints();
+    assert.equal(t.state(), 'failed');
+    assert.match(t.els.complaintsLoadNotice.innerHTML, /Unable to load complaint data[\s\S]*unavailable, not zero[\s\S]*Retry/);
+  });
+
+  await test('a failed refresh keeps the last successful data and shows its sync time', async () => {
+    let fail = false;
+    const t = makeAdminLoader(url => (fail ? Promise.reject(new Error('Request timed out after 90s'))
+                                           : envelope(url.includes('get_complaints') ? [{ caseId: 'C1' }, { caseId: 'C2' }] : [])));
+    await t.ctx.loadComplaints();
+    fail = true;
+    await t.ctx.loadComplaints();
+    assert.equal(t.state(), 'stale');
+    assert.equal(t.list().length, 2);
+    assert.match(t.els.complaintsLoadNotice.innerHTML, /Live data unavailable[\s\S]*Showing last successful sync from \d{2}-\d{2}-\d{4} \d{2}:\d{2}/);
+  });
+
+  await test('timeouts are not retried but quick server errors are retried once', async () => {
+    const timeouts = makeAdminLoader(() => Promise.reject(new Error('Request timed out after 90s')));
+    await timeouts.ctx.loadComplaints();
+    assert.equal(timeouts.calls.filter(c => c.url.includes('action=get_complaints')).length, 1);
+    const busy = makeAdminLoader(() => Promise.reject(new Error('server busy (returned an error page)')));
+    await busy.ctx.loadComplaints();
+    assert.equal(busy.calls.filter(c => c.url.includes('action=get_complaints')).length, 2);
+  });
+
+  await test('incomplete API data is rejected instead of rendered as zero', async () => {
+    const t = makeAdminLoader(() => ({ success: true, count: 3 }));
+    await t.ctx.loadComplaints();
+    assert.equal(t.state(), 'failed');
+    assert.match(t.els.complaintsLoadNotice.innerHTML, /incomplete data/);
+  });
+
+  await test('dates before the active data pull archived records for that range only', async () => {
+    const t = makeAdminLoader(url => url.includes('includeArchive=1')
+      ? envelope([{ caseId: 'OLD', submittedAt: '2026-06-02' }, { caseId: 'C1', submittedAt: '2026-09-01' }])
+      : envelope(url.includes('get_complaints') ? [{ caseId: 'C1', submittedAt: '2026-09-01' }] : []));
+    await t.ctx.loadComplaints();
+    t.els.dashFromDate.value = '2026-06-01';
+    await t.ctx.onDashDateRangeChange();
+    assert.ok(t.calls.some(c => /includeArchive=1&from=2026-06-01/.test(c.url)));
+    assert.equal(t.list().length, 2);
+    t.els.dashFromDate.value = '';
+    await t.ctx.onDashDateRangeChange();
+    assert.equal(t.list().length, 1, 'clearing the range returns to active-only data');
+  });
+
+  // ── Archive-safe data layer: the 18 operational scenarios ──
+  function complaintRow(headers, i, overrides = {}) {
+    const row = Array(headers.length).fill('');
+    const set = (h, v) => { const k = headers.indexOf(h); if (k !== -1) row[k] = v; };
+    set('SR No.', i); set('Submitted At', new Date(Date.UTC(2026, 6, 1) + i * 3600000));
+    set('Project', i % 2 ? 'ICT' : 'GK'); set('DISE Code', 24000000000 + (i % 50)); set('District', 'ANAND');
+    set('School Name', 'SCHOOL ' + (i % 50)); set('Equipment', 'IFP'); set('Serial Number', 'SN' + i);
+    set('Status', i % 3 ? 'Closed' : 'Open'); set('Case ID', 'CASE-' + i);
+    for (const [h, v] of Object.entries(overrides)) set(h, v);
+    return row;
+  }
+  function complaintsDb(c, n, opts = {}) {
+    const headers = (opts.headers || vm.runInContext('HEADERS', c)).slice();
+    const rows = [headers];
+    for (let i = 1; i <= n; i++) rows.push(complaintRow(headers, i));
+    const active = makeSheet('Complaints', rows);
+    const sheets = [active].concat(opts.extra || []);
+    return { headers, active, db: makeSpreadsheet(sheets) };
+  }
+  function v2(c, db, params = {}) {
+    c.SpreadsheetApp = { openById: () => db, flush() {} };
+    c.requireAdminAuth_ = () => null;
+    c.filterRowsForAdminDistricts_ = (ss, rows) => rows;
+    return JSON.parse(c.doGet({ parameter: Object.assign({ action: 'get_complaints', v: '2', authToken: 't' }, params) }).text);
+  }
+  const ids = out => out.data.map(r => r.caseId).sort();
+
+  await test('scenario 1-5: active data loads and any number of old rows can be removed', () => {
+    const c = makeContext();
+    const { active, db } = complaintsDb(c, 1500);
+    let out = v2(c, db);
+    assert.equal(out.success, true); assert.equal(out.count, 1500);
+    for (const remove of [100, 1000, 399]) {
+      active.rows.splice(1, remove); // delete the oldest rows directly under the header
+      c.invalidateComplaintCaches_();
+      out = v2(c, db);
+      assert.equal(out.success, true);
+      assert.equal(out.count, active.rows.length - 1);
+    }
+    assert.equal(out.count, 1, 'header + one open case still works');
+    assert.deepEqual(ids(out), ['CASE-1500']);
+  });
+
+  await test('scenario 6-8: blank rows, sorting and moved rows do not change the result', () => {
+    const c = makeContext();
+    const { active, db, headers } = complaintsDb(c, 40);
+    const before = ids(v2(c, db));
+    active.rows.splice(10, 0, Array(headers.length).fill(''), Array(headers.length).fill(''));
+    active.rows.push(Array(headers.length).fill(''));
+    const body = active.rows.slice(1).reverse();                 // sort descending
+    active.rows = [active.rows[0]].concat(body);
+    c.invalidateComplaintCaches_();
+    const out = v2(c, db);
+    assert.deepEqual(ids(out), before);
+    assert.equal(out.meta.blankRowsIgnored, 3);
+  });
+
+  await test('scenario 9-10: new columns and re-ordered non-critical columns are mapped by header', () => {
+    const c = makeContext();
+    const base = vm.runInContext('HEADERS', c).slice();
+    const headers = base.slice();
+    headers.splice(5, 0, 'Remarks (new column)');                     // inserted column
+    const [status] = headers.splice(headers.indexOf('Status'), 1); headers.push(status); // moved column
+    const a = headers.indexOf('Address'), p = headers.indexOf('Pin Code');
+    [headers[a], headers[p]] = [headers[p], headers[a]];            // swapped columns
+    const { db } = complaintsDb(c, 12, { headers });
+    const out = v2(c, db);
+    assert.equal(out.count, 12);
+    const first = out.data.find(r => r.caseId === 'CASE-3');
+    assert.equal(first.status, 'Open');
+    assert.equal(first.serialNumber, 'SN3');
+    assert.deepEqual(out.meta.missingColumns, []);
+  });
+
+  await test('scenario 11-13: invalid dates, missing optional data and malformed rows never fail the dataset', () => {
+    const c = makeContext();
+    const { active, db, headers } = complaintsDb(c, 10);
+    active.rows[2][headers.indexOf('Submitted At')] = '31-02-2026';          // impossible date
+    active.rows[3][headers.indexOf('Principal Name')] = '';                  // optional data missing
+    active.rows[4][headers.indexOf('Case ID')] = { toString() { throw new Error('corrupt cell'); } }; // malformed
+    active.rows[5][headers.indexOf('Submitted At')] = '15/07/2026';          // dd/MM/yyyy
+    active.rows[6][headers.indexOf('Submitted At')] = '16-07-2026 10:30';    // dd-MM-yyyy HH:mm
+    const out = v2(c, db);
+    assert.equal(out.success, true);
+    assert.equal(out.count, 9, 'only the malformed row is skipped');
+    assert.equal(out.meta.invalidRowsSkipped, 1);
+    assert.ok(out.warnings.some(w => /date/i.test(w.reason)));
+    assert.match(out.data.find(r => r.caseId === 'CASE-5').submittedAt, /^2026-07-1[45]T/);
+  });
+
+  await test('scenario 14: normal loads never read the archive; history merges it by range without duplicates', () => {
+    const c = makeContext();
+    const headers = vm.runInContext('HEADERS', c).slice();
+    const archiveRows = [headers];
+    for (let i = 1; i <= 3000; i++) archiveRows.push(complaintRow(headers, 100000 + i, { 'Submitted At': new Date(Date.UTC(2026, 4, 1) + i * 60000) }));
+    archiveRows.push(complaintRow(headers, 100001, { 'Submitted At': new Date(Date.UTC(2026, 4, 1)) })); // duplicate archive copy
+    archiveRows.push(complaintRow(headers, 5)); // a case that is also still active
+    const archive = makeSheet('Archive_2026_05', archiveRows);
+    let archiveReads = 0;
+    const orig = archive.getRange.bind(archive);
+    archive.getRange = (...a) => { archiveReads++; return orig(...a); };
+    const { db } = complaintsDb(c, 20, { extra: [archive] });
+    const normal = v2(c, db);
+    assert.equal(normal.count, 20);
+    assert.equal(archiveReads, 0, 'daily dashboard must not touch the archive');
+    const hist = v2(c, db, { includeArchive: '1', from: '2026-05-01', to: '2026-05-01' });
+    assert.equal(hist.meta.source, 'active+archive');
+    const archived = hist.data.filter(r => r.source === 'archive');
+    assert.ok(archived.length > 0 && archived.length < 3000, 'archive rows are limited to the requested range');
+    assert.equal(new Set(hist.data.map(r => r.caseId)).size, hist.data.length, 'no duplicate Case IDs');
+  });
+
+  await test('scenario 15: a header-only active sheet is a successful empty result', () => {
+    const c = makeContext();
+    const { db } = complaintsDb(c, 0);
+    const out = v2(c, db);
+    assert.equal(out.success, true);
+    assert.equal(out.count, 0);
+    assert.deepEqual(out.data, []);
+  });
+
+  await test('scenario 16: an unavailable sheet returns a DATA_SOURCE_ERROR, not an empty list', () => {
+    const c = makeContext();
+    const out = v2(c, makeSpreadsheet([]));
+    assert.equal(out.success, false);
+    assert.equal(out.error.code, 'DATA_SOURCE_ERROR');
+    c.SpreadsheetApp = { openById() { throw new Error('Service Spreadsheets timed out'); } };
+    c.requireAdminAuth_ = () => null;
+    const down = JSON.parse(c.doGet({ parameter: { action: 'get_complaints', v: '2' } }).text);
+    assert.equal(down.success, false);
+    assert.doesNotMatch(JSON.stringify(down), /Service Spreadsheets/, 'no internal details to users');
+  });
+
+  await test('complaint reads are cached and any write invalidates the cache', () => {
+    const c = makeContext();
+    const { active, db, headers } = complaintsDb(c, 5);
+    assert.equal(v2(c, db).meta.cache, 'miss');
+    assert.equal(v2(c, db).meta.cache, 'hit');
+    active.rows.push(complaintRow(headers, 6));
+    c.invalidateComplaintCaches_();
+    const out = v2(c, db);
+    assert.equal(out.meta.cache, 'miss');
+    assert.equal(out.count, 6);
+  });
+
+  await test('reading complaints never deletes rows (no side effects in GET)', () => {
+    const c = makeContext();
+    const { active, db, headers } = complaintsDb(c, 3);
+    active.rows.splice(2, 0, headers.slice()); // a pasted duplicate header row
+    const before = active.rows.length;
+    const out = v2(c, db);
+    assert.equal(active.rows.length, before);
+    assert.equal(out.count, 3);
+  });
+
+  await test('archiving is idempotent and deletes in blocks', () => {
+    const c = makeContext();
+    const { active, db } = complaintsDb(c, 30);
+    let deletes = 0;
+    const origDel = active.deleteRows.bind(active);
+    active.deleteRows = (a, n) => { deletes++; return origDel(a, n); };
+    const out = c.archiveComplaints(db, '2026-07-01', '2026-07-01');
+    assert.ok(out.archived > 0);
+    assert.equal(deletes, 1, 'contiguous rows are removed in one call');
+    // Simulate an interrupted earlier run: the same rows appear in Active again.
+    const archive = db.getSheets().find(s => s.name.startsWith('Archive_'));
+    const archivedCount = archive.rows.length - 1;
+    active.rows.splice(1, 0, ...archive.rows.slice(1).map(r => r.slice()));
+    const again = c.archiveComplaints(db, '2026-07-01', '2026-07-01');
+    assert.equal(again.skippedDuplicates, archivedCount);
+    assert.equal(archive.rows.length - 1, archivedCount, 'no duplicate archive rows');
+  });
+
+  await test('status updates rewrite only the changed row', () => {
+    const c = makeContext();
+    const { active, db, headers } = complaintsDb(c, 50);
+    const writes = [];
+    const orig = active.getRange.bind(active);
+    active.getRange = (...a) => { const r = orig(...a); const sv = r.setValues.bind(r); r.setValues = v => { writes.push(a); return sv(v); }; return r; };
+    c.syncSchoolComplaintMasterStatus = () => {};
+    const n = c.updateComplaintsStatus(db, [{ caseId: 'CASE-7', status: 'Part Request' }]);
+    assert.equal(n, 1);
+    assert.deepEqual(writes, [[8, 1, 1, headers.length]]);
+    assert.equal(active.rows[7][headers.indexOf('Status')], 'Part Request');
+  });
+
+  await test('data health reports reachability, duplicates and overlaps', () => {
+    const c = makeContext();
+    const headers = vm.runInContext('HEADERS', c).slice();
+    const archive = makeSheet('Archive_2026_06', [headers, complaintRow(headers, 1), complaintRow(headers, 1), complaintRow(headers, 900)]);
+    const { active, db } = complaintsDb(c, 5, { extra: [archive] });
+    active.rows.push(complaintRow(headers, 2)); // duplicate Case ID in active
+    active.rows.push(Array(headers.length).fill(''));
+    const h = c.apiGetDataHealth_(db);
+    assert.equal(h.active.reachable, true);
+    assert.equal(h.active.records, 6);
+    assert.equal(h.active.duplicateCaseIds, 1);
+    assert.equal(h.active.blankRowsIgnored, 1);
+    assert.equal(h.archive.duplicateCaseIdsAcrossArchive, 1);
+    assert.equal(h.archive.alsoPresentInActive, 1);
   });
 
   await test('all inline browser scripts compile', () => {

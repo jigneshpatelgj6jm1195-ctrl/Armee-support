@@ -463,6 +463,7 @@ tr:hover td { background: #f8fafc; }
   padding: 16px; text-align: center; font-size: 0.78rem;
   color: var(--muted); font-weight: 600; width: 100%;
 }
+  #tab-dash.data-unavailable .stat-value, #tab-dash.data-unavailable canvas { opacity: 0.35; }
 </style>
 </head>
 <body class="auth-pending">
@@ -521,16 +522,21 @@ tr:hover td { background: #f8fafc; }
   <!-- ================= TAB: DASHBOARD ================= -->
   <div class="tab-content active" id="tab-dash">
     <div id="complaintsLoadNotice" role="alert" style="display:none;margin-bottom:14px;padding:11px 14px;border:1px solid #fecaca;border-radius:9px;background:#fef2f2;color:#991b1b;font-size:0.82rem;"></div>
+    <div id="dataSyncBar" style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:12px;font-size:0.75rem;color:var(--muted);">
+      <span id="dataSyncStatus">Loading complaint data…</span>
+      <button class="btn btn-ghost btn-sm" onclick="loadComplaints()" style="padding:3px 10px;">🔄 Retry / Refresh</button>
+      <button class="btn btn-ghost btn-sm" onclick="openDataHealth()" style="padding:3px 10px;">🩺 Data Health</button>
+    </div>
     <!-- Filters Row -->
     <div class="card" style="padding: 16px; margin-bottom: 20px;">
       <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;">
         <div style="flex: 1; min-width: 140px;">
           <label style="font-size:0.75rem;margin-bottom:4px;">From Date</label>
-          <input type="date" id="dashFromDate" style="padding:8px 12px;font-size:0.8rem;" onchange="renderDashboard()" />
+          <input type="date" id="dashFromDate" style="padding:8px 12px;font-size:0.8rem;" onchange="onDashDateRangeChange()" />
         </div>
         <div style="flex: 1; min-width: 140px;">
           <label style="font-size:0.75rem;margin-bottom:4px;">To Date</label>
-          <input type="date" id="dashToDate" style="padding:8px 12px;font-size:0.8rem;" onchange="renderDashboard()" />
+          <input type="date" id="dashToDate" style="padding:8px 12px;font-size:0.8rem;" onchange="onDashDateRangeChange()" />
         </div>
         <div style="flex: 1; min-width: 140px;">
           <label style="font-size:0.75rem;margin-bottom:4px;">Project</label>
@@ -1961,6 +1967,19 @@ tr:hover td { background: #f8fafc; }
 </div>
 
 <!-- 🖼️ PHOTO LIGHTBOX MODAL -->
+<div class="modal-bg" id="dataHealthModal">
+  <div class="modal" style="max-width: 640px; width: 95%; max-height: 85vh; overflow-y: auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:10px;">
+      <h3 style="margin:0;">🩺 Data Health / Sync Status</h3>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('dataHealthModal')" style="padding:4px 8px;font-weight:bold;">✕</button>
+    </div>
+    <div id="dataHealthBody" style="font-size:0.82rem;">Checking…</div>
+    <div class="modal-actions" style="margin-top:14px;justify-content:flex-end;">
+      <button class="btn btn-ghost" onclick="openDataHealth()">🔄 Re-check</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="adminPhotoModal">
   <div class="modal" style="max-width: 600px; width: 90%; text-align: center;">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
@@ -2658,7 +2677,8 @@ async function loadData() {
   renderPartsTable();
   renderUserTable();
   renderAccessControl();
-  renderArchiveManager();
+  // The archive list reads every Archive_* tab; load it only when that module is open.
+  if (currentTab === 'archive') renderArchiveManager();
   populateFilters();
   populateDashboardFilters();
 }
@@ -2720,114 +2740,295 @@ function isDuplicateComplaint(c) {
   return c.isRepeatSerial === true || c.duplicateStatus === 'YES';
 }
 
+/* ─────────────── COMPLAINT DATA SYNC (resilient) ───────────────
+   States: 'loading' | 'live' | 'stale' (showing last successful sync) | 'failed'.
+   An API failure is never shown as zero data. The last successful result is
+   kept in IndexedDB (too large for localStorage) and shown when live data
+   is unavailable. */
+let complaintsLoadState = 'loading';
+let complaintsLastSyncAt = null;
+let complaintsLastMeta = null;
+let complaintsHistoricalRange = null;   // {from,to} while archive rows are merged in
+let activeComplaintsBackup = null;      // active-only list kept while viewing history
+const SNAPSHOT_DB = 'armee_admin_snapshots';
+const SNAPSHOT_STORE = 'snapshots';
+
+function snapshotKey() {
+  return 'complaints_v2:' + String((currentUser && currentUser.email) || 'anon').toLowerCase();
+}
+function openSnapshotDb() {
+  return new Promise((resolve, reject) => {
+    try {
+      const req = indexedDB.open(SNAPSHOT_DB, 1);
+      req.onupgradeneeded = () => req.result.createObjectStore(SNAPSHOT_STORE);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    } catch (e) { reject(e); }
+  });
+}
+async function saveComplaintSnapshot(snapshot) {
+  try {
+    const db = await openSnapshotDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(SNAPSHOT_STORE, 'readwrite');
+      tx.objectStore(SNAPSHOT_STORE).put(snapshot, snapshotKey());
+      tx.oncomplete = resolve; tx.onerror = () => reject(tx.error);
+    });
+  } catch (e) { logToDebug('Could not save offline snapshot: ' + e.message, 'warning'); }
+}
+async function readComplaintSnapshot() {
+  try {
+    const db = await openSnapshotDb();
+    return await new Promise((resolve, reject) => {
+      const req = db.transaction(SNAPSHOT_STORE, 'readonly').objectStore(SNAPSHOT_STORE).get(snapshotKey());
+      req.onsuccess = () => resolve(req.result || null); req.onerror = () => reject(req.error);
+    });
+  } catch (e) { return null; }
+}
+
+function formatSyncTime(ts) {
+  if (!ts) return 'never';
+  const d = new Date(ts);
+  if (isNaN(d)) return 'unknown';
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function setComplaintsNotice(kind, html) {
+  const notice = document.getElementById('complaintsLoadNotice');
+  if (!notice) return;
+  const styles = {
+    error: ['#fecaca', '#fef2f2', '#991b1b'],
+    warn:  ['#fde68a', '#fffbeb', '#92400e'],
+    info:  ['#bfdbfe', '#eff6ff', '#1e3a8a']
+  }[kind] || ['#fecaca', '#fef2f2', '#991b1b'];
+  notice.style.borderColor = styles[0]; notice.style.background = styles[1]; notice.style.color = styles[2];
+  notice.innerHTML = html || '';
+  notice.style.display = html ? '' : 'none';
+}
+
+function updateSyncBar() {
+  const el = document.getElementById('dataSyncStatus');
+  if (!el) return;
+  const labels = { loading: '⏳ Loading live data…', live: '🟢 Live', stale: '🟠 Offline copy', failed: '🔴 Unavailable' };
+  let text = (labels[complaintsLoadState] || '') + ' · Last successful sync: ' + formatSyncTime(complaintsLastSyncAt);
+  if (complaintsLastMeta && complaintsLoadState === 'live') {
+    text += ` · ${complaintsLastMeta.activeCount} active records` +
+            (complaintsLastMeta.cache === 'hit' ? ' (server cache)' : '');
+  }
+  if (complaintsHistoricalRange) text += ' · Including archive ' + complaintsHistoricalRange.from + ' → ' + (complaintsHistoricalRange.to || 'today');
+  el.textContent = text;
+}
+
+/** GET a v=2 envelope. Retries once on a quick failure; a timeout is not retried. */
+async function fetchEnvelope(action, extraQuery, prefix) {
+  const url = GOOGLE_SCRIPT_URL + '?action=' + action + '&v=2&authToken=' + encodeURIComponent(adminAuthToken()) + (extraQuery || '');
+  let lastErr;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      let out = await adminApi.request(url, { timeoutMs: 90000, attempts: 1, dedup: true, cacheKey: action + (extraQuery || ''), prefix });
+      // A backend that predates the v2 envelope returns a bare array.
+      if (Array.isArray(out)) out = { success: true, data: out, count: out.length, warnings: [], warningCount: 0, meta: { activeCount: out.length } };
+      if (!out || typeof out !== 'object') throw new Error('Server returned an invalid response');
+      if (out.success === false) throw new Error((out.error && out.error.message) || 'Server could not read the data');
+      if (out.status === 'error') throw new Error(out.message || 'Server rejected the request');
+      if (out.error) throw new Error(String(out.error));
+      if (!Array.isArray(out.data)) throw new Error('Server returned incomplete data');
+      return out;
+    } catch (e) {
+      lastErr = e;
+      if (attempt === 2 || /timed out/i.test(e.message) || e.isFatal) break;
+      await new Promise(r => setTimeout(r, 2000 + Math.random() * 1000));
+    }
+  }
+  throw lastErr;
+}
+
+function applyComplaintData(complaints, schoolComplaints) {
+  complaintsList = normalizeComplaintStatuses(complaints || []);
+  window.parentComplaintsList = complaintsList;
+  window.parentSchoolComplaintsList = Array.isArray(schoolComplaints) ? schoolComplaints : [];
+  const sizeKB = (JSON.stringify(complaints || []).length / 1024).toFixed(2);
+  const sizeEl = document.getElementById('debugResponseSize');
+  if (sizeEl) sizeEl.textContent = sizeKB + ' KB';
+}
+
+function renderAfterComplaintLoad() {
+  updateSyncBar();
+  renderDashboard();
+  renderComplaintsTable();
+  if (typeof renderSchoolDash === 'function') renderSchoolDash();
+}
+
 async function loadComplaints() {
   const isLocalhost = isLocal();
-  const previousComplaints = Array.isArray(complaintsList) ? complaintsList : [];
-  const previousSchoolComplaints = Array.isArray(window.parentSchoolComplaintsList) ? window.parentSchoolComplaintsList : [];
-  const setLoadNotice = (message) => {
-    const notice = document.getElementById('complaintsLoadNotice');
-    if (!notice) return;
-    notice.textContent = message || '';
-    notice.style.display = message ? '' : 'none';
-  };
-  const restorePriorData = () => {
-    if (previousComplaints.length || previousSchoolComplaints.length) {
-      complaintsList = previousComplaints;
-      window.parentComplaintsList = previousComplaints;
-      window.parentSchoolComplaintsList = previousSchoolComplaints;
-      const message = 'Could not refresh live calls. Showing the last successfully loaded data.';
-      setLoadNotice(message);
-      showToast('⚠️ ' + message, 'warn');
-    } else {
-      complaintsList = [];
-      window.parentComplaintsList = [];
-      window.parentSchoolComplaintsList = [];
-      setLoadNotice('Could not load calls. The displayed zero values are unavailable data, not confirmed zero calls. Use Retry after checking the connection.');
-    }
-  };
-  setLoadNotice('');
   logToDebug(`loadComplaints() initiated (isLocalhost = ${isLocalhost}, onLine = ${navigator.onLine})`, 'info');
-  try {
-    if (GOOGLE_SCRIPT_URL && !isLocalhost && navigator.onLine) {
-      logToDebug(`Fetching live complaints and school complaints list from Google Apps Script...`, 'api');
-      const authToken = encodeURIComponent(adminAuthToken());
-      // School data is useful to the dashboard but must not hold the main
-      // complaints screen hostage. Both reads use whole-response deadlines.
-      const schoolPromise = adminApi.request(
-        GOOGLE_SCRIPT_URL + '?action=get_all_school_complaints&authToken=' + authToken,
-        { timeoutMs: 45000, attempts: 2, dedup: true, cacheKey: 'get_all_school_complaints', prefix: 'SCHOOL' }
-      ).catch(schoolErr => {
-        logToDebug(`School complaints loading failed: ${schoolErr.message}`, 'warning');
-        return null;
-      });
-      const data = await adminApi.request(
-        GOOGLE_SCRIPT_URL + '?action=get_complaints&authToken=' + authToken,
-        { timeoutMs: 45000, attempts: 2, dedup: true, cacheKey: 'get_complaints', prefix: 'ADVANCE' }
-      );
-      const sizeKB = (new Blob([JSON.stringify(data)]).size / 1024).toFixed(2);
-      document.getElementById('debugResponseSize').textContent = sizeKB + ' KB';
-      logToDebug(`Live complaints fetched. Response size: ${sizeKB} KB`, 'api');
-      if (data && data.error) {
-        logToDebug(`Backend returned error: ${data.error}`, 'error');
-        showToast('⚠️ Backend Error: ' + data.error, 'error');
-        complaintsList = [];
-      } else if (Array.isArray(data)) {
-        complaintsList = normalizeComplaintStatuses(data);
-        window.parentComplaintsList = complaintsList;
-        logToDebug(`Successfully parsed ${data.length} complaints from live sheet.`, 'success');
-        showToast('📡 Loaded live complaints from Google Sheet', 'success');
-      } else {
-        logToDebug(`Parsed live complaints data is not an array.`, 'error');
-        complaintsList = [];
-        window.parentComplaintsList = [];
-      }
 
-      const schoolData = await schoolPromise;
-      if (Array.isArray(schoolData)) {
-        window.parentSchoolComplaintsList = schoolData;
-        logToDebug(`Loaded ${schoolData.length} school master complaints for dashboard.`, 'success');
-      } else if (!Array.isArray(window.parentSchoolComplaintsList)) {
-        window.parentSchoolComplaintsList = [];
-      }
-    } else if (isLocalhost) {
-      logToDebug(`Fetching local complaints from /complaints.json...`, 'api');
-      const data = await adminApi.request('/complaints.json', { timeoutMs: 5000, attempts: 1, dedup: true, cacheKey: 'local_complaints', prefix: 'LOCAL' });
-      const sizeKB = (new Blob([JSON.stringify(data)]).size / 1024).toFixed(2);
-      document.getElementById('debugResponseSize').textContent = sizeKB + ' KB';
-      logToDebug(`Local complaints fetched. Size: ${sizeKB} KB`, 'api');
-      complaintsList = normalizeComplaintStatuses(data);
-      window.parentComplaintsList = complaintsList;
-      window.parentSchoolComplaintsList = [];
-      logToDebug(`Loaded ${complaintsList.length} complaints from local JSON.`, 'success');
-    } else {
-      throw new Error('Production calls cannot be loaded while the browser is offline.');
+  if (isLocalhost) {
+    try {
+      const data = await adminApi.request('/complaints.json', { timeoutMs: 5000, attempts: 2, dedup: true, cacheKey: 'local_complaints', prefix: 'LOCAL' });
+      applyComplaintData(data, []);
+      complaintsLoadState = 'live';
+      complaintsLastSyncAt = Date.now();
+      setComplaintsNotice('', '');
+    } catch (e) {
+      complaintsLoadState = complaintsList.length ? 'stale' : 'failed';
+      setComplaintsNotice('error', 'Unable to load local complaint data: ' + esc(e.message));
     }
+    renderAfterComplaintLoad();
+    return;
+  }
+
+  // Show the last successful copy immediately while the live data loads.
+  if (!complaintsList.length) {
+    const snap = await readComplaintSnapshot();
+    if (snap && Array.isArray(snap.complaints)) {
+      applyComplaintData(snap.complaints, snap.school);
+      complaintsLastSyncAt = snap.savedAt;
+      complaintsLastMeta = snap.meta || null;
+      complaintsLoadState = 'stale';
+      setComplaintsNotice('info', `Showing saved data from ${formatSyncTime(snap.savedAt)} while live data loads…`);
+      renderAfterComplaintLoad();
+    }
+  }
+  const previousSchool = window.parentSchoolComplaintsList;
+  if (complaintsLoadState !== 'stale') complaintsLoadState = 'loading';
+  updateSyncBar();
+
+  try {
+    if (!GOOGLE_SCRIPT_URL || !navigator.onLine) throw new Error('This browser is offline.');
+    const schoolPromise = fetchEnvelope('get_all_school_complaints', '', 'SCHOOL').catch(err => {
+      logToDebug(`School complaints loading failed: ${err.message}`, 'warning');
+      return null;
+    });
+    const main = await fetchEnvelope('get_complaints', '', 'ADVANCE');
+    const school = await schoolPromise;
+    const schoolData = school ? school.data : (Array.isArray(previousSchool) ? previousSchool : []);
+
+    complaintsHistoricalRange = null;
+    activeComplaintsBackup = null;
+    applyComplaintData(main.data, schoolData);
+    complaintsLoadState = 'live';
+    complaintsLastSyncAt = Date.now();
+    complaintsLastMeta = main.meta || null;
+    logToDebug(`Loaded ${main.count} complaints (${main.meta && main.meta.cache} cache, ${main.meta && main.meta.durationMs} ms server).`, 'success');
+    saveComplaintSnapshot({ savedAt: complaintsLastSyncAt, complaints: main.data, school: schoolData, meta: main.meta });
+
+    if (main.count === 0) {
+      setComplaintsNotice('info', 'Data loaded successfully. 0 complaints found in the active sheet.');
+    } else if (main.warningCount > 0) {
+      setComplaintsNotice('info', `Data loaded successfully. ${main.warningCount} row(s) have data problems (still counted where possible). <a href="#" onclick="openDataHealth();return false;">View Data Health</a>`);
+    } else {
+      setComplaintsNotice('', '');
+    }
+    // A date range that reaches into archived months must stay complete after a refresh.
+    const from = document.getElementById('dashFromDate').value;
+    if (from) onDashDateRangeChange();
   } catch (e) {
     console.error('Failed to load live complaints:', e);
     logToDebug(`Complaints loading failed: ${e.message}`, 'error');
-    if (!isLocalhost) {
-      restorePriorData();
-    } else try {
-      showToast('⚠️ Local data fetch error: ' + e.message + '. Retrying once…', 'warn');
-      logToDebug(`Retrying local /complaints.json...`, 'info');
-      const data = await adminApi.request('/complaints.json', { timeoutMs: 5000, attempts: 1, dedup: true, cacheKey: 'local_complaints:fallback', prefix: 'LOCAL' });
-      const sizeKB = (new Blob([JSON.stringify(data)]).size / 1024).toFixed(2);
-      document.getElementById('debugResponseSize').textContent = sizeKB + ' KB';
-      complaintsList = normalizeComplaintStatuses(data);
-      window.parentComplaintsList = complaintsList;
-      window.parentSchoolComplaintsList = [];
-      logToDebug(`Fallback loaded ${complaintsList.length} complaints from local JSON.`, 'success');
-    } catch (fallbackErr) {
-      console.error('Local fallback failed:', fallbackErr);
-      logToDebug(`Local fallback failed: ${fallbackErr.message}`, 'error');
-      restorePriorData();
+    const retry = ' <button class="btn btn-ghost btn-sm" onclick="loadComplaints()" style="padding:2px 10px;margin-left:6px;">Retry</button>';
+    if (complaintsList.length || complaintsLastSyncAt) {
+      complaintsLoadState = 'stale';
+      setComplaintsNotice('warn', `Live data unavailable (${esc(e.message)}). Showing last successful sync from ${formatSyncTime(complaintsLastSyncAt)}.` + retry);
+    } else {
+      complaintsLoadState = 'failed';
+      setComplaintsNotice('error', `Unable to load complaint data (${esc(e.message)}). Last successful sync: ${formatSyncTime(complaintsLastSyncAt)}. Figures below are unavailable, not zero.` + retry);
     }
   }
-  renderDashboard();
-  renderComplaintsTable();
+  renderAfterComplaintLoad();
+}
 
-  // Refresh the native School Dash view
-  if (typeof renderSchoolDash === 'function') renderSchoolDash();
+/** Earliest record date currently held in the active list (yyyy-mm-dd). */
+function oldestActiveComplaintDate() {
+  const list = activeComplaintsBackup || complaintsList;
+  let min = null;
+  list.forEach(c => {
+    const d = parseDateString(c.submittedAt || c.complaintDate);
+    if (d && (!min || d < min)) min = d;
+  });
+  if (!min) return null;
+  return min.getFullYear() + '-' + String(min.getMonth() + 1).padStart(2, '0') + '-' + String(min.getDate()).padStart(2, '0');
+}
+
+function restoreActiveComplaints() {
+  if (activeComplaintsBackup) {
+    complaintsList = activeComplaintsBackup;
+    window.parentComplaintsList = complaintsList;
+  }
+  activeComplaintsBackup = null;
+  complaintsHistoricalRange = null;
+  setComplaintsNotice('', '');
+  updateSyncBar();
+}
+
+/** Date filter: pull archived rows only when the range starts before the active data. */
+async function onDashDateRangeChange() {
+  const from = document.getElementById('dashFromDate').value;
+  const to = document.getElementById('dashToDate').value;
+  const oldest = oldestActiveComplaintDate();
+  const needsArchive = !!(from && oldest && from < oldest && complaintsLoadState !== 'failed' && !isLocal());
+  if (!needsArchive) {
+    if (complaintsHistoricalRange) restoreActiveComplaints();
+    renderDashboard();
+    return;
+  }
+  if (complaintsHistoricalRange && complaintsHistoricalRange.from === from && complaintsHistoricalRange.to === to) {
+    renderDashboard();
+    return;
+  }
+  setComplaintsNotice('info', `Loading archived records from ${esc(from)}…`);
+  try {
+    const q = '&includeArchive=1&from=' + encodeURIComponent(from) + (to ? '&to=' + encodeURIComponent(to) : '');
+    const out = await fetchEnvelope('get_complaints', q, 'HISTORY');
+    if (!activeComplaintsBackup) activeComplaintsBackup = complaintsList;
+    complaintsList = normalizeComplaintStatuses(out.data);
+    window.parentComplaintsList = complaintsList;
+    complaintsHistoricalRange = { from, to };
+    setComplaintsNotice('info', `Including ${out.meta ? out.meta.archiveCount : 0} archived record(s) for this date range.`);
+  } catch (e) {
+    setComplaintsNotice('warn', `Archived records could not be loaded (${esc(e.message)}). Showing active records only for this range.`);
+  }
+  updateSyncBar();
+  renderDashboard();
+}
+
+/** Admin Data Health / Sync Status panel. */
+async function openDataHealth() {
+  openModal('dataHealthModal');
+  const body = document.getElementById('dataHealthBody');
+  body.innerHTML = '⏳ Checking the Active and Archive sheets… (this reads every sheet, allow up to a minute)';
+  const t0 = performance.now();
+  try {
+    const url = GOOGLE_SCRIPT_URL + '?action=get_data_health&authToken=' + encodeURIComponent(adminAuthToken());
+    const h = await adminApi.request(url, { timeoutMs: 120000, attempts: 1, dedup: false, prefix: 'HEALTH' });
+    if (!h || h.success !== true) throw new Error((h && (h.message || (h.error && h.error.message))) || 'Health check failed');
+    const a = h.active || {}, ar = h.archive || {};
+    const yes = v => v ? '✅ Yes' : '❌ No';
+    const row = (k, v, warn) => `<tr><td style="padding:5px 8px;color:var(--muted);">${k}</td><td style="padding:5px 8px;font-weight:600;${warn ? 'color:#b45309;' : ''}">${v}</td></tr>`;
+    body.innerHTML = '<table style="width:100%;border-collapse:collapse;">' +
+      row('Active Sheet reachable', yes(a.reachable)) +
+      row('Archive Sheet(s) reachable', yes(ar.reachable)) +
+      row('Active record count', a.records ?? '—') +
+      row('Archive records (unique / total rows)', ar.reachable ? `${ar.uniqueRecords} / ${ar.rows}` : '—') +
+      row('Archive tabs', ar.tabs ? ar.tabs.map(t => `${esc(t.name)} (${t.rows})`).join(', ') : '—') +
+      row('Blank rows ignored', (a.blankRowsIgnored || 0) + (ar.blankRowsIgnored || 0)) +
+      row('Invalid rows skipped', a.invalidRowsSkipped || 0, a.invalidRowsSkipped) +
+      row('Duplicate Case IDs in Active sheet', a.duplicateCaseIds || 0, a.duplicateCaseIds) +
+      row('Duplicate Case IDs across Archive tabs', ar.duplicateCaseIdsAcrossArchive || 0, ar.duplicateCaseIdsAcrossArchive) +
+      row('Records present in both Active and Archive', ar.alsoPresentInActive || 0, ar.alsoPresentInActive) +
+      row('Missing Case ID', a.missingCaseId || 0, a.missingCaseId) +
+      row('Missing school / DISE', a.missingSchoolOrDise || 0, a.missingSchoolOrDise) +
+      row('Invalid dates', a.invalidDates || 0, a.invalidDates) +
+      row('Missing columns', (a.missingColumns && a.missingColumns.length) ? esc(a.missingColumns.join(', ')) : 'None', a.missingColumns && a.missingColumns.length) +
+      row('Last successful sync (server)', h.lastSuccessfulSync ? formatSyncTime(h.lastSuccessfulSync.at) : '—') +
+      row('Last successful sync (this browser)', formatSyncTime(complaintsLastSyncAt)) +
+      row('Last API error', h.lastApiError ? esc(formatSyncTime(h.lastApiError.at) + ' — ' + (h.lastApiError.action || '') + ': ' + (h.lastApiError.message || '')) : 'None') +
+      row('Health check response time', `${Math.round(performance.now() - t0)} ms (server ${h.responseTimeMs} ms)`) +
+      '</table>';
+  } catch (e) {
+    body.innerHTML = `<div style="color:#991b1b;">Health check unavailable: ${esc(e.message)}</div>`;
+  }
 }
 
 async function loadSchoolList() {
@@ -3014,6 +3215,11 @@ async function saveAll() {
       syncErrors.push('master data: ' + e.message);
     }
     try {
+      // Never push an offline/saved copy or archive-merged rows back to the live
+      // sheet: that would overwrite newer changes made by engineers.
+      if (complaintsLoadState !== 'live' || complaintsHistoricalRange) {
+        throw new Error('complaint list is not live (reload live data, clear the archive date range, then save again)');
+      }
       await postAndConfirm({ action: 'update_complaints', complaints: complaintsList, authToken: adminAuthToken() });
       complaintsSynced = true;
     } catch (e) {
@@ -3518,6 +3724,8 @@ function switchTab(tabId) {
     loadBranchEmails();
   } else if (tabId === 'acer') {
     if (typeof ensureAcerDataLoaded === 'function') ensureAcerDataLoaded();
+  } else if (tabId === 'archive') {
+    renderArchiveManager();
   }
 }
 
@@ -4128,6 +4336,12 @@ function renderDashboard() {
   document.getElementById('kpiProjects').textContent = projects.size;
   document.getElementById('kpiDistricts').textContent = districts.size;
   document.getElementById('kpiEquipTypes').textContent = equipTypes.size;
+  const dashTab = document.getElementById('tab-dash');
+  if (dashTab) dashTab.classList.toggle('data-unavailable', complaintsLoadState === 'failed');
+  if (complaintsLoadState === 'failed') {
+    ['kpiTotal', 'kpiSchools', 'kpiSerials', 'kpiDuplicates', 'kpiProjects', 'kpiDistricts', 'kpiEquipTypes']
+      .forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '—'; });
+  }
 
   // Render recent 5 complaints
   const recentComplaints = [...complaints].reverse().slice(0, 5);
@@ -4231,6 +4445,10 @@ function renderUnifiedDailyFlow() {
   document.getElementById('schoolFlowOutflow').textContent = schoolOutflow;
   document.getElementById('schoolFlowPending').textContent = `${schoolNetPending} (net)`;
   document.getElementById('schoolFlowPct').textContent = schoolPct + '%';
+  if (complaintsLoadState === 'failed') {
+    ['schoolFlowInflow', 'schoolFlowOutflow', 'schoolFlowPending', 'schoolFlowPct']
+      .forEach(id => { document.getElementById(id).textContent = '—'; });
+  }
 
   // 2. Department Complaints Flow
   let deptInflow = 0;
@@ -4825,6 +5043,7 @@ function populateDashboardFilters() {
 function resetDashboardFilters() {
   document.getElementById('dashFromDate').value = '';
   document.getElementById('dashToDate').value = '';
+  if (complaintsHistoricalRange) restoreActiveComplaints();
   document.getElementById('dashProject').value = '';
   document.getElementById('dashDistrict').value = '';
   document.getElementById('dashEquipment').value = '';
@@ -5739,10 +5958,12 @@ async function archiveDataRange() {
     const result = await postJsonWithDeadline(
       GOOGLE_SCRIPT_URL,
       { action: 'archive_complaints', fromDate, toDate, authToken: adminAuthToken() },
-      { timeoutMs: 60000 }
+      { timeoutMs: 180000 }
     );
     if (result.status === 'ok') {
-      showToast(`📦 Archived ${result.archived} records successfully!`, 'success');
+      const extra = (result.skippedDuplicates ? ` (${result.skippedDuplicates} already in archive were not copied again)` : '') +
+                    (result.remaining ? ` ${result.remaining} more remain in this range — click Archive again to continue.` : '');
+      showToast(`📦 Archived ${result.archived} records successfully!${extra}`, result.remaining ? 'warn' : 'success');
       await loadComplaints();
       await renderArchiveManager();
     } else {

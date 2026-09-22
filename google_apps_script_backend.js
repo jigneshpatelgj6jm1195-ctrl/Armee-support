@@ -466,7 +466,10 @@ function handleSelfLockingPost_(data) {
     var result = withScriptLock_(40000, function() {
       return resolveDepartmentComplaint(ss, data, uploaded);
     });
-    if (result && result.status === 'ok') cacheInvalidate(DEPT_LIST_CACHE_KEY);
+    if (result && result.status === 'ok') {
+      cacheInvalidate(DEPT_LIST_CACHE_KEY);
+      invalidateComplaintCaches_(); // the ticket is mirrored into Complaints
+    }
     return jsonOut_(result);
   }
 
@@ -625,7 +628,9 @@ function doPost(e) {
       if (authErrA) return ContentService.createTextOutput(JSON.stringify(authErrA))
                                          .setMimeType(ContentService.MimeType.JSON);
       var archResult = archiveComplaints(ss, data.fromDate, data.toDate);
-      return ContentService.createTextOutput(JSON.stringify({status: 'ok', archived: archResult.archived}))
+      return ContentService.createTextOutput(JSON.stringify({status: 'ok', archived: archResult.archived,
+                                                            remaining: archResult.remaining,
+                                                            skippedDuplicates: archResult.skippedDuplicates}))
                            .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -831,7 +836,10 @@ function doPost(e) {
     // Authentication, email and scraper-log calls do not change department
     // ticket data. Preserve the expensive department cache for those actions.
     var nonDeptActions = { login: true, send_test_email: true, log_scraper_run: true, scraper_alert: true };
-    if (!data || !nonDeptActions[data.action]) cacheInvalidate(DEPT_LIST_CACHE_KEY);
+    if (!data || !nonDeptActions[data.action]) {
+      cacheInvalidate(DEPT_LIST_CACHE_KEY);
+      invalidateComplaintCaches_();
+    }
     lock.releaseLock();
   }
 }
@@ -882,6 +890,14 @@ function doGet(e) {
       var complaintsAuth = requireAdminAuth_(e.parameter, false);
       if (complaintsAuth) return ContentService.createTextOutput(JSON.stringify(complaintsAuth))
                                               .setMimeType(ContentService.MimeType.JSON);
+      if (String(e.parameter.v || '') === '2') {
+        var v2 = apiGetComplaintsV2_(ss, e.parameter);
+        v2.data = filterRowsForAdminDistricts_(ss, v2.data, e.parameter.authToken);
+        v2.count = v2.data.length;
+        recordHealth_(true, { at: new Date().toISOString(), action: 'get_complaints',
+                              activeRecords: v2.meta.activeCount, durationMs: v2.meta.durationMs, cache: v2.meta.cache });
+        return jsonOut_(v2);
+      }
       var complaints = filterRowsForAdminDistricts_(ss, getComplaintsList(ss), e.parameter.authToken);
       return ContentService.createTextOutput(JSON.stringify(complaints))
                            .setMimeType(ContentService.MimeType.JSON);
@@ -897,6 +913,19 @@ function doGet(e) {
       var allSchoolAuth = requireAdminAuth_(e.parameter, false);
       if (allSchoolAuth) return ContentService.createTextOutput(JSON.stringify(allSchoolAuth))
                                                .setMimeType(ContentService.MimeType.JSON);
+      if (String(e.parameter.v || '') === '2') {
+        var schoolKey = 'school_complaints_' + cacheGeneration_(SCHOOL_CACHE_GEN_KEY);
+        var schoolAll = cacheGetJson_(schoolKey);
+        var schoolCache = 'hit';
+        if (!schoolAll) {
+          schoolAll = getAllSchoolComplaints(ss);
+          schoolCache = 'miss';
+          cachePutJson_(schoolKey, schoolAll);
+        }
+        var schoolList = filterRowsForAdminDistricts_(ss, schoolAll, e.parameter.authToken);
+        return jsonOut_({ success: true, data: schoolList, count: schoolList.length, warnings: [],
+                          meta: { cache: schoolCache, generatedAt: new Date().toISOString() } });
+      }
       var list = filterRowsForAdminDistricts_(ss, getAllSchoolComplaints(ss), e.parameter.authToken);
       return ContentService.createTextOutput(JSON.stringify(list))
                            .setMimeType(ContentService.MimeType.JSON);
@@ -1052,6 +1081,12 @@ function doGet(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
+    if (action === 'get_data_health') {
+      var healthAuth = requireAdminAuth_(e.parameter, false);
+      if (healthAuth) return jsonOut_(healthAuth);
+      return jsonOut_(apiGetDataHealth_(ss));
+    }
+
     // Lightweight status probe (one row) so the admin panel can confirm whether
     // an update that timed out on the client actually reached the sheet.
     if (action === 'get_department_ticket_status') {
@@ -1074,7 +1109,7 @@ function doGet(e) {
       return ContentService.createTextOutput(JSON.stringify({
         status: 'ok',
         service: 'Armee Complaint Management Backend',
-        version: '1.3.0',
+        version: '1.4.0',
         timestamp: new Date().toISOString(),
         spreadsheetOpenMs: openMs,
         deptCacheWarm: !!cacheGetLarge(DEPT_LIST_CACHE_KEY)
@@ -1105,6 +1140,16 @@ function doGet(e) {
     })).setMimeType(ContentService.MimeType.JSON);
 
   } catch (err) {
+    var getAction = e && e.parameter ? String(e.parameter.action || '') : '';
+    logDataError_('doGet', '', err, { action: getAction });
+    recordHealth_(false, { at: new Date().toISOString(), action: getAction,
+                           message: String(err && err.message ? err.message : err).slice(0, 200) });
+    if (e && e.parameter && String(e.parameter.v || '') === '2') {
+      return jsonOut_({ success: false, error: {
+        code: (err && err.code) || 'DATA_SOURCE_ERROR',
+        message: 'Unable to read complaint data right now. Please retry.'
+      } });
+    }
     return ContentService
       .createTextOutput(JSON.stringify({ error: err.toString() }))
       .setMimeType(ContentService.MimeType.JSON);
@@ -1347,110 +1392,466 @@ function migrateInvalidAcerCaseIds(ss) {
   }
 }
 
-function getComplaintsList(ss) {
+// ═══════════════ RESILIENT DATA LAYER (header-based sheet reading) ═══════════════
+// Every complaint read goes through readSheetTable_(). It never depends on row
+// positions, fixed ranges or on historical rows existing: it reads the header
+// row, maps columns by name, reads exactly the populated block in ONE call,
+// skips blank rows and validates each row on its own, so one bad row becomes a
+// warning instead of breaking the whole response.
+
+// Header text (normalised) -> record key for the Complaints / Archive_* tabs.
+var COMPLAINT_FIELD_HEADERS = {
+  srNo: 'SR No.', submittedAt: 'Submitted At', complainantName: 'Complainant Name',
+  complainantPhone: 'Complainant Phone', complainantRole: 'Complainant Role', project: 'Project',
+  dise: 'DISE Code', schoolCode: 'School Code', district: 'District', taluka: 'Taluka',
+  school: 'School Name', principal: 'Principal Name', contact: 'Principal Contact',
+  address: 'Address', pincode: 'Pin Code', equipment: 'Equipment',
+  natureOfComplaint: 'Nature of Complaint', serialNumber: 'Serial Number', quantity: 'Quantity',
+  complaintDate: 'Complaint Date', suspectedPart: 'Suspected Part', description: 'Description',
+  photoCount: 'Photo Count', status: 'Status', caseId: 'Case ID', latitude: 'Latitude',
+  longitude: 'Longitude', photoPreview: 'Photo Preview', viewPhoto: 'View Photo',
+  photoUrl: 'Photo URL', duplicateStatus: 'Duplicate Status',
+  serialPhotoPreview: 'Serial Photo Preview', viewSerialPhoto: 'View Serial Photo',
+  serialPhotoUrl: 'Serial Photo URL', archived: 'Archived', otpValue: 'OtpValue',
+  closureType: 'ClosureType', acerCaseId: 'AcerCaseId', acerCaseStatus: 'AcerCaseStatus',
+  lastUpdatedDate: 'LastUpdatedDate'
+};
+var COMPLAINTS_CACHE_GEN_KEY = 'complaints_gen_v2';
+var SCHOOL_CACHE_GEN_KEY = 'school_complaints_gen_v2';
+var ARCHIVE_CACHE_GEN_KEY = 'archive_gen_v2';
+var DATA_CACHE_TTL_SECONDS = 1800; // writes change the generation, so data is never stale
+var MAX_WARNINGS_RETURNED = 50;
+
+function normHeader_(h) {
+  return String(h === null || h === undefined ? '' : h).replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function logDataError_(fn, sheetName, err, extra) {
+  try {
+    console.error(JSON.stringify({
+      function: fn, sheet: sheetName || '',
+      message: err && err.message ? err.message : String(err),
+      stack: err && err.stack ? String(err.stack).slice(0, 1500) : '',
+      extra: extra || null
+    }));
+  } catch (logErr) {}
+}
+
+/** Parses Sheet Dates, ISO strings, dd-MM-yyyy, dd/MM/yyyy (optionally with time). */
+function parseSheetDate_(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (Object.prototype.toString.call(value) === '[object Date]') {
+    return isNaN(value.getTime()) ? null : value;
+  }
+  if (typeof value === 'number' && isFinite(value)) {
+    // Spreadsheet serial day number (days since 1899-12-30).
+    if (value > 20000 && value < 80000) return new Date(Math.round((value - 25569) * 86400000));
+    return null;
+  }
+  var s = String(value).trim();
+  if (!s) return null;
+  var m = s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (m) {
+    var d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]),
+                     Number(m[4] || 0), Number(m[5] || 0), Number(m[6] || 0));
+    return (d.getDate() === Number(m[1]) && d.getMonth() === Number(m[2]) - 1) ? d : null;
+  }
+  var iso = new Date(s);
+  return isNaN(iso.getTime()) ? null : iso;
+}
+
+/**
+ * Reads a sheet as header-mapped records.
+ * options.fields      {key: 'Header Text'} logical schema
+ * options.fallbackCol {key: 0-based index} used only when a header is missing
+ * options.formulaKeys [keys] whose formulas are also needed (read as one block)
+ * Returns { records, stats, warnings }. Never throws for a single bad row.
+ */
+function readSheetTable_(sheet, options) {
+  var result = {
+    records: [], warnings: [],
+    stats: { sheet: sheet ? sheet.getName() : '', dataRows: 0, blankRows: 0, headerRows: 0, invalidRows: 0, missingHeaders: [] }
+  };
+  if (!sheet) return result;
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  if (lastRow < 1 || lastCol < 1) return result;
+
+  var values = sheet.getRange(1, 1, lastRow, lastCol).getValues(); // ONE bulk read
+  var header = values[0].map(normHeader_);
+  var headerIndex = {};
+  for (var h = 0; h < header.length; h++) {
+    if (header[h] && headerIndex[header[h]] === undefined) headerIndex[header[h]] = h;
+  }
+
+  var fields = options.fields;
+  var colOf = {};
+  Object.keys(fields).forEach(function(key) {
+    var idx = headerIndex[normHeader_(fields[key])];
+    if (idx === undefined && options.fallbackCol && options.fallbackCol[key] !== undefined &&
+        options.fallbackCol[key] < lastCol && !header[options.fallbackCol[key]]) {
+      idx = options.fallbackCol[key]; // legacy sheet with a blank header cell
+    }
+    if (idx === undefined) result.stats.missingHeaders.push(fields[key]);
+    colOf[key] = idx;
+  });
+
+  var formulas = null, formulaStart = 0;
+  if (options.formulaKeys && options.formulaKeys.length && lastRow > 1) {
+    var fCols = options.formulaKeys.map(function(k) { return colOf[k]; })
+                                   .filter(function(i) { return i !== undefined; });
+    if (fCols.length) {
+      formulaStart = Math.min.apply(null, fCols);
+      var width = Math.max.apply(null, fCols) - formulaStart + 1;
+      formulas = sheet.getRange(1, formulaStart + 1, lastRow, width).getFormulas();
+    }
+  }
+
+  var headerMarker = normHeader_(fields[Object.keys(fields)[0]]);
+  for (var r = 1; r < values.length; r++) {
+    var row = values[r];
+    try {
+      var blank = true;
+      for (var c = 0; c < row.length; c++) {
+        if (row[c] !== '' && row[c] !== null) { blank = false; break; }
+      }
+      if (blank) { result.stats.blankRows++; continue; }
+      if (normHeader_(row[0]) === headerMarker) { // a pasted duplicate header row
+        result.stats.headerRows++;
+        continue;
+      }
+      var rec = {};
+      for (var key in colOf) {
+        var ci = colOf[key];
+        rec[key] = ci === undefined ? '' : row[ci];
+      }
+      if (formulas) {
+        rec.__formulas = {};
+        options.formulaKeys.forEach(function(k) {
+          var fi = colOf[k];
+          if (fi !== undefined) rec.__formulas[k] = formulas[r][fi - formulaStart] || '';
+        });
+      }
+      rec.__row = r + 1; // diagnostics only - never used as an identifier
+      result.records.push(rec);
+      result.stats.dataRows++;
+    } catch (rowErr) {
+      result.stats.invalidRows++;
+      if (result.warnings.length < 500) {
+        result.warnings.push({ sheet: result.stats.sheet, row: r + 1, reason: 'Unreadable row: ' + rowErr.message });
+      }
+    }
+  }
+  return result;
+}
+
+function complaintFallbackCols_() {
+  var out = {};
+  Object.keys(COMPLAINT_FIELD_HEADERS).forEach(function(key) {
+    var idx = HEADERS.indexOf(COMPLAINT_FIELD_HEADERS[key]);
+    if (idx !== -1) out[key] = idx;
+  });
+  return out;
+}
+
+function firstFormulaUrl_(formula) {
+  var m = String(formula || '').match(/=(?:HYPERLINK|IMAGE)\("([^"]+)"/i);
+  return m ? m[1] : '';
+}
+
+/** Converts a raw complaint record to the API shape and validates it. */
+function toComplaintDto_(rec, warnings, sheetName) {
+  var problems = [];
+  var submitted = parseSheetDate_(rec.submittedAt);
+  var complaintDate = parseSheetDate_(rec.complaintDate);
+  if (!submitted && !complaintDate) problems.push('Invalid or missing date');
+  if (!String(rec.caseId || '').trim()) problems.push('Missing Case ID');
+  if (!String(rec.dise || '').trim() && !String(rec.school || '').trim()) problems.push('Missing school/DISE');
+
+  var rawAcerId = String(rec.acerCaseId || '').trim();
+  var rawAcerSt = String(rec.acerCaseStatus || '').trim();
+  var f = rec.__formulas || {};
+  var photoUrl = String(rec.photoUrl || '').trim() || firstFormulaUrl_(f.viewPhoto) || firstFormulaUrl_(f.photoPreview);
+  var serialPhotoUrl = String(rec.serialPhotoUrl || '').trim() || firstFormulaUrl_(f.viewSerialPhoto) || firstFormulaUrl_(f.serialPhotoPreview);
+
+  var dto = {
+    srNo: rec.srNo,
+    submittedAt: submitted ? submitted.toISOString() : String(rec.submittedAt || ''),
+    complainantName: rec.complainantName,
+    complainantPhone: rec.complainantPhone,
+    complainantRole: rec.complainantRole,
+    project: rec.project,
+    dise: rec.dise,
+    schoolCode: rec.schoolCode,
+    district: rec.district,
+    taluka: rec.taluka,
+    school: rec.school,
+    principal: rec.principal,
+    contact: rec.contact,
+    address: rec.address,
+    pincode: rec.pincode,
+    equipment: rec.equipment,
+    natureOfComplaint: rec.natureOfComplaint,
+    serialNumber: rec.serialNumber,
+    quantity: rec.quantity,
+    complaintDate: complaintDate ? complaintDate.toISOString() : String(rec.complaintDate || ''),
+    suspectedPart: rec.suspectedPart,
+    description: rec.description,
+    photoCount: parseInt(rec.photoCount, 10) || 0,
+    status: rec.status || 'Open',
+    caseId: String(rec.caseId || '').trim(),
+    latitude: parseFloat(rec.latitude) || 0,
+    longitude: parseFloat(rec.longitude) || 0,
+    photoUrl: photoUrl,
+    duplicateStatus: String(rec.duplicateStatus || 'NO'),
+    serialPhotoUrl: serialPhotoUrl,
+    archived: String(rec.archived || '').trim(),
+    otpValue: rec.otpValue || '',
+    closureType: rec.closureType || '',
+    acerCaseId: isStatusWord(rawAcerId) ? '' : rawAcerId,
+    acerCaseStatus: isStatusWord(rawAcerId) ? rawAcerId : rawAcerSt,
+    lastUpdatedDate: rec.lastUpdatedDate instanceof Date ? rec.lastUpdatedDate.toISOString() : (rec.lastUpdatedDate || '')
+  };
+  if (problems.length) {
+    dto.dataWarning = problems.join('; ');
+    if (warnings.length < 500) warnings.push({ sheet: sheetName, row: rec.__row, caseId: dto.caseId, reason: dto.dataWarning });
+  }
+  return dto;
+}
+
+/** Active complaints (Complaints tab) as validated DTOs + read statistics. */
+function readActiveComplaints_(ss) {
   var sheet = ss.getSheetByName(SHEET_TAB_NAME);
-  if (!sheet) return [];
-
-  var rows = sheet.getDataRange().getValues();
-  var formulas = sheet.getDataRange().getFormulas();
-  if (rows.length <= 1) return [];
-
-  // Cleanup duplicate header rows if any exist (e.g. from previous runs)
-  for (var i = rows.length - 1; i > 0; i--) {
-    if (rows[i][0] === 'SR No.') {
-      try {
-        sheet.deleteRow(i + 1);
-      } catch (err) {}
-      rows.splice(i, 1);
-      formulas.splice(i, 1);
-    }
+  if (!sheet) {
+    var missing = new Error('Active sheet "' + SHEET_TAB_NAME + '" was not found');
+    missing.code = 'DATA_SOURCE_ERROR';
+    throw missing;
   }
-
+  var table = readSheetTable_(sheet, {
+    fields: COMPLAINT_FIELD_HEADERS,
+    fallbackCol: complaintFallbackCols_(),
+    formulaKeys: ['photoPreview', 'viewPhoto', 'serialPhotoPreview', 'viewSerialPhoto']
+  });
+  var warnings = table.warnings;
   var data = [];
-  for (var i = 1; i < rows.length; i++) {
-    var row = rows[i];
-    var rowFormulas = formulas[i];
-    
-    // Parse using index-based layout for 100% correctness
-    var archivedVal = String(row[34] || '').trim();
-    if (archivedVal === 'YES') {
-      continue;
+  var archivedFlagged = 0;
+  for (var i = 0; i < table.records.length; i++) {
+    try {
+      var rec = table.records[i];
+      if (String(rec.archived || '').trim().toUpperCase() === 'YES') { archivedFlagged++; continue; }
+      data.push(toComplaintDto_(rec, warnings, table.stats.sheet));
+    } catch (dtoErr) {
+      table.stats.invalidRows++;
+      if (warnings.length < 500) warnings.push({ sheet: table.stats.sheet, row: table.records[i].__row, reason: dtoErr.message });
     }
-
-    var rawAcerId = String(row[37] || '').trim();
-    var rawAcerSt = String(row[38] || '').trim();
-
-    var obj = {
-      srNo: row[0],
-      submittedAt: row[1],
-      complainantName: row[2],
-      complainantPhone: row[3],
-      complainantRole: row[4],
-      project: row[5],
-      dise: row[6],
-      schoolCode: row[7],
-      district: row[8],
-      taluka: row[9],
-      school: row[10],
-      principal: row[11],
-      contact: row[12],
-      address: row[13],
-      pincode: row[14],
-      equipment: row[15],
-      natureOfComplaint: row[16],
-      serialNumber: row[17],
-      quantity: row[18],
-      complaintDate: row[19],
-      medium: row[20],
-      suspectedPart: row[20],
-      description: row[21],
-      photoCount: parseInt(row[22]) || 0,
-      status: row[23] || 'Open',
-      caseId: row[24] || '',
-      latitude: parseFloat(row[25]) || 0,
-      longitude: parseFloat(row[26]) || 0,
-      photoPreview: row[27] || '',
-      viewPhoto: row[28] || '',
-      photoUrl: row[29] || '',
-      duplicateStatus: String(row[30] || 'NO'),
-      serialPhotoPreview: row[31] || '',
-      viewSerialPhoto: row[32] || '',
-      serialPhotoUrl: row[33] || '',
-      archived: archivedVal,
-      otpValue: row[35] || '',
-      closureType: row[36] || '',
-      acerCaseId: isStatusWord(rawAcerId) ? '' : rawAcerId,
-      acerCaseStatus: isStatusWord(rawAcerId) ? rawAcerId : rawAcerSt,
-      lastUpdatedDate: row[39] || ''
-    };
-
-    // If photoUrl is empty, try extracting from formulas
-    if (!obj.photoUrl) {
-      if (rowFormulas && rowFormulas[28]) {
-        var match = rowFormulas[28].match(/=HYPERLINK\("([^"]+)"/i);
-        if (match) obj.photoUrl = match[1];
-      }
-      if (!obj.photoUrl && rowFormulas && rowFormulas[27]) {
-        var match = rowFormulas[27].match(/=IMAGE\("([^"]+)"/i);
-        if (match) obj.photoUrl = match[1];
-      }
-    }
-
-    // If serialPhotoUrl is empty, try extracting from formulas
-    if (!obj.serialPhotoUrl) {
-      if (rowFormulas && rowFormulas[32]) {
-        var match = rowFormulas[32].match(/=HYPERLINK\("([^"]+)"/i);
-        if (match) obj.serialPhotoUrl = match[1];
-      }
-      if (!obj.serialPhotoUrl && rowFormulas && rowFormulas[31]) {
-        var match = rowFormulas[31].match(/=IMAGE\("([^"]+)"/i);
-        if (match) obj.serialPhotoUrl = match[1];
-      }
-    }
-    
-    data.push(obj);
   }
-  return data;
+  if (table.stats.missingHeaders.length) {
+    warnings.unshift({ sheet: table.stats.sheet, reason: 'Missing columns: ' + table.stats.missingHeaders.join(', ') });
+  }
+  table.stats.archivedFlagged = archivedFlagged;
+  return { data: data, stats: table.stats, warnings: warnings };
+}
+
+/** All Archive* tabs, de-duplicated by Case ID. Only read on request. */
+function readArchiveComplaints_(ss, fromDate, toDate) {
+  var sheets = ss.getSheets();
+  var byId = {};
+  var data = [];
+  var warnings = [];
+  var stats = { tabs: [], rows: 0, duplicateIds: 0, blankRows: 0, invalidRows: 0 };
+  var fromMs = fromDate ? fromDate.getTime() : null;
+  var toMs = toDate ? toDate.getTime() : null;
+  for (var s = 0; s < sheets.length; s++) {
+    var name = sheets[s].getName();
+    if (name.indexOf('Archive') !== 0) continue;
+    try {
+      var table = readSheetTable_(sheets[s], { fields: COMPLAINT_FIELD_HEADERS, fallbackCol: complaintFallbackCols_() });
+      stats.tabs.push({ name: name, rows: table.stats.dataRows });
+      stats.blankRows += table.stats.blankRows;
+      stats.invalidRows += table.stats.invalidRows;
+      for (var i = 0; i < table.records.length; i++) {
+        var dto = toComplaintDto_(table.records[i], warnings, name);
+        stats.rows++;
+        if (dto.caseId && byId[dto.caseId]) { stats.duplicateIds++; continue; }
+        if (fromMs !== null || toMs !== null) {
+          var d = parseSheetDate_(dto.submittedAt) || parseSheetDate_(dto.complaintDate);
+          if (!d) continue;
+          if (fromMs !== null && d.getTime() < fromMs) continue;
+          if (toMs !== null && d.getTime() > toMs) continue;
+        }
+        dto.source = 'archive';
+        dto.archiveTab = name;
+        if (dto.caseId) byId[dto.caseId] = true;
+        data.push(dto);
+      }
+    } catch (tabErr) {
+      logDataError_('readArchiveComplaints_', name, tabErr);
+      warnings.push({ sheet: name, reason: 'Archive tab could not be read: ' + tabErr.message });
+    }
+  }
+  return { data: data, stats: stats, warnings: warnings };
+}
+
+// ── generation-tagged cache (a write changes the generation, so a read that
+//    started before the write can never be served afterwards) ──
+function cacheGeneration_(genKey) {
+  var cache = CacheService.getScriptCache();
+  var gen = cache.get(genKey);
+  if (!gen) {
+    gen = new Date().getTime().toString(36) + Utilities.getUuid().replace(/-/g, '');
+    cache.put(genKey, gen, 21600);
+  }
+  return gen;
+}
+
+function bumpCacheGeneration_(genKey) {
+  try {
+    CacheService.getScriptCache().put(genKey, new Date().getTime().toString(36) + Utilities.getUuid().replace(/-/g, ''), 21600);
+  } catch (e) {}
+}
+
+function invalidateComplaintCaches_() {
+  bumpCacheGeneration_(COMPLAINTS_CACHE_GEN_KEY);
+  bumpCacheGeneration_(SCHOOL_CACHE_GEN_KEY);
+  bumpCacheGeneration_(ARCHIVE_CACHE_GEN_KEY);
+}
+
+function cacheGetJson_(key) {
+  var packed = cacheGetLarge(key);
+  if (!packed) return null;
+  try {
+    var bytes = Utilities.base64Decode(packed);
+    return JSON.parse(Utilities.ungzip(Utilities.newBlob(bytes, 'application/x-gzip')).getDataAsString());
+  } catch (e) {
+    return null;
+  }
+}
+
+function cachePutJson_(key, obj) {
+  try {
+    var gz = Utilities.gzip(Utilities.newBlob(JSON.stringify(obj), 'application/json'));
+    cachePutLarge(key, Utilities.base64Encode(gz.getBytes()), DATA_CACHE_TTL_SECONDS);
+  } catch (e) {}
+}
+
+function getActiveComplaintsCached_(ss) {
+  var gen = cacheGeneration_(COMPLAINTS_CACHE_GEN_KEY);
+  var key = 'active_complaints_' + gen;
+  var hit = cacheGetJson_(key);
+  if (hit) { hit.cache = 'hit'; return hit; }
+  var fresh = readActiveComplaints_(ss);
+  fresh.cache = 'miss';
+  fresh.generatedAt = new Date().toISOString();
+  cachePutJson_(key, fresh);
+  return fresh;
+}
+
+function recordHealth_(ok, info) {
+  try {
+    var cache = CacheService.getScriptCache();
+    if (ok) {
+      cache.put('health_last_success', JSON.stringify(info), 21600);
+    } else {
+      cache.put('health_last_error', JSON.stringify(info), 21600);
+      PropertiesService.getScriptProperties().setProperty('HEALTH_LAST_ERROR', JSON.stringify(info));
+    }
+  } catch (e) {}
+}
+
+function sanitizeWarnings_(warnings) {
+  return (warnings || []).slice(0, MAX_WARNINGS_RETURNED);
+}
+
+/**
+ * GET get_complaints&v=2 -> { success, data, count, warnings, meta }
+ * Optional: includeArchive=1&from=YYYY-MM-DD&to=YYYY-MM-DD for historical reports.
+ */
+function apiGetComplaintsV2_(ss, params) {
+  var started = new Date().getTime();
+  var active = getActiveComplaintsCached_(ss);
+  var data = active.data;
+  var warnings = active.warnings.slice(0);
+  var meta = {
+    source: 'active', cache: active.cache, generatedAt: active.generatedAt || new Date().toISOString(),
+    activeCount: active.data.length, archiveCount: 0,
+    blankRowsIgnored: active.stats.blankRows, invalidRowsSkipped: active.stats.invalidRows,
+    missingColumns: active.stats.missingHeaders
+  };
+
+  if (String(params.includeArchive || '') === '1') {
+    var from = params.from ? parseSheetDate_(String(params.from)) : null;
+    var to = params.to ? parseSheetDate_(String(params.to)) : null;
+    if (to) to.setHours(23, 59, 59, 999);
+    var archive = readArchiveComplaints_(ss, from, to);
+    var activeIds = {};
+    data.forEach(function(c) { if (c.caseId) activeIds[c.caseId] = true; });
+    var extra = archive.data.filter(function(c) { return !c.caseId || !activeIds[c.caseId]; });
+    data = data.concat(extra);
+    warnings = warnings.concat(archive.warnings);
+    meta.source = 'active+archive';
+    meta.archiveCount = extra.length;
+    meta.archiveTabs = archive.stats.tabs;
+  }
+
+  meta.durationMs = new Date().getTime() - started;
+  return { success: true, data: data, count: data.length, warnings: sanitizeWarnings_(warnings),
+           warningCount: warnings.length, meta: meta };
+}
+
+/** GET get_data_health (admin): troubleshooting summary for the Data Health panel. */
+function apiGetDataHealth_(ss) {
+  var started = new Date().getTime();
+  var out = { success: true, checkedAt: new Date().toISOString() };
+  var activeIds = {};
+  try {
+    var active = readActiveComplaints_(ss);
+    var dupActive = 0, missingCase = 0, badDate = 0, missingSchool = 0;
+    active.data.forEach(function(c) {
+      if (!c.caseId) { missingCase++; return; }
+      if (activeIds[c.caseId]) dupActive++;
+      activeIds[c.caseId] = true;
+    });
+    active.warnings.forEach(function(w) {
+      if (/date/i.test(w.reason)) badDate++;
+      if (/school\/DISE/i.test(w.reason)) missingSchool++;
+    });
+    out.active = {
+      reachable: true, sheet: SHEET_TAB_NAME, records: active.data.length,
+      rowsFlaggedArchived: active.stats.archivedFlagged,
+      blankRowsIgnored: active.stats.blankRows, headerRowsIgnored: active.stats.headerRows,
+      invalidRowsSkipped: active.stats.invalidRows, duplicateCaseIds: dupActive,
+      missingCaseId: missingCase, invalidDates: badDate, missingSchoolOrDise: missingSchool,
+      missingColumns: active.stats.missingHeaders
+    };
+  } catch (activeErr) {
+    logDataError_('apiGetDataHealth_', SHEET_TAB_NAME, activeErr);
+    out.active = { reachable: false, error: 'Active sheet could not be read' };
+  }
+  try {
+    var archive = readArchiveComplaints_(ss, null, null);
+    var alsoActive = archive.data.filter(function(c) { return c.caseId && activeIds[c.caseId]; }).length;
+    out.archive = {
+      reachable: true, tabs: archive.stats.tabs, rows: archive.stats.rows,
+      uniqueRecords: archive.data.length, duplicateCaseIdsAcrossArchive: archive.stats.duplicateIds,
+      alsoPresentInActive: alsoActive, blankRowsIgnored: archive.stats.blankRows
+    };
+  } catch (archiveErr) {
+    logDataError_('apiGetDataHealth_', 'Archive*', archiveErr);
+    out.archive = { reachable: false, error: 'Archive sheets could not be read' };
+  }
+  try {
+    var cache = CacheService.getScriptCache();
+    out.lastSuccessfulSync = JSON.parse(cache.get('health_last_success') || 'null');
+    out.lastApiError = JSON.parse(cache.get('health_last_error') ||
+      PropertiesService.getScriptProperties().getProperty('HEALTH_LAST_ERROR') || 'null');
+  } catch (e) {}
+  out.responseTimeMs = new Date().getTime() - started;
+  return out;
+}
+
+/** Active complaints for internal callers (legacy array shape). */
+function getComplaintsList(ss) {
+  return readActiveComplaints_(ss).data;
 }
 
 /**
@@ -2448,6 +2849,7 @@ function updateComplaintsStatus(ss, complaintsArray) {
     });
   });
   var updatedCount = 0;
+  var changedRows = {};
   var caseIdIndex = {};
   for (var r = 0; r < rows.length; r++) {
     var existingCaseId = String(rows[r][24] || '').trim();
@@ -2555,12 +2957,17 @@ function updateComplaintsStatus(ss, complaintsArray) {
 
       if (changed) {
         updatedCount++;
+        changedRows[foundIndex] = true;
       }
     }
   }
 
   if (updatedCount > 0) {
-    dataRange.setValues(writeRows);
+    // Write back ONLY the changed rows. Rewriting the whole sheet re-rendered
+    // every photo formula and could resurrect rows deleted/archived meanwhile.
+    Object.keys(changedRows).map(Number).sort(function(a, b) { return a - b; }).forEach(function(idx) {
+      sheet.getRange(idx + 2, 1, 1, numCols).setValues([writeRows[idx]]);
+    });
     syncSchoolComplaintMasterStatus(ss);
   }
 
@@ -4784,60 +5191,73 @@ function checkDuplicateSerial(ss, serialNumber) {
 
 function archiveComplaints(ss, fromDate, toDate) {
   var sheet = ss.getSheetByName('Complaints');
-  if (!sheet || sheet.getLastRow() < 2) return { archived: 0 };
+  if (!sheet || sheet.getLastRow() < 2) return { archived: 0, remaining: 0, skippedDuplicates: 0 };
 
-  var from = new Date(fromDate);
-  var to = new Date(toDate);
-  if (isNaN(from.getTime()) || isNaN(to.getTime()) || from > to) {
-    throw new Error('A valid archive date range is required.');
-  }
+  var from = parseSheetDate_(fromDate);
+  var to = parseSheetDate_(toDate);
+  if (!from || !to || from > to) throw new Error('A valid archive date range is required.');
   to.setHours(23, 59, 59, 999);
 
+  // Bounded batch so one run always finishes well inside the 6-minute limit.
+  var MAX_ROWS_PER_RUN = 1500;
+  var lastRow = sheet.getLastRow(), lastCol = sheet.getLastColumn();
+  var range = sheet.getRange(1, 1, lastRow, lastCol);
+  var data = range.getValues();
+  var formulas = range.getFormulas();
+  var header = data[0].map(normHeader_);
+  var col = function(name, fallback) { var i = header.indexOf(normHeader_(name)); return i === -1 ? fallback : i; };
+  var dateCol = col('Submitted At', 1), caseCol = col('Case ID', 24), archivedCol = col('Archived', 34);
+
   var months = ['01','02','03','04','05','06','07','08','09','10','11','12'];
-  var data = sheet.getDataRange().getValues();
-  var formulas = sheet.getDataRange().getFormulas();
   var rowsByArchive = {};
-  var rowIndicesToDelete = [];
-
-  for (var i = data.length - 1; i >= 1; i--) {
-    var rowDate = new Date(data[i][1]);
-    if (!isNaN(rowDate.getTime())) {
-      if (rowDate >= from && rowDate <= to) {
-        var row = [];
-        for (var col = 0; col < data[i].length; col++) {
-          if (formulas[i] && formulas[i][col]) {
-            row.push(formulas[i][col]);
-          } else {
-            row.push(data[i][col]);
-          }
-        }
-        row[34] = 'YES'; // Column 35: Archived
-        var archiveTabName = 'Archive_' + rowDate.getFullYear() + '_' + months[rowDate.getMonth()];
-        if (!rowsByArchive[archiveTabName]) rowsByArchive[archiveTabName] = [];
-        rowsByArchive[archiveTabName].unshift(row);
-        rowIndicesToDelete.push(i + 1); // 1-indexed row number
-      }
-    }
+  var rowNumbersToDelete = [];
+  var remaining = 0;
+  for (var i = 1; i < data.length; i++) {
+    var rowDate = parseSheetDate_(data[i][dateCol]);
+    if (!rowDate || rowDate < from || rowDate > to) continue;
+    if (rowNumbersToDelete.length >= MAX_ROWS_PER_RUN) { remaining++; continue; }
+    var row = data[i].map(function(v, c) { return (formulas[i] && formulas[i][c]) ? formulas[i][c] : v; });
+    row[archivedCol] = 'YES';
+    var tab = 'Archive_' + rowDate.getFullYear() + '_' + months[rowDate.getMonth()];
+    (rowsByArchive[tab] = rowsByArchive[tab] || []).push(row);
+    rowNumbersToDelete.push(i + 1);
   }
+  if (!rowNumbersToDelete.length) return { archived: 0, remaining: 0, skippedDuplicates: 0 };
 
-  var archiveNames = Object.keys(rowsByArchive);
-  if (archiveNames.length > 0) {
-    for (var a = 0; a < archiveNames.length; a++) {
-      var archiveName = archiveNames[a];
-      var archiveRows = rowsByArchive[archiveName];
-      var archiveSheet = ss.getSheetByName(archiveName);
-      if (!archiveSheet) {
-        archiveSheet = ss.insertSheet(archiveName);
-        setupHeaders(archiveSheet);
-      }
-      archiveSheet.getRange(archiveSheet.getLastRow() + 1, 1, archiveRows.length, archiveRows[0].length).setValues(archiveRows);
+  // 1. Copy first (skipping Case IDs the archive already holds, so a re-run
+  //    after an interruption never creates duplicates).
+  var skipped = 0;
+  Object.keys(rowsByArchive).forEach(function(tab) {
+    var archiveSheet = ss.getSheetByName(tab);
+    if (!archiveSheet) { archiveSheet = ss.insertSheet(tab); setupHeaders(archiveSheet); }
+    var existing = {};
+    if (archiveSheet.getLastRow() > 1) {
+      archiveSheet.getRange(2, caseCol + 1, archiveSheet.getLastRow() - 1, 1).getValues()
+        .forEach(function(r) { var id = String(r[0] || '').trim(); if (id) existing[id] = true; });
     }
-    for (var j = 0; j < rowIndicesToDelete.length; j++) {
-      sheet.deleteRow(rowIndicesToDelete[j]);
+    var toAppend = rowsByArchive[tab].filter(function(r) {
+      var id = String(r[caseCol] || '').trim();
+      if (id && existing[id]) { skipped++; return false; }
+      if (id) existing[id] = true;
+      return true;
+    });
+    if (toAppend.length) {
+      archiveSheet.getRange(archiveSheet.getLastRow() + 1, 1, toAppend.length, toAppend[0].length).setValues(toAppend);
     }
+  });
+  SpreadsheetApp.flush();
+
+  // 2. Then delete from the active sheet in contiguous blocks, bottom-up, so
+  //    earlier row numbers stay valid and thousands of rows take a few calls.
+  rowNumbersToDelete.sort(function(a, b) { return b - a; });
+  var k = 0;
+  while (k < rowNumbersToDelete.length) {
+    var endRow = rowNumbersToDelete[k], count = 1;
+    while (k + count < rowNumbersToDelete.length && rowNumbersToDelete[k + count] === endRow - count) count++;
+    sheet.deleteRows(endRow - count + 1, count);
+    k += count;
   }
-
-  return { archived: rowIndicesToDelete.length };
+  return { archived: rowNumbersToDelete.length, remaining: remaining, skippedDuplicates: skipped };
 }
 
 function restoreComplaints(ss, caseIds) {
@@ -4899,26 +5319,28 @@ function restoreComplaints(ss, caseIds) {
 function getArchiveList(ss) {
   var sheets = ss.getSheets();
   var results = [];
-  
   for (var sIdx = 0; sIdx < sheets.length; sIdx++) {
     var sName = sheets[sIdx].getName();
-    if (sName.indexOf('Archive') === 0 && sheets[sIdx].getLastRow() >= 2) {
-      var data = sheets[sIdx].getDataRange().getValues();
-      for (var i = 1; i < data.length; i++) {
+    if (sName.indexOf('Archive') !== 0) continue;
+    try {
+      var table = readSheetTable_(sheets[sIdx], { fields: COMPLAINT_FIELD_HEADERS, fallbackCol: complaintFallbackCols_() });
+      table.records.forEach(function(r) {
         results.push({
-          srNo: String(data[i][0] || ''),
-          submittedAt: String(data[i][1] || ''),
-          school: String(data[i][10] || ''),
-          dise: String(data[i][6] || ''),
-          equipment: String(data[i][15] || ''),
-          serialNumber: String(data[i][17] || ''),
-          caseId: String(data[i][24] || ''),
-          status: String(data[i][23] || ''),
-          duplicateStatus: String(data[i][30] || 'NO'),
-          archived: String(data[i][31] || 'YES'),
+          srNo: String(r.srNo || ''),
+          submittedAt: r.submittedAt instanceof Date ? r.submittedAt.toISOString() : String(r.submittedAt || ''),
+          school: String(r.school || ''),
+          dise: String(r.dise || ''),
+          equipment: String(r.equipment || ''),
+          serialNumber: String(r.serialNumber || ''),
+          caseId: String(r.caseId || ''),
+          status: String(r.status || ''),
+          duplicateStatus: String(r.duplicateStatus || 'NO'),
+          archived: String(r.archived || 'YES'),
           archiveTab: sName
         });
-      }
+      });
+    } catch (tabErr) {
+      logDataError_('getArchiveList', sName, tabErr);
     }
   }
   return results;
@@ -5654,6 +6076,8 @@ function getAllSchoolComplaints(ss) {
   var results = [];
 
   for (var i = 0; i < rows.length; i++) {
+    if (!rows[i].some(function(v) { return v !== '' && v !== null; })) continue; // blank row
+    try {
     var rawAcerId = String(rows[i][21] || '').trim();
     var rawAcerSt = String(rows[i][22] || '').trim();
     results.push({
@@ -5681,6 +6105,9 @@ function getAllSchoolComplaints(ss) {
       acerCaseId:        isStatusWord(rawAcerId) ? '' : rawAcerId,
       acerCaseStatus:    isStatusWord(rawAcerId) ? rawAcerId : rawAcerSt
     });
+    } catch (schoolRowErr) {
+      logDataError_('getAllSchoolComplaints', 'SchoolComplaintMaster', schoolRowErr, { row: i + 2 });
+    }
   }
 
   return results;
