@@ -1287,31 +1287,35 @@ function registerSW() {
 async function loadSchoolData() {
   try {
     document.getElementById('loadingMsg').textContent = 'Loading school database…';
+    // Start the live school-updates request now so it downloads in parallel with
+    // the 8 MB school database instead of after it (saves one full round trip).
+    const wantUpdates = GOOGLE_SCRIPT_URL && !isLocal() && navigator.onLine;
+    const updatesPromise = wantUpdates
+      ? fetchJsonWithTimeout(GOOGLE_SCRIPT_URL + '?action=get_school_updates&t=' + Date.now(), 20000)
+          .catch(updErr => { console.warn('School updates not loaded (will use saved data):', updErr); return null; })
+      : Promise.resolve(null);
     const res = await fetch('./school_data.json');
     if (!res.ok) throw new Error('Fetch failed');
     SCHOOL_DB = await res.json();
-    try {
-      const resComp = await fetch('./school_complaint_data.json');
-      if (resComp.ok) {
-        SCHOOL_COMPLAINT_DB = await resComp.json();
+    // school_complaint_data.json is a local-only snapshot (blocked in production by
+    // .vercelignore for privacy); requesting it online was always a 404.
+    if (isLocal()) {
+      try {
+        const resComp = await fetch('./school_complaint_data.json');
+        if (resComp.ok) {
+          SCHOOL_COMPLAINT_DB = await resComp.json();
+        }
+      } catch (e) {
+        console.warn("Could not load school complaint database:", e);
       }
-    } catch (e) {
-      console.warn("Could not load school complaint database:", e);
     }
     const total = Object.values(SCHOOL_DB).reduce((s, v) => s + (Array.isArray(v) ? v.length : 1), 0);
     document.getElementById('loadingMsg').textContent = `Loaded ${total.toLocaleString()} school records ✓`;
-    await delay(200);
 
     // Apply live online updates if available
-    const isLocalhost = isLocal();
-    if (GOOGLE_SCRIPT_URL && !isLocalhost && navigator.onLine) {
+    if (wantUpdates) {
       document.getElementById('loadingMsg').textContent = 'Syncing school updates…';
-      let updates = null;
-      try {
-        updates = await fetchJsonWithTimeout(GOOGLE_SCRIPT_URL + '?action=get_school_updates&t=' + Date.now(), 20000);
-      } catch (updErr) {
-        console.warn('School updates not loaded (will use saved data):', updErr);
-      }
+      const updates = await updatesPromise;
       {
         if (Array.isArray(updates)) {
           updates.forEach(update => {

@@ -7898,12 +7898,13 @@ async function loadUnifiedDashboard() {
           .catch(() => { failed.push('Department'); unifiedDeptData = unifiedDeptData || []; }));
     } else {
       if (need.School) jobs.push(
-        fetchJsonWithRetry(GOOGLE_SCRIPT_URL + '?action=get_all_school_complaints&authToken=' + encodeURIComponent(adminAuthToken()), 3)
-          .then(d => { window.parentSchoolComplaintsList = Array.isArray(d) ? d : []; })
+        // v2 is served from the server cache; the legacy v1 call re-read the whole sheet every time.
+        fetchEnvelope('get_all_school_complaints', '', 'UNISCHOOL')
+          .then(d => { window.parentSchoolComplaintsList = d.data; })
           .catch(() => { failed.push('School'); window.parentSchoolComplaintsList = window.parentSchoolComplaintsList || []; }));
       if (need.Advance) jobs.push(
-        fetchJsonWithRetry(GOOGLE_SCRIPT_URL + '?action=get_complaints&authToken=' + encodeURIComponent(adminAuthToken()), 3)
-          .then(d => { complaintsList = normalizeComplaintStatuses(Array.isArray(d) ? d : []); })
+        fetchEnvelope('get_complaints', '', 'UNIADVANCE')
+          .then(d => { complaintsList = normalizeComplaintStatuses(d.data); })
           .catch(() => { failed.push('Advance'); complaintsList = complaintsList || []; }));
       if (need.Department) jobs.push(
         // Ordinary Department browsing is paged. The consolidated screen is

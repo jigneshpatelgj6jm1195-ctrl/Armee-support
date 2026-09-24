@@ -773,7 +773,9 @@ async function test(name, fn) {
 
   await test('consolidated dashboard uses authenticated complaint route and local fixtures', () => {
     const block = extractBlock(adminSource, 'async function loadUnifiedDashboard');
-    assert.match(block, /action=get_complaints&authToken=/);
+    // fetchEnvelope always sends the admin authToken (v2, server-cached route)
+    assert.match(block, /fetchEnvelope\('get_complaints'/);
+    assert.match(extractBlock(adminSource, 'async function fetchEnvelope'), /&authToken=' \+ encodeURIComponent\(adminAuthToken\(\)\)/);
     assert.match(block, /\/school_complaint_data\.json/);
     assert.match(block, /\/deptlist\.json/);
     assert.doesNotMatch(block, /fetchJsonWithRetry\(GOOGLE_SCRIPT_URL\s*,/);
