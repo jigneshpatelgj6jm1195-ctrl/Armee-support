@@ -360,6 +360,19 @@ function masterRow(o) { const r = Array(23).fill(''); Object.entries(o).forEach(
     assert.ok(c.cacheGetLarge(key), 'department cache kept');
   });
 
+  await test('duplicate check sees a new submission immediately (cache invalidated)', () => {
+    const c = makeContext();
+    const H = vm.runInContext('HEADERS', c);
+    const db = makeSpreadsheet([makeSheet('Complaints', [H]), makeSheet('SubmissionLog', [vm.runInContext('SUBMISSION_LOG_HEADERS', c)])]);
+    c.SpreadsheetApp = { flush() {}, openById() { return db; } };
+    c.getPhotoFolder = () => ({}); c.formatLastRow = () => {};
+    const check = () => JSON.parse(c.doGet({ parameter: { action: 'check_duplicate', serial: 'SN-NEW' } }).text).isDuplicate;
+    assert.equal(check(), false);
+    assert.equal(check(), false); // cached
+    c.doPost({ postData: { contents: JSON.stringify({ serialNumber: 'sn-new', submissionId: 'D-1', photos: [], submittedAt: new Date().toISOString() }) } });
+    assert.equal(check(), true);
+  });
+
   const failed = results.filter(r => r.status !== 'pass');
   results.forEach(r => console.log((r.status === 'pass' ? 'PASS  ' : 'FAIL  ') + r.name + (r.error ? '\n      ' + r.error : '')));
   console.log(`\n${results.length - failed.length}/${results.length} performance regression checks passed.`);
