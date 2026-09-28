@@ -373,6 +373,71 @@ function masterRow(o) { const r = Array(23).fill(''); Object.entries(o).forEach(
     assert.equal(check(), true);
   });
 
+  function bulkFixture(c) {
+    const D = vm.runInContext('DEPT_HEADERS', c), R = vm.runInContext('RES_HEADERS', c);
+    const drow = (t, dist) => { const r = Array(D.length).fill(''); r[0] = dist; r[7] = 'S' + t; r[9] = t; return r; };
+    const dept = makeSheet('DepartmentComplaints', [D, drow('T-OPEN', 'SURAT'), drow('T-OTP', 'SURAT'), drow('T-CLOSED', 'SURAT'), drow('T-NOSER', 'SURAT'), drow('T-OTHER', 'KUTCH')]);
+    const res = makeSheet('DepartmentResolutions', [R.slice(),
+      ['T-CLOSED', 'Closed', 'ClosedWithOTP', '1234', ...Array(R.length - 4).fill('')],
+      ['T-OPEN', 'PartRequest', '', '', '', '', '', '2026-09-01', '', '', '', 1, '', 'SER-EXISTING', ...Array(R.length - 14).fill('')]]);
+    c.syncDepartmentToComplaints = () => {};
+    return { db: makeSpreadsheet([dept, res, makeSheet('MasterData', [[JSON.stringify({ accessUsers: [{ email: 'd@x.in', status: 'active', assignedDistricts: ['SURAT'] }] })]])]), res };
+  }
+
+  await test('bulk department update follows single-update rules per ticket', () => {
+    const c = makeContext();
+    const { db, res } = bulkFixture(c);
+    const token = c.issueAuthToken_({ email: 'boss@x.in', role: 'super_admin' });
+    const out = c.bulkResolveDepartmentComplaints_(db, { authToken: token, items: [
+      { ticketId: 'T-OPEN', resolutionAction: 'closed_without_otp' },                       // serial from existing
+      { ticketId: 'T-OTP', resolutionAction: 'closed_with_otp', otp: '9876', serialNumber: 'SER-2' },
+      { ticketId: 'T-CLOSED', resolutionAction: 'closed_without_otp', serialNumber: 'S' },  // already closed
+      { ticketId: 'T-NOSER', resolutionAction: 'closed_without_otp' },                      // no serial anywhere
+      { ticketId: 'T-MISSING', resolutionAction: 'closed_without_otp', serialNumber: 'X' },
+      { ticketId: 'T-OPEN', resolutionAction: 'closed_with_otp' }                           // OTP required
+    ] });
+    const by = {}; out.results.forEach((r, i) => { by[r.ticketId + i] = r; });
+    assert.equal(out.status, 'ok');
+    assert.equal(out.results[0].status, 'ok'); assert.equal(out.results[0].internalStatus, 'PendingOTP');
+    assert.equal(out.results[1].status, 'ok'); assert.equal(out.results[1].internalStatus, 'Closed');
+    assert.equal(out.results[2].status, 'skipped');
+    assert.equal(out.results[3].status, 'error'); assert.match(out.results[3].message, /Serial/);
+    assert.equal(out.results[4].status, 'error'); assert.match(out.results[4].message, /not found/i);
+    assert.equal(out.results[5].status, 'error'); assert.match(out.results[5].message, /OTP/);
+    assert.equal(out.updated, 2);
+    const openRow = res.rows.find(r => r[0] === 'T-OPEN');
+    assert.equal(openRow[1], 'PendingOTP'); assert.equal(openRow[13], 'SER-EXISTING');
+    const otpRow = res.rows.find(r => r[0] === 'T-OTP');
+    assert.equal(otpRow[1], 'Closed'); assert.equal(otpRow[3], '9876');
+    assert.equal(res.rows.find(r => r[0] === 'T-CLOSED')[1], 'Closed');
+    // re-sending the same list is harmless
+    const again = c.bulkResolveDepartmentComplaints_(db, { authToken: token, items: [{ ticketId: 'T-OTP', resolutionAction: 'closed_with_otp', otp: '9876' }] });
+    assert.equal(again.results[0].status, 'ok'); assert.equal(again.results[0].note, 'Already closed');
+  });
+
+  await test('bulk department update enforces login, role, district and batch size', () => {
+    const c = makeContext();
+    const { db } = bulkFixture(c);
+    assert.equal(c.bulkResolveDepartmentComplaints_(db, { items: [{ ticketId: 'T-OPEN' }] }).code, 'auth');
+    const viewer = c.issueAuthToken_({ email: 'v@x.in', role: 'viewer' });
+    assert.equal(c.bulkResolveDepartmentComplaints_(db, { authToken: viewer, items: [{ ticketId: 'T-OPEN' }] }).code, 'forbidden');
+    const district = c.issueAuthToken_({ email: 'd@x.in', role: 'district_admin' });
+    const out = c.bulkResolveDepartmentComplaints_(db, { authToken: district, items: [
+      { ticketId: 'T-OTHER', resolutionAction: 'in_progress' }, { ticketId: 'T-OPEN', resolutionAction: 'in_progress' }] });
+    assert.equal(out.results[0].status, 'error'); assert.match(out.results[0].message, /outside/);
+    assert.equal(out.results[1].status, 'ok');
+    const big = Array.from({ length: 16 }, (_, i) => ({ ticketId: 'X' + i, resolutionAction: 'in_progress' }));
+    assert.equal(c.bulkResolveDepartmentComplaints_(db, { authToken: district, items: big }).status, 'error');
+  });
+
+  await test('admin bulk status tool maps OTP rows to Closed and others to Pending OTP', () => {
+    const ctx = vm.createContext({});
+    vm.runInContext(extractBlock(adminSource, 'function deptBulkActionFor'), ctx);
+    assert.equal(ctx.deptBulkActionFor({ otp: '1234' }, 'close'), 'closed_with_otp');
+    assert.equal(ctx.deptBulkActionFor({ otp: '' }, 'close'), 'closed_without_otp');
+    assert.equal(ctx.deptBulkActionFor({ otp: '1' }, 'part_request'), 'part_request');
+  });
+
   const failed = results.filter(r => r.status !== 'pass');
   results.forEach(r => console.log((r.status === 'pass' ? 'PASS  ' : 'FAIL  ') + r.name + (r.error ? '\n      ' + r.error : '')));
   console.log(`\n${results.length - failed.length}/${results.length} performance regression checks passed.`);

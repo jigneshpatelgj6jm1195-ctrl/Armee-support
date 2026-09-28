@@ -1341,6 +1341,35 @@ tr:hover td { background: #f8fafc; }
       <div id="deptPreview" style="display:none;background:#f8faff;border:1.5px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:14px;font-size:0.82rem;"></div>
       <div id="deptResult" style="display:none;border-radius:12px;padding:14px 16px;font-size:0.82rem;font-weight:600;"></div>
     </div>
+
+    <div class="card" id="deptBulkStatusCard">
+      <div class="card-title">✅ Department Complaints — Bulk Status Update (Excel)</div>
+      <p style="color:var(--muted);font-size:0.82rem;margin-bottom:16px;">
+        Upload an Excel list of tickets to update together. Required column: <b>Ticket ID</b>.
+        Optional columns: <b>OTP Code</b>, <b>Serial Number</b>, <b>Suspected Part</b>, <b>Technician</b>, <b>Diagnosis Notes</b>.
+        Each ticket follows the same rules as updating it one by one. With <i>Close</i>, a row that has an OTP is
+        <b>Closed</b>; a row without an OTP becomes <b>Pending OTP</b> (finalise later with the OTP).
+        A Serial Number is needed for closing — taken from the file, or from the ticket if already recorded.
+        Uploading the same file again is safe.
+      </p>
+      <div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap;">
+        <div>
+          <label>Excel file (.xlsx / .csv)</label>
+          <input type="file" id="deptBulkStatusFile" accept=".xlsx,.xls,.csv" style="display:block;padding:8px;border:2px dashed var(--border);border-radius:8px;background:white;" onchange="handleDeptBulkStatusFile()" />
+        </div>
+        <div>
+          <label>Action</label>
+          <select id="deptBulkStatusAction" onchange="renderDeptBulkStatusPreview()" style="display:block;padding:8px;border-radius:8px;border:1px solid var(--border);">
+            <option value="close">Close (OTP → Closed, no OTP → Pending OTP)</option>
+            <option value="part_request">Part Request</option>
+            <option value="in_progress">In Progress</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" id="deptBulkStatusBtn" onclick="runDeptBulkStatusUpdate()" disabled>⬆️ Update Tickets</button>
+      </div>
+      <div id="deptBulkStatusPreview" style="display:none;background:#f8faff;border:1.5px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:14px;font-size:0.82rem;"></div>
+      <div id="deptBulkStatusResult" style="display:none;border-radius:12px;padding:14px 16px;font-size:0.82rem;"></div>
+    </div>
   </div>
 
   <!-- ================= TAB: SCHOOL UPLOAD ================= -->
@@ -8946,6 +8975,129 @@ function updateDeptSelectionUI() {
   if (allChks.length > 0 && selectAll) {
     selectAll.checked = (chks.length === allChks.length);
   }
+}
+
+/* ─────────── DEPARTMENT BULK STATUS UPDATE FROM EXCEL ─────────── */
+let deptBulkStatusRows = [];
+
+function deptBulkPick(row, names) {
+  const keys = Object.keys(row);
+  for (const n of names) {
+    const k = keys.find(key => key.replace(/[^a-z0-9]/gi, '').toLowerCase() === n);
+    if (k !== undefined && String(row[k]).trim() !== '') return String(row[k]).trim();
+  }
+  return '';
+}
+
+function handleDeptBulkStatusFile() {
+  const input = document.getElementById('deptBulkStatusFile');
+  const file = input && input.files && input.files[0];
+  deptBulkStatusRows = [];
+  document.getElementById('deptBulkStatusResult').style.display = 'none';
+  if (!file) { renderDeptBulkStatusPreview(); return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { raw: false, defval: '' });
+      const seen = {};
+      rows.forEach((r, i) => {
+        const ticketId = deptBulkPick(r, ['ticketid', 'ticket', 'ticketno']);
+        if (!ticketId) return;
+        if (seen[ticketId]) { seen[ticketId].duplicate = true; return; }
+        const item = {
+          line: i + 2, ticketId,
+          otp: deptBulkPick(r, ['otpcode', 'otp', 'otpvalue']),
+          serialNumber: deptBulkPick(r, ['serialnumber', 'serialno', 'serial']),
+          suspectedPart: deptBulkPick(r, ['suspectedpart', 'part']),
+          technicianName: deptBulkPick(r, ['technician', 'technicianname']),
+          diagnosisNotes: deptBulkPick(r, ['diagnosisnotes', 'notes', 'remarks'])
+        };
+        seen[ticketId] = item;
+        deptBulkStatusRows.push(item);
+      });
+      if (!deptBulkStatusRows.length) showToast('⚠️ No "Ticket ID" values found in the first sheet.', 'warn');
+    } catch (err) {
+      showToast('⚠️ Could not read the file: ' + err.message, 'warn');
+    }
+    renderDeptBulkStatusPreview();
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function deptBulkActionFor(item, mode) {
+  if (mode === 'close') return item.otp ? 'closed_with_otp' : 'closed_without_otp';
+  return mode;
+}
+
+function renderDeptBulkStatusPreview() {
+  const box = document.getElementById('deptBulkStatusPreview');
+  const btn = document.getElementById('deptBulkStatusBtn');
+  const mode = document.getElementById('deptBulkStatusAction').value;
+  if (!deptBulkStatusRows.length) { box.style.display = 'none'; btn.disabled = true; return; }
+  const withOtp = deptBulkStatusRows.filter(r => r.otp).length;
+  const noSerial = deptBulkStatusRows.filter(r => !r.serialNumber).length;
+  const noPart = deptBulkStatusRows.filter(r => !r.suspectedPart).length;
+  const dups = deptBulkStatusRows.filter(r => r.duplicate).length;
+  let summary = `<b>${deptBulkStatusRows.length}</b> ticket(s) found.`;
+  if (mode === 'close') summary += ` <b>${withOtp}</b> → Closed (OTP given), <b>${deptBulkStatusRows.length - withOtp}</b> → Pending OTP.`;
+  if (mode !== 'in_progress' && noSerial) summary += ` <span style="color:#b45309">${noSerial} row(s) have no Serial Number — they update only if the ticket already has one.</span>`;
+  if (mode === 'part_request' && noPart) summary += ` <span style="color:#b91c1c">${noPart} row(s) have no Suspected Part and will be rejected.</span>`;
+  if (dups) summary += ` ${dups} duplicate Ticket ID(s) ignored.`;
+  const sample = deptBulkStatusRows.slice(0, 8).map(r =>
+    `<tr><td>${esc(r.ticketId)}</td><td>${esc(deptBulkActionFor(r, mode).replace(/_/g, ' '))}</td><td>${esc(r.serialNumber || '—')}</td><td>${esc(r.otp ? '✓' : '—')}</td></tr>`).join('');
+  box.innerHTML = summary +
+    `<table style="margin-top:10px;width:100%;font-size:0.78rem;"><thead><tr><th align="left">Ticket</th><th align="left">Will be</th><th align="left">Serial</th><th align="left">OTP</th></tr></thead><tbody>${sample}</tbody></table>` +
+    (deptBulkStatusRows.length > 8 ? `<div style="color:var(--muted);margin-top:6px;">…and ${deptBulkStatusRows.length - 8} more</div>` : '');
+  box.style.display = '';
+  btn.disabled = false;
+}
+
+async function runDeptBulkStatusUpdate() {
+  const mode = document.getElementById('deptBulkStatusAction').value;
+  const rows = deptBulkStatusRows.slice();
+  if (!rows.length) return;
+  if (!confirm(`Update ${rows.length} department ticket(s)? Each ticket is checked and updated with the normal rules.`)) return;
+  const btn = document.getElementById('deptBulkStatusBtn');
+  const resultBox = document.getElementById('deptBulkStatusResult');
+  btn.disabled = true;
+  const results = [];
+  const CHUNK = 10;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const chunk = rows.slice(i, i + CHUNK);
+    btn.textContent = `⏳ Updating ${Math.min(i + CHUNK, rows.length)} / ${rows.length}…`;
+    const items = chunk.map(r => ({
+      ticketId: r.ticketId, resolutionAction: deptBulkActionFor(r, mode), otp: r.otp,
+      serialNumber: r.serialNumber, suspectedPart: r.suspectedPart,
+      technicianName: r.technicianName, diagnosisNotes: r.diagnosisNotes
+    }));
+    try {
+      const out = await postJsonWithDeadline(GOOGLE_SCRIPT_URL, {
+        action: 'bulk_resolve_department_complaints', items,
+        resolvedBy: (currentUser && currentUser.name) || 'admin', authToken: adminAuthToken()
+      }, { timeoutMs: 150000 });
+      if (!out || out.status !== 'ok' || !Array.isArray(out.results)) throw new Error((out && out.message) || 'Server rejected the request');
+      results.push(...out.results);
+    } catch (e) {
+      chunk.forEach(r => results.push({ ticketId: r.ticketId, status: 'error', message: 'No confirmation from server (' + e.message + '). Upload the file again to retry — it is safe.' }));
+    }
+  }
+  const ok = results.filter(r => r.status === 'ok');
+  const skipped = results.filter(r => r.status === 'skipped');
+  const failed = results.filter(r => r.status !== 'ok' && r.status !== 'skipped');
+  const label = s => s === 'PendingOTP' ? 'Pending OTP' : (s === 'PartRequest' ? 'Part Request' : (s === 'InProgress' ? 'In Progress' : s));
+  resultBox.style.display = '';
+  resultBox.style.background = failed.length ? '#fffbeb' : '#f0fdf4';
+  resultBox.style.border = '1.5px solid ' + (failed.length ? '#fde68a' : '#bbf7d0');
+  resultBox.innerHTML = `<b>${ok.length} updated</b>, ${skipped.length} already closed, <b style="color:${failed.length ? '#b91c1c' : 'inherit'}">${failed.length} not updated</b>.` +
+    `<table style="margin-top:10px;width:100%;font-size:0.78rem;"><thead><tr><th align="left">Ticket</th><th align="left">Result</th></tr></thead><tbody>` +
+    results.map(r => `<tr><td>${esc(r.ticketId)}</td><td>${r.status === 'ok' ? '✅ ' + esc(label(r.internalStatus || 'Updated')) + (r.note ? ' (' + esc(r.note) + ')' : '') : (r.status === 'skipped' ? 'ℹ️ ' + esc(r.note || 'Skipped') : '❌ ' + esc(r.message || 'Failed'))}</td></tr>`).join('') +
+    `</tbody></table>`;
+  btn.textContent = '⬆️ Update Tickets';
+  btn.disabled = false;
+  showToast(`Bulk update: ${ok.length} updated, ${skipped.length} already closed, ${failed.length} not updated.`, failed.length ? 'warn' : 'success');
+  if (ok.length && typeof loadDeptDashboard === 'function') loadDeptDashboard();
 }
 
 async function bulkUpdateDeptStatus(action) {
